@@ -5,19 +5,31 @@ import Constants from 'expo-constants';
 import { Platform, Alert } from 'react-native';
 import { authenticatedPost } from './api';
 
-// Set notification handler for foreground notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Set notification handler for foreground notifications (only on native)
+if (Platform.OS !== 'web') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+}
 
 /**
  * Request notification permissions from the user
  */
 export async function requestNotificationPermissions(): Promise<boolean> {
+  // Notifications are not supported on web
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Notifications not supported on web');
+    Alert.alert(
+      'Push Notifications',
+      'Push notifications are not available on web. Please use the mobile app.'
+    );
+    return false;
+  }
+
   console.log('[Notifications] Requesting notification permissions');
 
   try {
@@ -73,6 +85,12 @@ export async function requestNotificationPermissions(): Promise<boolean> {
  * Get Expo push token and register it with the backend
  */
 export async function registerForPushNotifications(): Promise<string | null> {
+  // Notifications are not supported on web
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Notifications not supported on web');
+    return null;
+  }
+
   console.log('[Notifications] Registering for push notifications');
 
   try {
@@ -119,6 +137,11 @@ export async function registerForPushNotifications(): Promise<string | null> {
  * Check if notifications are enabled
  */
 export async function areNotificationsEnabled(): Promise<boolean> {
+  // Notifications are not supported on web
+  if (Platform.OS === 'web') {
+    return false;
+  }
+
   try {
     const { status } = await Notifications.getPermissionsAsync();
     return status === 'granted';
@@ -132,6 +155,16 @@ export async function areNotificationsEnabled(): Promise<boolean> {
  * Schedule a local test notification
  */
 export async function scheduleTestNotification(): Promise<void> {
+  // Notifications are not supported on web
+  if (Platform.OS === 'web') {
+    console.log('[Notifications] Notifications not supported on web');
+    Alert.alert(
+      'Test Notification',
+      'Push notifications are not available on web. Please use the mobile app.'
+    );
+    return;
+  }
+
   console.log('[Notifications] Scheduling test notification');
 
   try {

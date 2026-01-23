@@ -6,7 +6,7 @@ import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
+import { useColorScheme, Alert, Platform } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Notifications from "expo-notifications";
 import {
@@ -66,6 +66,12 @@ export default function RootLayout() {
   }, [colorScheme]);
 
   useEffect(() => {
+    // Only set up notification handlers on native platforms (iOS/Android)
+    if (Platform.OS === 'web') {
+      console.log('[App] Skipping notification setup on web');
+      return;
+    }
+
     console.log('[App] Setting up notification handlers');
 
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
