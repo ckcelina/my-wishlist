@@ -5,6 +5,12 @@ import * as SecureStore from 'expo-secure-store';
 import { supabase } from '@/lib/supabase';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || '';
+
+// Export BACKEND_URL for use in other files
+export const BACKEND_URL = API_URL;
+
+// Log the backend URL at startup for debugging
+console.log('[API] Backend URL configured:', BACKEND_URL);
 const BEARER_TOKEN_KEY = 'wishzen_bearer_token';
 
 async function getBearerToken(): Promise<string | null> {
@@ -102,5 +108,23 @@ export async function authenticatedDelete<T>(endpoint: string): Promise<T> {
     method: 'DELETE',
     body: JSON.stringify({}),
   });
+  return response.json();
+}
+
+// Public API call (no authentication required)
+export async function apiGet<T>(endpoint: string): Promise<T> {
+  const url = `${API_URL}${endpoint}`;
+  console.log(`[API] GET ${url} (public)`);
+
+  const response = await fetch(url, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[API] Request failed: ${response.status} ${errorText}`);
+    throw new Error(`API request failed: ${response.status} ${errorText}`);
+  }
+
   return response.json();
 }

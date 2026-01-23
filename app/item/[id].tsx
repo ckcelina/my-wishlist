@@ -70,7 +70,6 @@ export default function ItemDetailScreen() {
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showPriceHistoryModal, setShowPriceHistoryModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [otherStores, setOtherStores] = useState<OtherStore[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
@@ -353,8 +352,8 @@ export default function ItemDetailScreen() {
   };
 
   const handleViewPriceHistory = () => {
-    console.log('ItemDetailScreen: Opening price history modal');
-    setShowPriceHistoryModal(true);
+    console.log('ItemDetailScreen: Navigating to price history screen');
+    router.push(`/item/price-history/${id}`);
   };
 
   const handleOpenStoreUrl = async (url: string, storeName: string) => {
@@ -388,9 +387,6 @@ export default function ItemDetailScreen() {
   }
 
   const priceText = item.currentPrice ? `${item.currency} ${parseFloat(item.currentPrice).toFixed(2)}` : 'No price';
-  const sortedPriceHistory = [...item.priceHistory].sort((a, b) => 
-    new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-  );
 
   const hasPriceDrop = priceDropInfo?.priceDropped === true;
   const percentageChange = priceDropInfo?.percentageChange;
@@ -723,60 +719,7 @@ export default function ItemDetailScreen() {
           </SafeAreaView>
         </Modal>
 
-        {/* Price History Modal */}
-        <Modal
-          visible={showPriceHistoryModal}
-          animationType="slide"
-          presentationStyle="pageSheet"
-          onRequestClose={() => setShowPriceHistoryModal(false)}
-        >
-          <SafeAreaView style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalHeaderSpacer} />
-              <Text style={styles.modalTitle}>Price History</Text>
-              <TouchableOpacity onPress={() => setShowPriceHistoryModal(false)}>
-                <Text style={styles.modalCancelButton}>Done</Text>
-              </TouchableOpacity>
-            </View>
 
-            <ScrollView style={styles.modalContent}>
-              {sortedPriceHistory.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <IconSymbol
-                    ios_icon_name="chart.line.uptrend.xyaxis"
-                    android_material_icon_name="trending-up"
-                    size={48}
-                    color={colors.textSecondary}
-                  />
-                  <Text style={styles.emptyStateText}>No price history yet</Text>
-                  <Text style={styles.emptyStateSubtext}>
-                    Price history will appear here after price checks
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.historyList}>
-                  {sortedPriceHistory.map((entry, index) => {
-                    const historyPrice = parseFloat(entry.price);
-                    const historyPriceText = `${item.currency} ${historyPrice.toFixed(2)}`;
-                    const date = new Date(entry.recordedAt);
-                    const dateText = date.toLocaleDateString();
-                    const timeText = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    
-                    return (
-                      <View key={index} style={styles.historyItem}>
-                        <View style={styles.historyItemLeft}>
-                          <Text style={styles.historyPrice}>{historyPriceText}</Text>
-                          <Text style={styles.historyTime}>{timeText}</Text>
-                        </View>
-                        <Text style={styles.historyDate}>{dateText}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
       </SafeAreaView>
     </>
   );
