@@ -192,12 +192,114 @@ Return ONLY valid JSON, no markdown or extra text.`,
     }
   );
 
-  // POST /api/items - Create a new item
+  // POST /api/items/preview - Fetch item metadata preview from URL (for UI preview before saving)
+  app.fastify.post(
+    '/api/items/preview',
+    {
+      schema: {
+        description: 'Fetch item metadata preview from URL (editable before saving)',
+        tags: ['items'],
+        body: {
+          type: 'object',
+          properties: {
+            url: { type: 'string' },
+          },
+          required: ['url'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              title: { type: 'string' },
+              imageUrl: { type: 'string' },
+              price: { type: 'string' },
+              currency: { type: 'string' },
+              originalUrl: { type: 'string' },
+              sourceDomain: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: { url: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const { url } = request.body;
+
+      app.logger.info({ url }, 'Fetching item preview from URL');
+
+      try {
+        // Extract domain from URL
+        const urlObj = new URL(url);
+        const sourceDomain = urlObj.hostname;
+
+        // Use GPT-5.2 vision to analyze the page
+        const result = await generateText({
+          model: gateway('openai/gpt-5.2'),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Visit this URL and extract product information. Return a JSON object with these fields:
+- title: the product/item name
+- imageUrl: the best quality product image URL (or null)
+- price: the current price as a string (or null)
+- currency: the currency code like USD, EUR, GBP, etc. (default USD)
+
+URL: ${url}
+
+Return ONLY valid JSON, no markdown or extra text.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        // Parse the response
+        const extracted = JSON.parse(result.text);
+
+        app.logger.info(
+          { url, title: extracted.title },
+          'Item preview fetched'
+        );
+
+        return {
+          title: extracted.title || 'Unknown Item',
+          imageUrl: extracted.imageUrl || null,
+          price: extracted.price || null,
+          currency: extracted.currency || 'USD',
+          originalUrl: url,
+          sourceDomain,
+        };
+      } catch (error) {
+        app.logger.error(
+          { err: error, url },
+          'Failed to fetch item preview'
+        );
+        return reply.status(400).send({
+          error: 'Failed to fetch item preview from URL',
+        });
+      }
+    }
+  );
+
+  // POST /api/items - Create a new item (supports manual entry or URL-based)
+  // Usage:
+  // 1. Manual tab: User enters title, optional imageUrl, price, notes
+  // 2. URL tab: User selects from preview data returned by /api/items/preview
   app.fastify.post(
     '/api/items',
     {
       schema: {
-        description: 'Create a new item in a wishlist',
+        description: 'Create a new item in a wishlist (manual or from URL preview)',
         tags: ['items'],
         body: {
           type: 'object',

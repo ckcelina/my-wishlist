@@ -4,6 +4,7 @@ import * as authSchema from './db/auth-schema.js';
 import { registerUserRoutes } from './routes/users.js';
 import { registerWishlistRoutes } from './routes/wishlists.js';
 import { registerItemRoutes } from './routes/items.js';
+import { registerUploadRoutes } from './routes/upload.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -17,10 +18,14 @@ export type App = typeof app;
 // Enable Better Auth for user authentication
 app.withAuth();
 
+// Enable storage for file uploads
+app.withStorage();
+
 // Register all route modules
 registerUserRoutes(app);
 registerWishlistRoutes(app);
 registerItemRoutes(app);
+registerUploadRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
