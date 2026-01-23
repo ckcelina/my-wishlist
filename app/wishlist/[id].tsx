@@ -14,12 +14,14 @@ import {
   Platform,
   Modal,
   Pressable,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import * as Clipboard from 'expo-clipboard';
 
 interface Item {
   id: string;
@@ -63,8 +65,11 @@ export default function WishlistDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo>({});
+  const [shareVisibility, setShareVisibility] = useState<'public' | 'unlisted'>('public');
+  const [shareLoading, setShareLoading] = useState(false);
 
   useEffect(() => {
     console.log('WishlistDetailScreen: Component mounted, wishlist ID:', id);
@@ -200,6 +205,56 @@ export default function WishlistDetailScreen() {
     setShowRenameModal(true);
   };
 
+  const openShareModal = () => {
+    console.log('WishlistDetailScreen: Opening share modal');
+    setShowMenu(false);
+    setShowShareModal(true);
+  };
+
+  const handleShareWishlist = async () => {
+    console.log('WishlistDetailScreen: Sharing wishlist with visibility:', shareVisibility);
+    setShareLoading(true);
+    
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      const { BACKEND_URL } = await import('@/utils/api');
+      
+      const response = await authenticatedPost<{
+        shareSlug: string;
+        visibility: string;
+        shareUrl: string;
+      }>(`/api/wishlists/${id}/share`, {
+        visibility: shareVisibility,
+      });
+      
+      console.log('WishlistDetailScreen: Share created:', response.shareSlug);
+      
+      const shareUrl = response.shareUrl;
+      
+      setShowShareModal(false);
+      
+      // Share the link
+      if (Platform.OS === 'web') {
+        await Clipboard.setStringAsync(shareUrl);
+        Alert.alert('Link Copied', 'Share link has been copied to clipboard');
+      } else {
+        try {
+          await Share.share({
+            message: `Check out my wishlist: ${wishlist?.name}\n${shareUrl}`,
+            url: shareUrl,
+          });
+        } catch (error) {
+          console.error('WishlistDetailScreen: Error sharing:', error);
+        }
+      }
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error creating share link:', error);
+      Alert.alert('Error', 'Failed to create share link');
+    } finally {
+      setShareLoading(false);
+    }
+  };
+
   const wishlistName = wishlist?.name || 'Wishlist';
 
   return (
@@ -210,17 +265,30 @@ export default function WishlistDetailScreen() {
           title: wishlistName,
           headerBackTitle: 'Back',
           headerRight: () => (
-            <TouchableOpacity
-              onPress={() => setShowMenu(true)}
-              style={styles.headerButton}
-            >
-              <IconSymbol
-                ios_icon_name="ellipsis.circle"
-                android_material_icon_name="more-vert"
-                size={24}
-                color={colors.text}
-              />
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                onPress={openShareModal}
+                style={styles.headerButton}
+              >
+                <IconSymbol
+                  ios_icon_name="square.and.arrow.up"
+                  android_material_icon_name="share"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowMenu(true)}
+                style={styles.headerButton}
+              >
+                <IconSymbol
+                  ios_icon_name="ellipsis.circle"
+                  android_material_icon_name="more-vert"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
           ),
         }}
       />
@@ -403,6 +471,117 @@ export default function WishlistDetailScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        {/* Share Modal */}
+        <Modal
+          visible={showShareModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowShareModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowShareModal(false)}
+          >
+            <Pressable style={styles.shareModalContainer}>
+              <Text style={styles.modalTitle}>Share Wishlist</Text>
+              <Text style={styles.modalSubtitle}>
+                Choose who can view this wishlist
+              </Text>
+              
+              <TouchableOpacity
+                style={[
+                  styles.visibilityOption,
+                  shareVisibility === 'public' && styles.visibilityOptionSelected,
+                ]}
+                onPress={() => setShareVisibility('public')}
+              >
+                <View style={styles.visibilityOptionContent}>
+                  <IconSymbol
+                    ios_icon_name="globe"
+                    android_material_icon_name="public"
+                    size={24}
+                    color={shareVisibility === 'public' ? colors.primary : colors.text}
+                  />
+                  <View style={styles.visibilityTextContainer}>
+                    <Text style={[
+                      styles.visibilityTitle,
+                      shareVisibility === 'public' && styles.visibilityTitleSelected,
+                    ]}>
+                      Public
+                    </Text>
+                    <Text style={styles.visibilityDescription}>
+                      Anyone with the link can view
+                    </Text>
+                  </View>
+                </View>
+                {shareVisibility === 'public' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check-circle"
+                    size={24}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.visibilityOption,
+                  shareVisibility === 'unlisted' && styles.visibilityOptionSelected,
+                ]}
+                onPress={() => setShareVisibility('unlisted')}
+              >
+                <View style={styles.visibilityOptionContent}>
+                  <IconSymbol
+                    ios_icon_name="link"
+                    android_material_icon_name="link"
+                    size={24}
+                    color={shareVisibility === 'unlisted' ? colors.primary : colors.text}
+                  />
+                  <View style={styles.visibilityTextContainer}>
+                    <Text style={[
+                      styles.visibilityTitle,
+                      shareVisibility === 'unlisted' && styles.visibilityTitleSelected,
+                    ]}>
+                      Unlisted
+                    </Text>
+                    <Text style={styles.visibilityDescription}>
+                      Only people with the link can view
+                    </Text>
+                  </View>
+                </View>
+                {shareVisibility === 'unlisted' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check-circle"
+                    size={24}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => setShowShareModal(false)}
+                  disabled={shareLoading}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.saveButton]}
+                  onPress={handleShareWishlist}
+                  disabled={shareLoading}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {shareLoading ? 'Creating...' : 'Share'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -413,9 +592,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerButton: {
     padding: 8,
-    marginRight: 8,
   },
   scrollView: {
     flex: 1,
@@ -556,11 +739,25 @@ const styles = StyleSheet.create({
     width: '80%',
     maxWidth: 400,
   },
+  shareModalContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    padding: 20,
+    width: '85%',
+    maxWidth: 400,
+  },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
     textAlign: 'center',
   },
   input: {
@@ -573,9 +770,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  visibilityOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  visibilityOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  visibilityOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  visibilityTextContainer: {
+    flex: 1,
+  },
+  visibilityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  visibilityTitleSelected: {
+    color: colors.primary,
+  },
+  visibilityDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 8,
   },
   button: {
     flex: 1,

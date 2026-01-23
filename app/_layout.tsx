@@ -121,6 +121,16 @@ export default function RootLayout() {
                     headerBackTitle: 'Back'
                   }} 
                 />
+                
+                {/* Shared wishlist view screen (public, no auth required) */}
+                <Stack.Screen 
+                  name="shared/[shareSlug]" 
+                  options={{ 
+                    headerShown: true,
+                    title: 'Shared Wishlist',
+                    headerBackTitle: 'Back'
+                  }} 
+                />
               </Stack>
               <SystemBars style={"auto"} />
               </GestureHandlerRootView>
