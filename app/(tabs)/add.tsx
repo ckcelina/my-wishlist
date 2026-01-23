@@ -123,39 +123,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     backgroundColor: colors.cardBackground,
   },
-  extractedCard: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  extractedTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  extractedImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 12,
-    backgroundColor: colors.background,
-  },
-  extractedInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  extractedLabel: {
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-  extractedValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
   loadingContainer: {
     padding: 40,
     alignItems: 'center',
@@ -169,6 +136,27 @@ const styles = StyleSheet.create({
     color: colors.error,
     fontSize: 14,
     marginTop: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 16,
+  },
+  sourceInfo: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+  },
+  sourceLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  sourceValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
 });
 
@@ -188,8 +176,17 @@ export default function AddItemScreen() {
   // URL extraction state
   const [url, setUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
-  const [extractedItem, setExtractedItem] = useState<ExtractedItem | null>(null);
   const [extractError, setExtractError] = useState('');
+  
+  // Editable extracted fields
+  const [extractedTitle, setExtractedTitle] = useState('');
+  const [extractedImageUrl, setExtractedImageUrl] = useState('');
+  const [extractedPrice, setExtractedPrice] = useState('');
+  const [extractedCurrency, setExtractedCurrency] = useState('USD');
+  const [extractedNotes, setExtractedNotes] = useState('');
+  const [originalUrl, setOriginalUrl] = useState('');
+  const [sourceDomain, setSourceDomain] = useState('');
+  const [showExtractedForm, setShowExtractedForm] = useState(false);
 
   // Manual entry state
   const [manualTitle, setManualTitle] = useState('');
@@ -212,7 +209,7 @@ export default function AddItemScreen() {
     console.log('Extracting item from URL:', url);
     setExtracting(true);
     setExtractError('');
-    setExtractedItem(null);
+    setShowExtractedForm(false);
 
     try {
       const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
@@ -242,15 +239,15 @@ export default function AddItemScreen() {
         setExtractError(data.error);
       }
 
-      // Set extracted data even if partial
-      setExtractedItem({
-        title: data.title || 'Unknown Item',
-        imageUrl: data.imageUrl,
-        price: data.price ? String(data.price) : null,
-        currency: data.currency || 'USD',
-        originalUrl: url.trim(),
-        sourceDomain: data.sourceDomain || '',
-      });
+      // Populate editable fields with extracted data
+      setExtractedTitle(data.title || '');
+      setExtractedImageUrl(data.imageUrl || '');
+      setExtractedPrice(data.price ? String(data.price) : '');
+      setExtractedCurrency(data.currency || 'USD');
+      setExtractedNotes('');
+      setOriginalUrl(url.trim());
+      setSourceDomain(data.sourceDomain || '');
+      setShowExtractedForm(true);
 
     } catch (error: any) {
       console.error('Failed to extract item:', error);
@@ -261,8 +258,31 @@ export default function AddItemScreen() {
     }
   };
 
+  const handlePickExtractedImage = async () => {
+    console.log('Opening image picker for extracted item');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setExtractedImageUrl(result.assets[0].uri);
+      console.log('Image selected:', result.assets[0].uri);
+    }
+  };
+
   const handleSaveExtractedItem = async () => {
-    if (!extractedItem || !wishlistId) return;
+    if (!extractedTitle.trim()) {
+      Alert.alert('Error', 'Please enter an item title');
+      return;
+    }
+
+    if (!wishlistId) {
+      Alert.alert('Error', 'No wishlist selected');
+      return;
+    }
 
     console.log('Saving extracted item to wishlist:', wishlistId);
     setSaving(true);
@@ -276,12 +296,13 @@ export default function AddItemScreen() {
         },
         body: JSON.stringify({
           wishlistId,
-          title: extractedItem.title,
-          imageUrl: extractedItem.imageUrl,
-          currentPrice: extractedItem.price ? parseFloat(extractedItem.price) : null,
-          currency: extractedItem.currency,
-          originalUrl: extractedItem.originalUrl,
-          sourceDomain: extractedItem.sourceDomain,
+          title: extractedTitle.trim(),
+          imageUrl: extractedImageUrl || null,
+          currentPrice: extractedPrice ? parseFloat(extractedPrice) : null,
+          currency: extractedCurrency,
+          originalUrl: originalUrl,
+          sourceDomain: sourceDomain,
+          notes: extractedNotes.trim() || null,
           userId: user?.id,
         }),
       });
@@ -385,56 +406,112 @@ export default function AddItemScreen() {
       );
     }
 
-    if (extractedItem) {
-      const priceDisplay = extractedItem.price 
-        ? `${extractedItem.currency} ${extractedItem.price}`
-        : 'Price not found';
-      const domainDisplay = extractedItem.sourceDomain || 'Unknown source';
+    if (showExtractedForm) {
+      const sourceDisplayText = sourceDomain || 'Unknown source';
+      const urlDisplayText = originalUrl;
 
       return (
         <View>
-          <View style={styles.extractedCard}>
-            <Text style={styles.extractedTitle}>{extractedItem.title}</Text>
-            
-            {extractedItem.imageUrl && (
+          <Text style={styles.infoText}>
+            Review and edit the extracted details before saving
+          </Text>
+
+          {extractError && (
+            <Text style={styles.errorText}>Note: {extractError}</Text>
+          )}
+
+          <View style={styles.sourceInfo}>
+            <Text style={styles.sourceLabel}>Source</Text>
+            <Text style={styles.sourceValue}>{sourceDisplayText}</Text>
+            <Text style={styles.sourceLabel}>URL</Text>
+            <Text style={styles.sourceValue} numberOfLines={2}>{urlDisplayText}</Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>Item Title *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter item name"
+              placeholderTextColor={colors.textSecondary}
+              value={extractedTitle}
+              onChangeText={setExtractedTitle}
+            />
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>Price</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                placeholder="0.00"
+                placeholderTextColor={colors.textSecondary}
+                value={extractedPrice}
+                onChangeText={setExtractedPrice}
+                keyboardType="decimal-pad"
+              />
+              <TextInput
+                style={[styles.input, { width: 80 }]}
+                placeholder="USD"
+                placeholderTextColor={colors.textSecondary}
+                value={extractedCurrency}
+                onChangeText={setExtractedCurrency}
+                autoCapitalize="characters"
+                maxLength={3}
+              />
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.label}>Image</Text>
+            <TouchableOpacity style={styles.secondaryButton} onPress={handlePickExtractedImage}>
+              <Text style={styles.secondaryButtonText}>
+                {extractedImageUrl ? 'Change Image' : 'Pick Image'}
+              </Text>
+            </TouchableOpacity>
+            {extractedImageUrl && (
               <Image 
-                source={resolveImageSource(extractedItem.imageUrl)} 
-                style={styles.extractedImage}
+                source={resolveImageSource(extractedImageUrl)} 
+                style={styles.imagePreview}
                 resizeMode="cover"
               />
             )}
-            
-            <View style={styles.extractedInfo}>
-              <Text style={styles.extractedLabel}>Price:</Text>
-              <Text style={styles.extractedValue}>{priceDisplay}</Text>
-            </View>
-            
-            <View style={styles.extractedInfo}>
-              <Text style={styles.extractedLabel}>Source:</Text>
-              <Text style={styles.extractedValue}>{domainDisplay}</Text>
-            </View>
+          </View>
 
-            {extractError && (
-              <Text style={styles.errorText}>Note: {extractError}</Text>
-            )}
+          <View style={styles.section}>
+            <Text style={styles.label}>Notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Add any notes about this item..."
+              placeholderTextColor={colors.textSecondary}
+              value={extractedNotes}
+              onChangeText={setExtractedNotes}
+              multiline
+            />
           </View>
 
           <TouchableOpacity
-            style={[styles.button, saving && styles.buttonDisabled]}
+            style={[styles.button, (!extractedTitle.trim() || saving) && styles.buttonDisabled]}
             onPress={handleSaveExtractedItem}
-            disabled={saving}
+            disabled={!extractedTitle.trim() || saving}
           >
             <Text style={styles.buttonText}>
-              {saving ? 'Saving...' : 'Add to Wishlist'}
+              {saving ? 'Saving...' : 'Save to Wishlist'}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.secondaryButton}
             onPress={() => {
-              setExtractedItem(null);
+              setShowExtractedForm(false);
               setUrl('');
               setExtractError('');
+              setExtractedTitle('');
+              setExtractedImageUrl('');
+              setExtractedPrice('');
+              setExtractedCurrency('USD');
+              setExtractedNotes('');
+              setOriginalUrl('');
+              setSourceDomain('');
             }}
           >
             <Text style={styles.secondaryButtonText}>Try Another URL</Text>
@@ -464,7 +541,7 @@ export default function AddItemScreen() {
           onPress={handleExtractItem}
           disabled={!url.trim() || extracting}
         >
-          <Text style={styles.buttonText}>Extract Item Details</Text>
+          <Text style={styles.buttonText}>Fetch Item</Text>
         </TouchableOpacity>
       </View>
     );
@@ -557,7 +634,7 @@ export default function AddItemScreen() {
             onPress={() => setActiveTab('url')}
           >
             <Text style={[styles.tabText, activeTab === 'url' && styles.activeTabText]}>
-              From URL
+              Paste Link
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
