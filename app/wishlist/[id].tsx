@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -49,6 +49,8 @@ interface PriceDropInfo {
   };
 }
 
+type SortOption = 'Recently added' | 'Price: Low to High' | 'Price: High to Low';
+
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -66,10 +68,13 @@ export default function WishlistDetailScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showSortModal, setShowSortModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo>({});
   const [shareVisibility, setShareVisibility] = useState<'public' | 'unlisted'>('public');
   const [shareLoading, setShareLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('Recently added');
 
   const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
@@ -129,6 +134,40 @@ export default function WishlistDetailScreen() {
       fetchWishlistAndItems();
     }
   }, [user, id, authLoading, fetchWishlistAndItems, router]);
+
+  // Filter and sort items
+  const filteredAndSortedItems = useMemo(() => {
+    console.log('WishlistDetailScreen: Filtering and sorting items with search:', searchTerm, 'sort:', sortOption);
+    
+    // Filter by search term
+    let filtered = items;
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = items.filter(item => 
+        item.title.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // Sort items
+    const sorted = [...filtered];
+    if (sortOption === 'Recently added') {
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (sortOption === 'Price: Low to High') {
+      sorted.sort((a, b) => {
+        const priceA = a.currentPrice ?? Infinity;
+        const priceB = b.currentPrice ?? Infinity;
+        return priceA - priceB;
+      });
+    } else if (sortOption === 'Price: High to Low') {
+      sorted.sort((a, b) => {
+        const priceA = a.currentPrice ?? -Infinity;
+        const priceB = b.currentPrice ?? -Infinity;
+        return priceB - priceA;
+      });
+    }
+
+    return sorted;
+  }, [items, searchTerm, sortOption]);
 
   const handleRefresh = () => {
     console.log('WishlistDetailScreen: User triggered refresh');
@@ -211,13 +250,23 @@ export default function WishlistDetailScreen() {
     setShowShareModal(true);
   };
 
+  const openSortModal = () => {
+    console.log('WishlistDetailScreen: Opening sort modal');
+    setShowSortModal(true);
+  };
+
+  const handleSortSelect = (option: SortOption) => {
+    console.log('WishlistDetailScreen: Sort option selected:', option);
+    setSortOption(option);
+    setShowSortModal(false);
+  };
+
   const handleShareWishlist = async () => {
     console.log('WishlistDetailScreen: Sharing wishlist with visibility:', shareVisibility);
     setShareLoading(true);
     
     try {
       const { authenticatedPost } = await import('@/utils/api');
-      const { BACKEND_URL } = await import('@/utils/api');
       
       const response = await authenticatedPost<{
         shareSlug: string;
@@ -256,6 +305,8 @@ export default function WishlistDetailScreen() {
   };
 
   const wishlistName = wishlist?.name || 'Wishlist';
+  const hasSearchOrSort = searchTerm.trim() !== '' || sortOption !== 'Recently added';
+  const resultCountText = `${filteredAndSortedItems.length} ${filteredAndSortedItems.length === 1 ? 'item' : 'items'}`;
 
   return (
     <>
@@ -293,6 +344,58 @@ export default function WishlistDetailScreen() {
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
+        {/* Search and Sort Bar */}
+        <View style={styles.searchSortContainer}>
+          <View style={styles.searchContainer}>
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search items..."
+              placeholderTextColor={colors.textSecondary}
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {searchTerm.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchTerm('')}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle.fill"
+                  android_material_icon_name="cancel"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity
+            style={styles.sortButton}
+            onPress={openSortModal}
+          >
+            <IconSymbol
+              ios_icon_name="arrow.up.arrow.down"
+              android_material_icon_name="sort"
+              size={20}
+              color={colors.text}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Result count when filtering/sorting */}
+        {hasSearchOrSort && (
+          <View style={styles.resultCountContainer}>
+            <Text style={styles.resultCountText}>{resultCountText}</Text>
+            {sortOption !== 'Recently added' && (
+              <Text style={styles.sortIndicator}>{sortOption}</Text>
+            )}
+          </View>
+        )}
+
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
@@ -304,7 +407,7 @@ export default function WishlistDetailScreen() {
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>Loading items...</Text>
             </View>
-          ) : items.length === 0 ? (
+          ) : filteredAndSortedItems.length === 0 ? (
             <View style={styles.emptyContainer}>
               <IconSymbol
                 ios_icon_name="gift"
@@ -312,13 +415,24 @@ export default function WishlistDetailScreen() {
                 size={64}
                 color={colors.textSecondary}
               />
-              <Text style={styles.emptyText}>No items yet</Text>
-              <Text style={styles.emptySubtext}>
-                Tap the + button to add your first item
-              </Text>
+              {searchTerm.trim() ? (
+                <>
+                  <Text style={styles.emptyText}>No items found</Text>
+                  <Text style={styles.emptySubtext}>
+                    Try a different search term
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyText}>No items yet</Text>
+                  <Text style={styles.emptySubtext}>
+                    Tap the + button to add your first item
+                  </Text>
+                </>
+              )}
             </View>
           ) : (
-            items.map((item) => {
+            filteredAndSortedItems.map((item) => {
               const priceText = item.currentPrice 
                 ? `${item.currency} ${item.currentPrice.toFixed(2)}` 
                 : 'No price';
@@ -472,6 +586,92 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
 
+        {/* Sort Modal */}
+        <Modal
+          visible={showSortModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSortModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowSortModal(false)}
+          >
+            <View style={styles.sortModalContainer}>
+              <Text style={styles.modalTitle}>Sort Items</Text>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  sortOption === 'Recently added' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleSortSelect('Recently added')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  sortOption === 'Recently added' && styles.sortOptionTextSelected,
+                ]}>
+                  Recently added
+                </Text>
+                {sortOption === 'Recently added' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  sortOption === 'Price: Low to High' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleSortSelect('Price: Low to High')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  sortOption === 'Price: Low to High' && styles.sortOptionTextSelected,
+                ]}>
+                  Price: Low to High
+                </Text>
+                {sortOption === 'Price: Low to High' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  sortOption === 'Price: High to Low' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleSortSelect('Price: High to Low')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  sortOption === 'Price: High to Low' && styles.sortOptionTextSelected,
+                ]}>
+                  Price: High to Low
+                </Text>
+                {sortOption === 'Price: High to Low' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
         {/* Share Modal */}
         <Modal
           visible={showShareModal}
@@ -600,12 +800,66 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
   },
+  searchSortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+    padding: 0,
+  },
+  sortButton: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  resultCountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  resultCountText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+  sortIndicator: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.primary,
+    backgroundColor: colors.highlight,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 100,
   },
   emptyContainer: {
@@ -738,6 +992,38 @@ const styles = StyleSheet.create({
     padding: 20,
     width: '80%',
     maxWidth: 400,
+  },
+  sortModalContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    padding: 20,
+    width: '80%',
+    maxWidth: 400,
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  sortOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.highlight,
+  },
+  sortOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.text,
+  },
+  sortOptionTextSelected: {
+    fontWeight: '600',
+    color: colors.primary,
   },
   shareModalContainer: {
     backgroundColor: colors.card,
