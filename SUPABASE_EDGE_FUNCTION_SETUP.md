@@ -1,264 +1,163 @@
 
-# Supabase Edge Function Setup Guide
+# Supabase Edge Function Setup - extract-item
 
-## Overview
+This guide explains how to deploy the `extract-item` Edge Function to Supabase.
 
-This project uses two Supabase Edge Functions:
-1. **extract-item** - Extracts product details from URLs
-2. **find-alternatives** - Finds alternative stores for products
+## Prerequisites
 
----
+1. A Supabase project (create one at https://supabase.com)
+2. Supabase CLI installed: `npm install -g supabase`
+3. OpenAI API key (get one at https://platform.openai.com)
 
-## Initial Setup (One-time)
+## Setup Steps
 
-### Step 1: Install Supabase CLI
-
-```bash
-npm install -g supabase
-```
-
-### Step 2: Login to Supabase
+### 1. Link Your Supabase Project
 
 ```bash
+# Login to Supabase
 supabase login
+
+# Link to your project (you'll be prompted to select your project)
+supabase link --project-ref YOUR_PROJECT_REF
 ```
 
-### Step 3: Link Your Project
+To find your project ref:
+- Go to your Supabase dashboard
+- Navigate to Settings > General
+- Copy the "Reference ID"
+
+### 2. Set the OpenAI API Key Secret
+
+The Edge Function needs your OpenAI API key to extract item details.
 
 ```bash
-supabase link --project-ref dixgmnuayzblwpqyplsi
-```
-
-### Step 4: Set the OpenAI API Key Secret
-
-Both functions require the OpenAI API key:
-
-```bash
+# Set the OPENAI_API_KEY secret
 supabase secrets set OPENAI_API_KEY=your_openai_api_key_here
 ```
 
----
+Replace `your_openai_api_key_here` with your actual OpenAI API key.
 
-## Function 1: extract-item
-
-### Purpose
-Extracts product details (title, image, price, currency, sourceDomain) from a URL using OpenAI.
-
-### File Structure
-
-```
-supabase/
-  functions/
-    extract-item/
-      index.ts
-```
-
-### Deploy
+### 3. Deploy the Edge Function
 
 ```bash
+# Deploy the extract-item function
 supabase functions deploy extract-item
 ```
 
-### Function URL
+### 4. Update app.json with Supabase Configuration
 
-```
-https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/extract-item
+Add your Supabase URL and anon key to `app.json`:
+
+```json
+{
+  "expo": {
+    "extra": {
+      "supabaseUrl": "https://YOUR_PROJECT_REF.supabase.co",
+      "supabaseAnonKey": "YOUR_ANON_KEY",
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
+    }
+  }
+}
 ```
 
-### Request Format
+To find these values:
+- Go to your Supabase dashboard
+- Navigate to Settings > API
+- Copy the "Project URL" (supabaseUrl)
+- Copy the "anon public" key (supabaseAnonKey)
+
+### 5. Test the Function
+
+You can test the function using curl:
 
 ```bash
-curl -X POST 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/extract-item' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer YOUR_SUPABASE_ANON_KEY' \
-  -d '{"url": "https://www.amazon.com/some-product"}'
+curl -i --location --request POST 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/extract-item' \
+  --header 'Authorization: Bearer YOUR_ANON_KEY' \
+  --header 'Content-Type: application/json' \
+  --data '{"url":"https://www.amazon.com/dp/B08N5WRWNW"}'
 ```
 
-### Response Format
+## Function Details
 
-Success:
+### Input
+
+```json
+{
+  "url": "https://example.com/product"
+}
+```
+
+### Output
+
 ```json
 {
   "title": "Product Name",
   "imageUrl": "https://example.com/image.jpg",
   "price": 29.99,
   "currency": "USD",
-  "sourceDomain": "amazon.com"
+  "sourceDomain": "example.com"
 }
 ```
 
-Error (partial data):
+### Error Handling
+
+The function returns partial results even if some fields fail to extract. All fields can be `null` if extraction fails.
+
+Example error response:
 ```json
 {
+  "error": "Failed to fetch URL content",
   "title": null,
   "imageUrl": null,
   "price": null,
-  "currency": "USD",
-  "sourceDomain": "amazon.com",
-  "error": "Failed to extract item details"
+  "currency": null,
+  "sourceDomain": "example.com"
 }
 ```
 
----
+## How It Works
 
-## Function 2: find-alternatives
-
-### Purpose
-Finds alternative stores where a product can be purchased using AI-powered search.
-
-### File Structure
-
-```
-supabase/
-  functions/
-    find-alternatives/
-      index.ts
-```
-
-### Deploy
-
-```bash
-supabase functions deploy find-alternatives
-```
-
-### Function URL
-
-```
-https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/find-alternatives
-```
-
-### Request Format
-
-```bash
-curl -X POST 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/find-alternatives' \
-  -H 'Content-Type: application/json' \
-  -H 'Authorization: Bearer YOUR_SUPABASE_ANON_KEY' \
-  -d '{
-    "title": "iPhone 15 Pro Max",
-    "originalUrl": "https://www.apple.com/iphone-15-pro"
-  }'
-```
-
-**Parameters:**
-- `title` (required): Product title to search for
-- `originalUrl` (optional): Original product URL for context
-
-### Response Format
-
-Success:
-```json
-{
-  "alternatives": [
-    {
-      "storeName": "Amazon",
-      "domain": "amazon.com",
-      "price": 1199.99,
-      "currency": "USD",
-      "url": "https://www.amazon.com/iphone-15-pro-max"
-    },
-    {
-      "storeName": "Best Buy",
-      "domain": "bestbuy.com",
-      "price": 1199.99,
-      "currency": "USD",
-      "url": "https://www.bestbuy.com/iphone-15-pro-max"
-    }
-  ]
-}
-```
-
-No alternatives found:
-```json
-{
-  "alternatives": []
-}
-```
-
-Error:
-```json
-{
-  "alternatives": [],
-  "error": "Failed to find alternatives"
-}
-```
-
----
-
-## Deploy Both Functions
-
-To deploy both functions at once:
-
-```bash
-supabase functions deploy extract-item
-supabase functions deploy find-alternatives
-```
-
----
-
-## Viewing Logs
-
-To view logs for debugging:
-
-```bash
-# View extract-item logs
-supabase functions logs extract-item
-
-# View find-alternatives logs
-supabase functions logs find-alternatives
-
-# Follow logs in real-time
-supabase functions logs extract-item --follow
-supabase functions logs find-alternatives --follow
-```
-
----
-
-## Testing Functions Locally
-
-You can test functions locally before deploying:
-
-```bash
-# Start local Supabase
-supabase start
-
-# Serve functions locally
-supabase functions serve extract-item --env-file .env.local
-supabase functions serve find-alternatives --env-file .env.local
-```
-
-Create `.env.local` with:
-```
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
----
-
-## Integration in App
-
-### extract-item
-Used in `app/(tabs)/add.tsx` and `app/(tabs)/add.ios.tsx` when users paste a URL to add an item.
-
-### find-alternatives
-Used in `app/item/[id].tsx` to display alternative stores in the "Other Stores" section.
-
-Both functions are called directly from the frontend using the Supabase session token for authentication.
-
----
+1. **URL Fetching**: The function fetches the HTML content from the provided URL with a 10-second timeout
+2. **AI Extraction**: Uses OpenAI GPT-4o to intelligently extract:
+   - Product title
+   - Best quality product image URL
+   - Price (numeric value)
+   - Currency code
+3. **Robust Error Handling**: Returns partial results even if some steps fail
+4. **CORS Support**: Configured to work with your React Native app
 
 ## Troubleshooting
 
-### Function returns 401 Unauthorized
-- Make sure you're passing the Supabase session token in the Authorization header
-- Check that the user is authenticated
+### Function returns "Server configuration error"
+- Make sure you've set the OPENAI_API_KEY secret: `supabase secrets set OPENAI_API_KEY=your_key`
 
-### Function returns 500 Internal Server Error
-- Check function logs: `supabase functions logs [function-name]`
-- Verify OPENAI_API_KEY is set: `supabase secrets list`
+### Function returns "Failed to fetch URL content"
+- The URL might be blocking automated requests
+- Try a different URL or use manual entry in the app
 
-### OpenAI API errors
-- Verify your OpenAI API key is valid and has credits
-- Check OpenAI API status: https://status.openai.com/
+### Function times out
+- Some websites take longer to load
+- The function has a 10-second timeout for fetching and 30-second timeout for OpenAI
+- Consider using manual entry for slow websites
 
-### No alternatives found
-- This is normal for some products - the AI may not find suitable alternatives
-- The function returns an empty array, which is handled gracefully in the UI
+## Viewing Logs
+
+To view function logs:
+
+```bash
+supabase functions logs extract-item
+```
+
+Or view them in the Supabase dashboard under Edge Functions > extract-item > Logs.
+
+## Cost Considerations
+
+- **Supabase Edge Functions**: Free tier includes 500K function invocations per month
+- **OpenAI API**: GPT-4o costs approximately $0.005 per request (varies by token usage)
+- Each item extraction costs ~$0.005-0.01 depending on HTML size
+
+## Security
+
+- The OpenAI API key is stored securely in Supabase secrets (not in your code)
+- The function uses the anon key for authentication (safe to expose in client apps)
+- CORS is configured to allow requests from any origin (you can restrict this if needed)

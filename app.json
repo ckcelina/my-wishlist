@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "My Wishlist",
@@ -42,7 +43,9 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
+      "supabaseUrl": "https://YOUR_PROJECT_REF.supabase.co",
+      "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY"
     }
   },
   "scheme": "My Wishlist"
