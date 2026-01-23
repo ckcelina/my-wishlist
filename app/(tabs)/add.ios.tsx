@@ -5,6 +5,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
 import {
   View,
   Text,
@@ -164,9 +165,24 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
+function isValidUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function extractUrlFromText(text: string): string | null {
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const matches = text.match(urlRegex);
+  return matches ? matches[0] : null;
+}
+
 export default function AddItemScreen() {
   const router = useRouter();
-  const { wishlistId } = useLocalSearchParams();
+  const { wishlistId, sharedUrl } = useLocalSearchParams();
   const { user } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabType>('url');
@@ -196,15 +212,77 @@ export default function AddItemScreen() {
 
   useEffect(() => {
     console.log('AddItemScreen mounted with wishlistId:', wishlistId);
-  }, [wishlistId]);
+    console.log('Shared URL from params:', sharedUrl);
 
-  const handleExtractItem = async () => {
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please enter a URL');
+    if (sharedUrl && typeof sharedUrl === 'string') {
+      const decodedUrl = decodeURIComponent(sharedUrl);
+      console.log('Processing shared URL:', decodedUrl);
+      setUrl(decodedUrl);
+      setActiveTab('url');
+      handleExtractItemWithUrl(decodedUrl);
+    }
+  }, [wishlistId, sharedUrl]);
+
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      console.log('Deep link received:', event.url);
+      const parsedUrl = Linking.parse(event.url);
+      console.log('Parsed deep link:', parsedUrl);
+
+      if (parsedUrl.queryParams?.url) {
+        const sharedUrlParam = parsedUrl.queryParams.url as string;
+        console.log('URL from deep link query params:', sharedUrlParam);
+        setUrl(sharedUrlParam);
+        setActiveTab('url');
+        handleExtractItemWithUrl(sharedUrlParam);
+      } else if (parsedUrl.queryParams?.text) {
+        const sharedText = parsedUrl.queryParams.text as string;
+        console.log('Text from deep link:', sharedText);
+        const extractedUrl = extractUrlFromText(sharedText);
+        if (extractedUrl) {
+          console.log('Extracted URL from text:', extractedUrl);
+          setUrl(extractedUrl);
+          setActiveTab('url');
+          handleExtractItemWithUrl(extractedUrl);
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    Linking.getInitialURL().then((initialUrl) => {
+      if (initialUrl) {
+        console.log('Initial URL:', initialUrl);
+        handleDeepLink({ url: initialUrl });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const handleExtractItemWithUrl = async (urlToExtract: string) => {
+    if (!urlToExtract || !urlToExtract.trim()) {
+      console.log('No URL to extract');
       return;
     }
 
-    console.log('Extracting item from URL:', url);
+    let processedUrl = urlToExtract.trim();
+
+    if (!isValidUrl(processedUrl)) {
+      console.log('Invalid URL format, attempting to extract URL from text');
+      const extracted = extractUrlFromText(processedUrl);
+      if (extracted) {
+        processedUrl = extracted;
+      } else {
+        console.log('Could not extract valid URL from text');
+        Alert.alert('Invalid URL', 'The shared content does not contain a valid URL.');
+        return;
+      }
+    }
+
+    console.log('Auto-extracting item from URL:', processedUrl);
     setExtracting(true);
     setExtractError('');
     setShowExtractedForm(false);
@@ -217,7 +295,6 @@ export default function AddItemScreen() {
         throw new Error('Supabase configuration missing');
       }
 
-      // Call Supabase Edge Function
       const edgeFunctionUrl = `${supabaseUrl}/functions/v1/extract-item`;
       console.log('Calling Edge Function:', edgeFunctionUrl);
 
@@ -227,7 +304,7 @@ export default function AddItemScreen() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${supabaseAnonKey}`,
         },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url: processedUrl }),
       });
 
       const data = await response.json();
@@ -237,23 +314,31 @@ export default function AddItemScreen() {
         setExtractError(data.error);
       }
 
-      // Populate editable fields with extracted data
       setExtractedTitle(data.title || '');
       setExtractedImageUrl(data.imageUrl || '');
       setExtractedPrice(data.price ? String(data.price) : '');
       setExtractedCurrency(data.currency || 'USD');
       setExtractedNotes('');
-      setOriginalUrl(url.trim());
+      setOriginalUrl(processedUrl);
       setSourceDomain(data.sourceDomain || '');
       setShowExtractedForm(true);
 
     } catch (error: any) {
       console.error('Failed to extract item:', error);
       setExtractError(error.message || 'Failed to extract item details');
-      Alert.alert('Error', 'Failed to extract item details. Please try manual entry.');
+      Alert.alert('Error', 'Failed to extract item details. You can edit the information manually or try again.');
     } finally {
       setExtracting(false);
     }
+  };
+
+  const handleExtractItem = async () => {
+    if (!url.trim()) {
+      Alert.alert('Error', 'Please enter a URL');
+      return;
+    }
+
+    await handleExtractItemWithUrl(url);
   };
 
   const uploadImage = async (imageUri: string): Promise<string | null> => {
@@ -261,7 +346,6 @@ export default function AddItemScreen() {
     try {
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       
-      // Create form data
       const formData = new FormData();
       const filename = imageUri.split('/').pop() || 'image.jpg';
       const match = /\.(\w+)$/.exec(filename);
@@ -330,7 +414,6 @@ export default function AddItemScreen() {
     setSaving(true);
 
     try {
-      // Upload image if it's a local file (starts with file://)
       let finalImageUrl = extractedImageUrl;
       if (extractedImageUrl && extractedImageUrl.startsWith('file://')) {
         console.log('Uploading local image to backend');
@@ -417,7 +500,6 @@ export default function AddItemScreen() {
     setSaving(true);
 
     try {
-      // Upload image if provided
       let finalImageUrl = manualImageUri;
       if (manualImageUri && manualImageUri.startsWith('file://')) {
         console.log('Uploading local image to backend');
