@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,181 +11,136 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AddItemScreen() {
   const router = useRouter();
-  const { user, loading } = useAuth();
-  const [url, setUrl] = useState('');
+  const { wishlistId } = useLocalSearchParams();
+  const { user } = useAuth();
+  const [itemUrl, setItemUrl] = useState('');
   const [extracting, setExtracting] = useState(false);
+  const [selectedWishlistId, setSelectedWishlistId] = useState<string>('');
 
-  React.useEffect(() => {
-    console.log('AddItemScreen: Component mounted, user:', user?.email);
-    if (!loading && !user) {
-      console.log('AddItemScreen: No user found, redirecting to auth');
-      router.replace('/auth');
+  useEffect(() => {
+    console.log('AddItemScreen: Component mounted');
+    if (wishlistId && typeof wishlistId === 'string') {
+      console.log('AddItemScreen: Pre-selected wishlist ID:', wishlistId);
+      setSelectedWishlistId(wishlistId);
     }
-  }, [user, loading]);
+  }, [wishlistId]);
 
   const handleExtractItem = async () => {
-    console.log('AddItemScreen: Extracting item from URL:', url);
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please enter a URL');
+    console.log('AddItemScreen: Extracting item from URL:', itemUrl);
+    if (!itemUrl.trim()) {
+      Alert.alert('Error', 'Please enter a product URL');
       return;
     }
 
-    // Basic URL validation
-    try {
-      new URL(url);
-    } catch (error) {
-      Alert.alert('Error', 'Please enter a valid URL');
+    if (!selectedWishlistId) {
+      Alert.alert('Error', 'Please select a wishlist first');
       return;
     }
 
     try {
       setExtracting(true);
       const { authenticatedPost } = await import('@/utils/api');
-      const itemData = await authenticatedPost('/api/items/extract', { url });
-      console.log('AddItemScreen: Item extracted successfully:', itemData);
       
-      // Navigate to the default wishlist or show wishlist selector
-      // For now, we'll show a success message and clear the input
-      Alert.alert(
-        'Success',
-        'Item extracted! Now select a wishlist to add it to.',
-        [
-          {
-            text: 'Go to Wishlists',
-            onPress: () => router.push('/(tabs)/wishlists'),
+      // Extract item data from URL using AI
+      const extractedData = await authenticatedPost<{
+        name: string;
+        imageUrl: string;
+        price: string;
+        currency: string;
+        sourceUrl: string;
+      }>('/api/items/extract', { url: itemUrl });
+      console.log('AddItemScreen: Extracted item data:', extractedData);
+
+      // Create the item in the wishlist
+      await authenticatedPost('/api/items', {
+        wishlistId: selectedWishlistId,
+        name: extractedData.name,
+        imageUrl: extractedData.imageUrl,
+        currentPrice: extractedData.price,
+        currency: extractedData.currency,
+        sourceUrl: extractedData.sourceUrl,
+      });
+      
+      console.log('AddItemScreen: Item added successfully');
+      Alert.alert('Success', 'Item added to wishlist!', [
+        {
+          text: 'OK',
+          onPress: () => {
+            setItemUrl('');
+            router.back();
           },
-        ]
-      );
-      setUrl('');
+        },
+      ]);
     } catch (error) {
-      console.error('AddItemScreen: Error extracting item:', error);
-      Alert.alert('Error', 'Failed to extract item from URL. Please try again.');
+      console.error('AddItemScreen: Error adding item:', error);
+      Alert.alert('Error', 'Failed to add item. Please try again.');
     } finally {
       setExtracting(false);
     }
   };
 
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <IconSymbol
-            ios_icon_name="link.slash"
-            android_material_icon_name="link-off"
-            size={64}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.emptyText}>Please sign in to add items</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  const extractButtonText = extracting ? 'Extracting...' : 'Add Item';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Add Item</Text>
-      </View>
-
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.instructionCard}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.header}>
           <IconSymbol
-            ios_icon_name="info.circle.fill"
-            android_material_icon_name="info"
-            size={32}
+            ios_icon_name="link"
+            android_material_icon_name="link"
+            size={48}
             color={colors.primary}
           />
-          <View style={styles.instructionText}>
-            <Text style={styles.instructionTitle}>How to add items</Text>
-            <Text style={styles.instructionSubtitle}>
-              Paste a link from any website or app. Our AI will automatically detect the item name, image, and price.
-            </Text>
-          </View>
+          <Text style={styles.title}>Add Item</Text>
+          <Text style={styles.subtitle}>
+            Paste a product link from any website
+          </Text>
         </View>
 
-        <View style={styles.inputSection}>
-          <Text style={styles.label}>Item URL</Text>
+        <View style={styles.form}>
+          <Text style={styles.label}>Product URL</Text>
           <TextInput
             style={styles.input}
             placeholder="https://example.com/product"
             placeholderTextColor={colors.textSecondary}
-            value={url}
-            onChangeText={setUrl}
+            value={itemUrl}
+            onChangeText={setItemUrl}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
-            returnKeyType="done"
-            onSubmitEditing={handleExtractItem}
+            multiline
           />
-          <Text style={styles.hint}>
-            Paste a link to any product from Amazon, eBay, Etsy, or any other website
-          </Text>
+
+          <TouchableOpacity
+            style={[styles.button, extracting && styles.buttonDisabled]}
+            onPress={handleExtractItem}
+            disabled={extracting}
+          >
+            <Text style={styles.buttonText}>{extractButtonText}</Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.extractButton, extracting && styles.extractButtonDisabled]}
-          onPress={handleExtractItem}
-          disabled={extracting}
-        >
-          {extracting ? (
-            <>
-              <IconSymbol
-                ios_icon_name="arrow.clockwise"
-                android_material_icon_name="refresh"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={styles.extractButtonText}>Extracting...</Text>
-            </>
-          ) : (
-            <>
-              <IconSymbol
-                ios_icon_name="plus.circle.fill"
-                android_material_icon_name="add-circle"
-                size={20}
-                color="#FFFFFF"
-              />
-              <Text style={styles.extractButtonText}>Extract Item</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <View style={styles.featuresSection}>
-          <Text style={styles.featuresTitle}>What we extract</Text>
-          <View style={styles.featureItem}>
-            <IconSymbol
-              ios_icon_name="photo.fill"
-              android_material_icon_name="image"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={styles.featureText}>Best quality product image</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <IconSymbol
-              ios_icon_name="tag.fill"
-              android_material_icon_name="label"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={styles.featureText}>Item name and description</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <IconSymbol
-              ios_icon_name="dollarsign.circle.fill"
-              android_material_icon_name="attach-money"
-              size={24}
-              color={colors.primary}
-            />
-            <Text style={styles.featureText}>Current price with automatic updates</Text>
-          </View>
+        <View style={styles.infoBox}>
+          <IconSymbol
+            ios_icon_name="info.circle"
+            android_material_icon_name="info"
+            size={20}
+            color={colors.primary}
+          />
+          <Text style={styles.infoText}>
+            Our AI will automatically extract the product name, image, and price
+            from the URL
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -196,61 +151,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingTop: Platform.OS === 'android' ? 48 : 0,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 100,
+    paddingTop: 32,
+    paddingBottom: 40,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  header: {
     alignItems: 'center',
+    marginBottom: 32,
   },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginTop: 16,
-  },
-  instructionCard: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  instructionText: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  instructionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
+    marginTop: 16,
+    marginBottom: 8,
   },
-  instructionSubtitle: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 16,
     color: colors.textSecondary,
-    lineHeight: 20,
+    textAlign: 'center',
   },
-  inputSection: {
+  form: {
     marginBottom: 24,
   },
   label: {
@@ -262,58 +188,41 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.backgroundAlt,
     borderRadius: 8,
-    padding: 16,
+    padding: 12,
     fontSize: 16,
     color: colors.text,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 80,
+    textAlignVertical: 'top',
   },
-  hint: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  extractButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  button: {
     backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 32,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  extractButtonDisabled: {
+  buttonDisabled: {
     opacity: 0.6,
   },
-  extractButtonText: {
+  buttonText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  featuresSection: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  featuresTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  featureItem: {
+  infoBox: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
+    backgroundColor: colors.backgroundAlt,
+    padding: 16,
+    borderRadius: 8,
+    gap: 12,
   },
-  featureText: {
-    fontSize: 16,
-    color: colors.text,
-    marginLeft: 12,
+  infoText: {
     flex: 1,
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
   },
 });
