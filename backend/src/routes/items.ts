@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { gateway } from '@specific-dev/framework';
 import { generateText } from 'ai';
 import { z } from 'zod';
@@ -798,6 +798,147 @@ Do not include any markdown, explanations, or extra text.`,
         return reply.status(400).send({
           error: 'Failed to search for item in other stores',
         });
+      }
+    }
+  );
+
+  // GET /api/items/:id/price-history - Get price history with trend summary
+  app.fastify.get(
+    '/api/items/:id/price-history',
+    {
+      schema: {
+        description: 'Get price history for an item with trend summary',
+        tags: ['items'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              trend: {
+                type: 'object',
+                properties: {
+                  lowestPrice: { type: 'number' },
+                  highestPrice: { type: 'number' },
+                  firstPrice: { type: 'number' },
+                  latestPrice: { type: 'number' },
+                  currency: { type: 'string' },
+                },
+              },
+              history: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string' },
+                    price: { type: 'number' },
+                    currency: { type: 'string' },
+                    recordedAt: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const { id } = request.params;
+
+      app.logger.info({ itemId: id, userId }, 'Fetching price history');
+
+      try {
+        // Verify ownership through wishlist
+        const item = await app.db.query.wishlistItems.findFirst({
+          where: eq(schema.wishlistItems.id, id),
+          with: {
+            wishlist: true,
+          },
+        });
+
+        if (!item || item.wishlist.userId !== userId) {
+          app.logger.warn({ itemId: id, userId }, 'Item not found');
+          return reply.status(404).send({ error: 'Item not found' });
+        }
+
+        // Fetch price history sorted by recordedAt descending (newest first)
+        const priceHistory = await app.db
+          .select({
+            id: schema.priceHistory.id,
+            price: schema.priceHistory.price,
+            currency: schema.priceHistory.currency,
+            recordedAt: schema.priceHistory.recordedAt,
+          })
+          .from(schema.priceHistory)
+          .where(eq(schema.priceHistory.itemId, id))
+          .orderBy(desc(schema.priceHistory.recordedAt));
+
+        app.logger.info(
+          { itemId: id, recordCount: priceHistory.length },
+          'Price history fetched'
+        );
+
+        // Calculate trend summary
+        let trend = {
+          lowestPrice: null as number | null,
+          highestPrice: null as number | null,
+          firstPrice: null as number | null,
+          latestPrice: null as number | null,
+          currency: item.currency,
+        };
+
+        if (priceHistory.length > 0) {
+          const prices = priceHistory.map((ph) => parseFloat(ph.price));
+
+          trend.lowestPrice = Math.min(...prices);
+          trend.highestPrice = Math.max(...prices);
+          trend.latestPrice = prices[0]; // First entry is newest
+          trend.firstPrice = prices[prices.length - 1]; // Last entry is oldest
+
+          app.logger.info(
+            {
+              itemId: id,
+              lowest: trend.lowestPrice,
+              highest: trend.highestPrice,
+              first: trend.firstPrice,
+              latest: trend.latestPrice,
+            },
+            'Price trend calculated'
+          );
+        }
+
+        // Format response
+        const formattedHistory = priceHistory.map((ph) => ({
+          id: ph.id,
+          price: parseFloat(ph.price),
+          currency: ph.currency,
+          recordedAt: ph.recordedAt?.toISOString() || new Date().toISOString(),
+        }));
+
+        return {
+          trend,
+          history: formattedHistory,
+        };
+      } catch (error) {
+        app.logger.error(
+          { err: error, itemId: id },
+          'Failed to fetch price history'
+        );
+        return reply.status(500).send({ error: 'Failed to fetch price history' });
       }
     }
   );
