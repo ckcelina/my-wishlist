@@ -1,5 +1,10 @@
 
+import { useAuth } from '@/contexts/AuthContext';
 import React, { useState, useEffect } from 'react';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors } from '@/styles/commonStyles';
+import * as ImagePicker from 'expo-image-picker';
 import {
   View,
   Text,
@@ -12,20 +17,9 @@ import {
   ImageSourcePropType,
   ActivityIndicator,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import { useAuth } from '@/contexts/AuthContext';
-import * as ImagePicker from 'expo-image-picker';
+import Constants from 'expo-constants';
 
-// Helper to resolve image sources
-function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
-  if (!source) return { uri: '' };
-  if (typeof source === 'string') return { uri: source };
-  return source as ImageSourcePropType;
-}
-
-type TabType = 'link' | 'manual';
+type TabType = 'url' | 'manual';
 
 interface ExtractedItem {
   title: string;
@@ -36,582 +30,40 @@ interface ExtractedItem {
   sourceDomain: string;
 }
 
-export default function AddItemScreen() {
-  const router = useRouter();
-  const { wishlistId } = useLocalSearchParams();
-  const { user } = useAuth();
-
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TabType>('link');
-
-  // Paste Link tab state
-  const [itemUrl, setItemUrl] = useState('');
-  const [extracting, setExtracting] = useState(false);
-  const [extractedItem, setExtractedItem] = useState<ExtractedItem | null>(null);
-
-  // Manual tab state
-  const [manualTitle, setManualTitle] = useState('');
-  const [manualImage, setManualImage] = useState<string | null>(null);
-  const [manualPrice, setManualPrice] = useState('');
-  const [manualCurrency, setManualCurrency] = useState('USD');
-  const [manualNotes, setManualNotes] = useState('');
-  const [uploadingImage, setUploadingImage] = useState(false);
-
-  // Common state
-  const [selectedWishlistId, setSelectedWishlistId] = useState<string>('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    console.log('AddItemScreen (iOS): Component mounted');
-    if (wishlistId && typeof wishlistId === 'string') {
-      console.log('AddItemScreen (iOS): Pre-selected wishlist ID:', wishlistId);
-      setSelectedWishlistId(wishlistId);
-    }
-  }, [wishlistId]);
-
-  const handleExtractItem = async () => {
-    console.log('AddItemScreen (iOS): Extracting item from URL:', itemUrl);
-    if (!itemUrl.trim()) {
-      Alert.alert('Error', 'Please enter a product URL');
-      return;
-    }
-
-    if (!selectedWishlistId) {
-      Alert.alert('Error', 'Please select a wishlist first');
-      return;
-    }
-
-    try {
-      setExtracting(true);
-      const { authenticatedPost } = await import('@/utils/api');
-
-      // Extract item data from URL using AI
-      const extractedData = await authenticatedPost<ExtractedItem>('/api/items/extract', { url: itemUrl });
-      console.log('AddItemScreen (iOS): Extracted item data:', extractedData);
-
-      setExtractedItem(extractedData);
-    } catch (error) {
-      console.error('AddItemScreen (iOS): Error extracting item:', error);
-      Alert.alert('Error', 'Failed to extract item data. Please try again.');
-    } finally {
-      setExtracting(false);
-    }
-  };
-
-  const handleSaveExtractedItem = async () => {
-    console.log('AddItemScreen (iOS): Saving extracted item');
-    if (!extractedItem) return;
-
-    try {
-      setSaving(true);
-      const { authenticatedPost } = await import('@/utils/api');
-
-      // Create the item in the wishlist
-      await authenticatedPost('/api/items', {
-        wishlistId: selectedWishlistId,
-        title: extractedItem.title,
-        imageUrl: extractedItem.imageUrl,
-        currentPrice: extractedItem.price,
-        currency: extractedItem.currency,
-        originalUrl: extractedItem.originalUrl,
-        sourceDomain: extractedItem.sourceDomain,
-        notes: '',
-      });
-
-      console.log('AddItemScreen (iOS): Item saved successfully');
-      Alert.alert('Success', 'Item added to wishlist!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setItemUrl('');
-            setExtractedItem(null);
-            router.back();
-          },
-        },
-      ]);
-    } catch (error) {
-      console.error('AddItemScreen (iOS): Error saving item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handlePickImage = async () => {
-    console.log('AddItemScreen (iOS): Picking image');
-    try {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your photo library to upload images.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
-        console.log('AddItemScreen (iOS): Image selected:', imageUri);
-
-        // Upload image to backend
-        setUploadingImage(true);
-        try {
-          const { BACKEND_URL, getBearerToken } = await import('@/utils/api');
-          const token = await getBearerToken();
-
-          if (!token) {
-            throw new Error('Authentication token not found');
-          }
-
-          const formData = new FormData();
-          formData.append('image', {
-            uri: imageUri,
-            type: 'image/jpeg',
-            name: 'item-image.jpg',
-          } as any);
-
-          const response = await fetch(`${BACKEND_URL}/api/upload/image`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-            body: formData,
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to upload image');
-          }
-
-          const data = await response.json();
-          console.log('AddItemScreen (iOS): Image uploaded:', data.url);
-          setManualImage(data.url);
-        } catch (error) {
-          console.error('AddItemScreen (iOS): Error uploading image:', error);
-          Alert.alert('Error', 'Failed to upload image. Please try again.');
-        } finally {
-          setUploadingImage(false);
-        }
-      }
-    } catch (error) {
-      console.error('AddItemScreen (iOS): Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
-  };
-
-  const handleSaveManualItem = async () => {
-    console.log('AddItemScreen (iOS): Saving manual item');
-    if (!manualTitle.trim()) {
-      Alert.alert('Error', 'Please enter an item title');
-      return;
-    }
-
-    if (!selectedWishlistId) {
-      Alert.alert('Error', 'Please select a wishlist first');
-      return;
-    }
-
-    try {
-      setSaving(true);
-      const { authenticatedPost } = await import('@/utils/api');
-
-      // Create the item in the wishlist
-      await authenticatedPost('/api/items', {
-        wishlistId: selectedWishlistId,
-        title: manualTitle,
-        imageUrl: manualImage,
-        currentPrice: manualPrice || null,
-        currency: manualCurrency,
-        notes: manualNotes,
-      });
-
-      console.log('AddItemScreen (iOS): Manual item saved successfully');
-      Alert.alert('Success', 'Item added to wishlist!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            setManualTitle('');
-            setManualImage(null);
-            setManualPrice('');
-            setManualCurrency('USD');
-            setManualNotes('');
-            router.back();
-          },
-        },
-      ]);
-    } catch (error) {
-      console.error('AddItemScreen (iOS): Error saving manual item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const extractButtonText = extracting ? 'Fetching...' : 'Fetch Item';
-  const saveButtonText = saving ? 'Saving...' : 'Save Item';
-
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Add Item',
-          headerBackTitle: 'Back',
-        }}
-      />
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.subtitle}>Add items to your wishlist</Text>
-        </View>
-
-        {/* Tab Selector */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'link' && styles.tabActive]}
-            onPress={() => setActiveTab('link')}
-          >
-            <IconSymbol
-              ios_icon_name="link"
-              android_material_icon_name="link"
-              size={20}
-              color={activeTab === 'link' ? colors.primary : colors.textSecondary}
-            />
-            <Text style={[styles.tabText, activeTab === 'link' && styles.tabTextActive]}>
-              Paste Link
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'manual' && styles.tabActive]}
-            onPress={() => setActiveTab('manual')}
-          >
-            <IconSymbol
-              ios_icon_name="pencil"
-              android_material_icon_name="edit"
-              size={20}
-              color={activeTab === 'manual' ? colors.primary : colors.textSecondary}
-            />
-            <Text style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}>
-              Manual
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {activeTab === 'link' ? (
-            // Paste Link Tab
-            <View style={styles.tabContent}>
-              {!extractedItem ? (
-                // URL Input
-                <React.Fragment>
-                  <View style={styles.form}>
-                    <Text style={styles.label}>Product URL</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="https://example.com/product"
-                      placeholderTextColor={colors.textSecondary}
-                      value={itemUrl}
-                      onChangeText={setItemUrl}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                      multiline
-                    />
-
-                    <TouchableOpacity
-                      style={[styles.button, extracting && styles.buttonDisabled]}
-                      onPress={handleExtractItem}
-                      disabled={extracting}
-                    >
-                      {extracting ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.buttonText}>{extractButtonText}</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.infoBox}>
-                    <IconSymbol
-                      ios_icon_name="info.circle"
-                      android_material_icon_name="info"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={styles.infoText}>
-                      Our AI will automatically extract the product name, image, and price from the URL
-                    </Text>
-                  </View>
-                </React.Fragment>
-              ) : (
-                // Editable Preview
-                <React.Fragment>
-                  <Text style={styles.sectionTitle}>Preview</Text>
-
-                  {extractedItem.imageUrl && (
-                    <Image
-                      source={resolveImageSource(extractedItem.imageUrl)}
-                      style={styles.previewImage}
-                      resizeMode="cover"
-                    />
-                  )}
-
-                  <View style={styles.form}>
-                    <Text style={styles.label}>Title</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Item title"
-                      placeholderTextColor={colors.textSecondary}
-                      value={extractedItem.title}
-                      onChangeText={(text) => setExtractedItem({ ...extractedItem, title: text })}
-                    />
-
-                    <Text style={styles.label}>Image URL</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="https://example.com/image.jpg"
-                      placeholderTextColor={colors.textSecondary}
-                      value={extractedItem.imageUrl || ''}
-                      onChangeText={(text) => setExtractedItem({ ...extractedItem, imageUrl: text })}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-
-                    <View style={styles.row}>
-                      <View style={styles.halfWidth}>
-                        <Text style={styles.label}>Price</Text>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="0.00"
-                          placeholderTextColor={colors.textSecondary}
-                          value={extractedItem.price || ''}
-                          onChangeText={(text) => setExtractedItem({ ...extractedItem, price: text })}
-                          keyboardType="decimal-pad"
-                        />
-                      </View>
-
-                      <View style={styles.halfWidth}>
-                        <Text style={styles.label}>Currency</Text>
-                        <TextInput
-                          style={styles.input}
-                          placeholder="USD"
-                          placeholderTextColor={colors.textSecondary}
-                          value={extractedItem.currency}
-                          onChangeText={(text) => setExtractedItem({ ...extractedItem, currency: text.toUpperCase() })}
-                          autoCapitalize="characters"
-                          maxLength={3}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.buttonRow}>
-                      <TouchableOpacity
-                        style={[styles.button, styles.buttonSecondary]}
-                        onPress={() => {
-                          setExtractedItem(null);
-                          setItemUrl('');
-                        }}
-                      >
-                        <Text style={styles.buttonTextSecondary}>Cancel</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[styles.button, styles.buttonPrimary, saving && styles.buttonDisabled]}
-                        onPress={handleSaveExtractedItem}
-                        disabled={saving}
-                      >
-                        {saving ? (
-                          <ActivityIndicator color="#FFFFFF" />
-                        ) : (
-                          <Text style={styles.buttonText}>{saveButtonText}</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </React.Fragment>
-              )}
-            </View>
-          ) : (
-            // Manual Tab
-            <View style={styles.tabContent}>
-              <View style={styles.form}>
-                <Text style={styles.label}>
-                  Title
-                  <Text style={styles.required}> *</Text>
-                </Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Item title"
-                  placeholderTextColor={colors.textSecondary}
-                  value={manualTitle}
-                  onChangeText={setManualTitle}
-                />
-
-                <Text style={styles.label}>Image</Text>
-                {manualImage ? (
-                  <View style={styles.imageContainer}>
-                    <Image
-                      source={resolveImageSource(manualImage)}
-                      style={styles.uploadedImage}
-                      resizeMode="cover"
-                    />
-                    <TouchableOpacity
-                      style={styles.removeImageButton}
-                      onPress={() => setManualImage(null)}
-                    >
-                      <IconSymbol
-                        ios_icon_name="xmark.circle.fill"
-                        android_material_icon_name="cancel"
-                        size={24}
-                        color={colors.text}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.imagePicker}
-                    onPress={handlePickImage}
-                    disabled={uploadingImage}
-                  >
-                    {uploadingImage ? (
-                      <ActivityIndicator color={colors.primary} />
-                    ) : (
-                      <React.Fragment>
-                        <IconSymbol
-                          ios_icon_name="photo"
-                          android_material_icon_name="image"
-                          size={32}
-                          color={colors.textSecondary}
-                        />
-                        <Text style={styles.imagePickerText}>Tap to upload image</Text>
-                      </React.Fragment>
-                    )}
-                  </TouchableOpacity>
-                )}
-
-                <View style={styles.row}>
-                  <View style={styles.halfWidth}>
-                    <Text style={styles.label}>Price</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0.00"
-                      placeholderTextColor={colors.textSecondary}
-                      value={manualPrice}
-                      onChangeText={setManualPrice}
-                      keyboardType="decimal-pad"
-                    />
-                  </View>
-
-                  <View style={styles.halfWidth}>
-                    <Text style={styles.label}>Currency</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="USD"
-                      placeholderTextColor={colors.textSecondary}
-                      value={manualCurrency}
-                      onChangeText={(text) => setManualCurrency(text.toUpperCase())}
-                      autoCapitalize="characters"
-                      maxLength={3}
-                    />
-                  </View>
-                </View>
-
-                <Text style={styles.label}>Notes</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Add notes about this item..."
-                  placeholderTextColor={colors.textSecondary}
-                  value={manualNotes}
-                  onChangeText={setManualNotes}
-                  multiline
-                  numberOfLines={4}
-                  textAlignVertical="top"
-                />
-
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary, saving && styles.buttonDisabled]}
-                  onPress={handleSaveManualItem}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.buttonText}>{saveButtonText}</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    </>
-  );
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
   tabContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    gap: 12,
-    marginBottom: 20,
+    marginBottom: 24,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 4,
   },
   tab: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: colors.backgroundAlt,
-    gap: 8,
   },
-  tabActive: {
-    backgroundColor: colors.primary + '15',
-    borderWidth: 1,
-    borderColor: colors.primary,
+  activeTab: {
+    backgroundColor: colors.primary,
   },
   tabText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.textSecondary,
   },
-  tabTextActive: {
-    color: colors.primary,
+  activeTabText: {
+    color: '#FFFFFF',
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  tabContent: {
-    flex: 1,
-  },
-  form: {
+  section: {
     marginBottom: 24,
   },
   label: {
@@ -620,16 +72,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 8,
   },
-  required: {
-    color: colors.accent,
-  },
   input: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
     fontSize: 16,
     color: colors.text,
-    marginBottom: 16,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -638,105 +86,496 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   button: {
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  buttonPrimary: {
     backgroundColor: colors.primary,
-    flex: 1,
-  },
-  buttonSecondary: {
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flex: 1,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 8,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
     color: '#FFFFFF',
-  },
-  buttonTextSecondary: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.text,
   },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.backgroundAlt,
+  secondaryButton: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
     padding: 16,
-    borderRadius: 8,
-    gap: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
+  secondaryButtonText: {
     color: colors.text,
-    marginBottom: 16,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  previewImage: {
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginTop: 12,
+    backgroundColor: colors.cardBackground,
+  },
+  extractedCard: {
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  extractedTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  extractedImage: {
     width: '100%',
     height: 200,
     borderRadius: 8,
-    marginBottom: 20,
-    backgroundColor: colors.backgroundAlt,
+    marginBottom: 12,
+    backgroundColor: colors.background,
   },
-  row: {
+  extractedInfo: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  halfWidth: {
-    flex: 1,
+  extractedLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
-  imagePicker: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
+  extractedValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  loadingContainer: {
     padding: 40,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
   },
-  imagePickerText: {
-    fontSize: 14,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
     color: colors.textSecondary,
+  },
+  errorText: {
+    color: colors.error,
+    fontSize: 14,
     marginTop: 8,
   },
-  imageContainer: {
-    position: 'relative',
-    marginBottom: 16,
-  },
-  uploadedImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    backgroundColor: colors.backgroundAlt,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: colors.background,
-    borderRadius: 12,
-  },
 });
+
+function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
+  if (!source) return { uri: '' };
+  if (typeof source === 'string') return { uri: source };
+  return source as ImageSourcePropType;
+}
+
+export default function AddItemScreen() {
+  const router = useRouter();
+  const { wishlistId } = useLocalSearchParams();
+  const { user } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<TabType>('url');
+  
+  // URL extraction state
+  const [url, setUrl] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractedItem, setExtractedItem] = useState<ExtractedItem | null>(null);
+  const [extractError, setExtractError] = useState('');
+
+  // Manual entry state
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualPrice, setManualPrice] = useState('');
+  const [manualCurrency, setManualCurrency] = useState('USD');
+  const [manualImageUri, setManualImageUri] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    console.log('AddItemScreen mounted with wishlistId:', wishlistId);
+  }, [wishlistId]);
+
+  const handleExtractItem = async () => {
+    if (!url.trim()) {
+      Alert.alert('Error', 'Please enter a URL');
+      return;
+    }
+
+    console.log('Extracting item from URL:', url);
+    setExtracting(true);
+    setExtractError('');
+    setExtractedItem(null);
+
+    try {
+      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
+      const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
+
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Supabase configuration missing');
+      }
+
+      // Call Supabase Edge Function
+      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/extract-item`;
+      console.log('Calling Edge Function:', edgeFunctionUrl);
+
+      const response = await fetch(edgeFunctionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+
+      const data = await response.json();
+      console.log('Edge Function response:', data);
+
+      if (data.error) {
+        setExtractError(data.error);
+      }
+
+      // Set extracted data even if partial
+      setExtractedItem({
+        title: data.title || 'Unknown Item',
+        imageUrl: data.imageUrl,
+        price: data.price ? String(data.price) : null,
+        currency: data.currency || 'USD',
+        originalUrl: url.trim(),
+        sourceDomain: data.sourceDomain || '',
+      });
+
+    } catch (error: any) {
+      console.error('Failed to extract item:', error);
+      setExtractError(error.message || 'Failed to extract item details');
+      Alert.alert('Error', 'Failed to extract item details. Please try manual entry.');
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleSaveExtractedItem = async () => {
+    if (!extractedItem || !wishlistId) return;
+
+    console.log('Saving extracted item to wishlist:', wishlistId);
+    setSaving(true);
+
+    try {
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const response = await fetch(`${backendUrl}/api/items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishlistId,
+          title: extractedItem.title,
+          imageUrl: extractedItem.imageUrl,
+          currentPrice: extractedItem.price ? parseFloat(extractedItem.price) : null,
+          currency: extractedItem.currency,
+          originalUrl: extractedItem.originalUrl,
+          sourceDomain: extractedItem.sourceDomain,
+          userId: user?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save item');
+      }
+
+      const savedItem = await response.json();
+      console.log('Item saved successfully:', savedItem);
+
+      Alert.alert('Success', 'Item added to wishlist!', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error: any) {
+      console.error('Failed to save item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePickImage = async () => {
+    console.log('Opening image picker');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setManualImageUri(result.assets[0].uri);
+      console.log('Image selected:', result.assets[0].uri);
+    }
+  };
+
+  const handleSaveManualItem = async () => {
+    if (!manualTitle.trim()) {
+      Alert.alert('Error', 'Please enter an item title');
+      return;
+    }
+
+    if (!wishlistId) {
+      Alert.alert('Error', 'No wishlist selected');
+      return;
+    }
+
+    console.log('Saving manual item to wishlist:', wishlistId);
+    setSaving(true);
+
+    try {
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const response = await fetch(`${backendUrl}/api/items`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishlistId,
+          title: manualTitle.trim(),
+          imageUrl: manualImageUri || null,
+          currentPrice: manualPrice ? parseFloat(manualPrice) : null,
+          currency: manualCurrency,
+          notes: manualNotes.trim() || null,
+          userId: user?.id,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save item');
+      }
+
+      const savedItem = await response.json();
+      console.log('Manual item saved successfully:', savedItem);
+
+      Alert.alert('Success', 'Item added to wishlist!', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error: any) {
+      console.error('Failed to save manual item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderUrlTab = () => {
+    if (extracting) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Extracting item details...</Text>
+        </View>
+      );
+    }
+
+    if (extractedItem) {
+      const priceDisplay = extractedItem.price 
+        ? `${extractedItem.currency} ${extractedItem.price}`
+        : 'Price not found';
+      const domainDisplay = extractedItem.sourceDomain || 'Unknown source';
+
+      return (
+        <View>
+          <View style={styles.extractedCard}>
+            <Text style={styles.extractedTitle}>{extractedItem.title}</Text>
+            
+            {extractedItem.imageUrl && (
+              <Image 
+                source={resolveImageSource(extractedItem.imageUrl)} 
+                style={styles.extractedImage}
+                resizeMode="cover"
+              />
+            )}
+            
+            <View style={styles.extractedInfo}>
+              <Text style={styles.extractedLabel}>Price:</Text>
+              <Text style={styles.extractedValue}>{priceDisplay}</Text>
+            </View>
+            
+            <View style={styles.extractedInfo}>
+              <Text style={styles.extractedLabel}>Source:</Text>
+              <Text style={styles.extractedValue}>{domainDisplay}</Text>
+            </View>
+
+            {extractError && (
+              <Text style={styles.errorText}>Note: {extractError}</Text>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={[styles.button, saving && styles.buttonDisabled]}
+            onPress={handleSaveExtractedItem}
+            disabled={saving}
+          >
+            <Text style={styles.buttonText}>
+              {saving ? 'Saving...' : 'Add to Wishlist'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => {
+              setExtractedItem(null);
+              setUrl('');
+              setExtractError('');
+            }}
+          >
+            <Text style={styles.secondaryButtonText}>Try Another URL</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View>
+        <View style={styles.section}>
+          <Text style={styles.label}>Item URL</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="https://example.com/product"
+            placeholderTextColor={colors.textSecondary}
+            value={url}
+            onChangeText={setUrl}
+            autoCapitalize="none"
+            keyboardType="url"
+            autoCorrect={false}
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, (!url.trim() || extracting) && styles.buttonDisabled]}
+          onPress={handleExtractItem}
+          disabled={!url.trim() || extracting}
+        >
+          <Text style={styles.buttonText}>Extract Item Details</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderManualTab = () => {
+    return (
+      <View>
+        <View style={styles.section}>
+          <Text style={styles.label}>Item Title *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter item name"
+            placeholderTextColor={colors.textSecondary}
+            value={manualTitle}
+            onChangeText={setManualTitle}
+          />
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Price</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              placeholder="0.00"
+              placeholderTextColor={colors.textSecondary}
+              value={manualPrice}
+              onChangeText={setManualPrice}
+              keyboardType="decimal-pad"
+            />
+            <TextInput
+              style={[styles.input, { width: 80 }]}
+              placeholder="USD"
+              placeholderTextColor={colors.textSecondary}
+              value={manualCurrency}
+              onChangeText={setManualCurrency}
+              autoCapitalize="characters"
+              maxLength={3}
+            />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Image</Text>
+          <TouchableOpacity style={styles.secondaryButton} onPress={handlePickImage}>
+            <Text style={styles.secondaryButtonText}>
+              {manualImageUri ? 'Change Image' : 'Pick Image'}
+            </Text>
+          </TouchableOpacity>
+          {manualImageUri && (
+            <Image 
+              source={resolveImageSource(manualImageUri)} 
+              style={styles.imagePreview}
+              resizeMode="cover"
+            />
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>Notes</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Add any notes about this item..."
+            placeholderTextColor={colors.textSecondary}
+            value={manualNotes}
+            onChangeText={setManualNotes}
+            multiline
+          />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, (!manualTitle.trim() || saving) && styles.buttonDisabled]}
+          onPress={handleSaveManualItem}
+          disabled={!manualTitle.trim() || saving}
+        >
+          <Text style={styles.buttonText}>
+            {saving ? 'Saving...' : 'Add to Wishlist'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Add Item',
+          headerBackTitle: 'Back',
+        }}
+      />
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'url' && styles.activeTab]}
+            onPress={() => setActiveTab('url')}
+          >
+            <Text style={[styles.tabText, activeTab === 'url' && styles.activeTabText]}>
+              From URL
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'manual' && styles.activeTab]}
+            onPress={() => setActiveTab('manual')}
+          >
+            <Text style={[styles.tabText, activeTab === 'manual' && styles.activeTabText]}>
+              Manual Entry
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'url' ? renderUrlTab() : renderManualTab()}
+      </ScrollView>
+    </>
+  );
+}
