@@ -76,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUser();
     
-    // Listen for Supabase auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[AuthContext] Supabase auth state changed:', event);
       
@@ -102,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       
-      // Try Supabase first
       const supabaseUser = await supabaseAuth.getCurrentUser();
       if (supabaseUser) {
         console.log('[AuthContext] Supabase user found:', supabaseUser.id);
@@ -115,7 +113,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-      // Fallback to Better Auth
       const session = await authClient.getSession();
       if (session?.data?.user) {
         console.log('[AuthContext] Better Auth user found');
@@ -142,40 +139,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const initializeDefaultWishlist = async (): Promise<string | null> => {
+    console.log('[AuthContext] Initializing default wishlist');
+    try {
+      const { authenticatedPost, authenticatedGet } = await import('@/utils/api');
+      
+      const result = await authenticatedPost<{ success: boolean }>('/api/users/init-defaults', {});
+      console.log('[AuthContext] Default wishlist initialization result:', result);
+      
+      const wishlists = await authenticatedGet<Array<{ id: string; name: string; isDefault?: boolean }>>('/api/wishlists');
+      console.log('[AuthContext] Fetched wishlists after init:', wishlists.length);
+      
+      if (wishlists.length > 0) {
+        const defaultWishlist = wishlists.find(w => w.name === 'My Wishlist') || wishlists[0];
+        console.log('[AuthContext] Found default wishlist:', defaultWishlist.id);
+        return defaultWishlist.id;
+      }
+      
+      console.log('[AuthContext] No wishlists found after initialization');
+      return null;
+    } catch (error) {
+      console.error('[AuthContext] Failed to initialize default wishlist:', error);
+      return null;
+    }
+  };
+
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
       console.log('[AuthContext] Starting signup process via Supabase');
       await supabaseAuth.signUp(email, password, name);
       await fetchUser();
       
-      console.log('[AuthContext] User signed up, initializing default wishlist');
-      // Initialize default wishlist for new user
-      try {
-        const { authenticatedPost, authenticatedGet } = await import('@/utils/api');
-        const result = await authenticatedPost('/api/users/init-defaults', {});
-        console.log('[AuthContext] Default wishlist initialized:', result);
-        
-        // Fetch the default wishlist and navigate to it
-        const wishlists = await authenticatedGet<Array<{ id: string; name: string; isDefault: boolean }>>('/api/wishlists');
-        console.log('[AuthContext] Fetched wishlists:', wishlists.length);
-        
-        const defaultWishlist = wishlists.find(w => w.isDefault) || wishlists[0];
-        
-        if (defaultWishlist) {
-          console.log('[AuthContext] Navigating to default wishlist:', defaultWishlist.id);
-          // Use dynamic import to avoid circular dependency
-          const { router } = await import('expo-router');
-          router.replace(`/wishlist/${defaultWishlist.id}`);
-        } else {
-          console.log('[AuthContext] No wishlist found, navigating to wishlists list');
-          const { router } = await import('expo-router');
-          router.replace('/wishlists');
-        }
-      } catch (initError) {
-        console.error('[AuthContext] Failed to initialize default wishlist:', initError);
-        // Navigate to wishlists list as fallback
+      console.log('[AuthContext] User signed up successfully, creating default wishlist');
+      
+      const wishlistId = await initializeDefaultWishlist();
+      
+      if (wishlistId) {
+        console.log('[AuthContext] Navigating to default wishlist:', wishlistId);
         const { router } = await import('expo-router');
-        router.replace('/wishlists');
+        router.replace(`/wishlist/${wishlistId}`);
+      } else {
+        console.log('[AuthContext] No wishlist created, navigating to wishlists list');
+        const { router } = await import('expo-router');
+        router.replace('/(tabs)/wishlists');
       }
     } catch (error) {
       console.error("Email sign up failed:", error);
@@ -185,6 +191,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithSocial = async (provider: "google" | "apple" | "github") => {
     try {
+      console.log(`[AuthContext] Starting ${provider} OAuth flow`);
+      
       if (Platform.OS === "web") {
         const token = await openOAuthPopup(provider);
         storeWebBearerToken(token);
@@ -197,15 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fetchUser();
       }
       
-      // Try to initialize default wishlist (will be no-op if already exists)
-      try {
-        const { authenticatedPost } = await import('@/utils/api');
-        await authenticatedPost('/api/users/init-defaults', {});
-        console.log('Default wishlist check completed');
-      } catch (initError) {
-        console.error('Failed to initialize default wishlist:', initError);
-        // Don't throw - user can create wishlists manually
-      }
+      console.log(`[AuthContext] ${provider} OAuth successful, checking for default wishlist`);
+      await initializeDefaultWishlist();
     } catch (error) {
       console.error(`${provider} sign in failed:`, error);
       throw error;
@@ -220,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('[AuthContext] Signing out');
       
-      // Sign out from both Supabase and Better Auth
       await supabaseAuth.signOut();
       await authClient.signOut();
       
