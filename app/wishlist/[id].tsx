@@ -23,13 +23,13 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface Item {
   id: string;
-  name: string;
+  title: string;
   imageUrl: string;
-  currentPrice: number;
+  currentPrice: number | null;
   currency: string;
-  sourceUrl: string;
+  originalUrl: string | null;
   createdAt: string;
-  priceDropped?: boolean;
+  lastCheckedAt?: string | null;
 }
 
 interface Wishlist {
@@ -38,6 +38,13 @@ interface Wishlist {
   isDefault: boolean;
   itemCount: number;
   createdAt: string;
+}
+
+interface PriceDropInfo {
+  [itemId: string]: {
+    priceDropped: boolean;
+    percentageChange: number | null;
+  };
 }
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -57,6 +64,7 @@ export default function WishlistDetailScreen() {
   const [showMenu, setShowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newName, setNewName] = useState('');
+  const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo>({});
 
   useEffect(() => {
     console.log('WishlistDetailScreen: Component mounted, wishlist ID:', id);
@@ -74,18 +82,40 @@ export default function WishlistDetailScreen() {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
     try {
       setLoading(true);
-      const { apiGet } = await import('@/utils/api');
+      const { authenticatedGet } = await import('@/utils/api');
       
       // Fetch wishlist details
-      const wishlistData = await apiGet<Wishlist>(`/api/wishlists/${id}`);
+      const wishlistData = await authenticatedGet<Wishlist>(`/api/wishlists/${id}`);
       console.log('WishlistDetailScreen: Fetched wishlist:', wishlistData.name);
       setWishlist(wishlistData);
       setNewName(wishlistData.name);
       
       // Fetch items
-      const itemsData = await apiGet<Item[]>(`/api/wishlists/${id}/items`);
+      const itemsData = await authenticatedGet<Item[]>(`/api/wishlists/${id}/items`);
       console.log('WishlistDetailScreen: Fetched items:', itemsData.length);
       setItems(itemsData);
+
+      // Fetch price drop info for each item
+      const priceDropData: PriceDropInfo = {};
+      await Promise.all(
+        itemsData.map(async (item) => {
+          try {
+            const dropInfo = await authenticatedGet<{
+              priceDropped: boolean;
+              originalPrice: number | null;
+              currentPrice: number | null;
+              percentageChange: number | null;
+            }>(`/api/items/${item.id}/price-dropped`);
+            priceDropData[item.id] = {
+              priceDropped: dropInfo.priceDropped,
+              percentageChange: dropInfo.percentageChange,
+            };
+          } catch (error) {
+            console.error('WishlistDetailScreen: Error fetching price drop info for item:', item.id, error);
+          }
+        })
+      );
+      setPriceDropInfo(priceDropData);
     } catch (error) {
       console.error('WishlistDetailScreen: Error fetching data:', error);
       Alert.alert('Error', 'Failed to load wishlist');
@@ -221,8 +251,12 @@ export default function WishlistDetailScreen() {
             </View>
           ) : (
             items.map((item) => {
-              const priceText = `${item.currency} ${item.currentPrice.toFixed(2)}`;
-              const hasPriceDrop = item.priceDropped === true;
+              const priceText = item.currentPrice 
+                ? `${item.currency} ${item.currentPrice.toFixed(2)}` 
+                : 'No price';
+              const dropInfo = priceDropInfo[item.id];
+              const hasPriceDrop = dropInfo?.priceDropped === true;
+              const percentageChange = dropInfo?.percentageChange;
               
               return (
                 <TouchableOpacity
@@ -237,13 +271,13 @@ export default function WishlistDetailScreen() {
                   />
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemName} numberOfLines={2}>
-                      {item.name}
+                      {item.title}
                     </Text>
                     <View style={styles.priceRow}>
                       <View style={styles.priceContainer}>
                         <Text style={styles.itemPrice}>{priceText}</Text>
                       </View>
-                      {hasPriceDrop && (
+                      {hasPriceDrop && percentageChange && (
                         <View style={styles.priceDropBadge}>
                           <IconSymbol
                             ios_icon_name="arrow.down"
@@ -251,14 +285,16 @@ export default function WishlistDetailScreen() {
                             size={12}
                             color="#10B981"
                           />
-                          <Text style={styles.priceDropText}>Price Drop</Text>
+                          <Text style={styles.priceDropText}>
+                            {Math.abs(percentageChange).toFixed(0)}% off
+                          </Text>
                         </View>
                       )}
                     </View>
                   </View>
                   <IconSymbol
                     ios_icon_name="chevron.right"
-                    android_material_icon_name="arrow-forward"
+                    android_material_icon_name="chevron-right"
                     size={20}
                     color={colors.textSecondary}
                   />
@@ -437,6 +473,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
   priceContainer: {
     backgroundColor: colors.highlight,

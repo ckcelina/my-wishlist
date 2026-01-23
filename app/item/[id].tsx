@@ -38,6 +38,7 @@ interface ItemDetail {
   sourceDomain: string | null;
   notes: string | null;
   priceHistory: PriceHistoryEntry[];
+  lastCheckedAt?: string | null;
 }
 
 interface OtherStore {
@@ -46,6 +47,13 @@ interface OtherStore {
   price: number;
   currency: string;
   url: string;
+}
+
+interface PriceDropInfo {
+  priceDropped: boolean;
+  originalPrice: number | null;
+  currentPrice: number | null;
+  percentageChange: number | null;
 }
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -65,6 +73,8 @@ export default function ItemDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [otherStores, setOtherStores] = useState<OtherStore[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
+  const [checkingPrice, setCheckingPrice] = useState(false);
+  const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo | null>(null);
 
   // Edit form state
   const [editedTitle, setEditedTitle] = useState('');
@@ -78,6 +88,7 @@ export default function ItemDetailScreen() {
     if (id) {
       fetchItem();
       fetchOtherStores();
+      fetchPriceDropInfo();
     }
   }, [id]);
 
@@ -97,6 +108,18 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const fetchPriceDropInfo = async () => {
+    console.log('ItemDetailScreen: Fetching price drop info');
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const data = await authenticatedGet<PriceDropInfo>(`/api/items/${id}/price-dropped`);
+      console.log('ItemDetailScreen: Price drop info:', data);
+      setPriceDropInfo(data);
+    } catch (error) {
+      console.error('ItemDetailScreen: Error fetching price drop info:', error);
+    }
+  };
+
   const fetchOtherStores = async () => {
     console.log('ItemDetailScreen: Fetching other stores');
     try {
@@ -107,9 +130,55 @@ export default function ItemDetailScreen() {
       setOtherStores(data.stores);
     } catch (error) {
       console.error('ItemDetailScreen: Error fetching other stores:', error);
-      // Don't show alert for this - it's not critical
     } finally {
       setLoadingStores(false);
+    }
+  };
+
+  const handleCheckPrice = async () => {
+    console.log('ItemDetailScreen: Manually checking price');
+    if (!item?.originalUrl) {
+      Alert.alert('No URL', 'This item does not have an original URL to check the price from.');
+      return;
+    }
+
+    try {
+      setCheckingPrice(true);
+      const { authenticatedPost } = await import('@/utils/api');
+      const result = await authenticatedPost<{
+        success: boolean;
+        priceChanged: boolean;
+        oldPrice: number | null;
+        newPrice: number | null;
+        lastCheckedAt: string;
+      }>(`/api/items/${id}/check-price`, {});
+      
+      console.log('ItemDetailScreen: Price check result:', result);
+      
+      if (result.success) {
+        if (result.priceChanged) {
+          const oldPriceText = result.oldPrice ? `${item.currency} ${result.oldPrice.toFixed(2)}` : 'N/A';
+          const newPriceText = result.newPrice ? `${item.currency} ${result.newPrice.toFixed(2)}` : 'N/A';
+          
+          Alert.alert(
+            'Price Updated!',
+            `Price changed from ${oldPriceText} to ${newPriceText}`,
+            [{ text: 'OK', onPress: () => {
+              fetchItem();
+              fetchPriceDropInfo();
+            }}]
+          );
+        } else {
+          Alert.alert('Price Checked', 'The price has not changed since the last check.');
+        }
+      } else {
+        Alert.alert('Check Failed', 'Could not retrieve the current price. The page may have changed or is unavailable.');
+      }
+    } catch (error) {
+      console.error('ItemDetailScreen: Error checking price:', error);
+      Alert.alert('Error', 'Failed to check price. Please try again later.');
+    } finally {
+      setCheckingPrice(false);
     }
   };
 
@@ -231,6 +300,18 @@ export default function ItemDetailScreen() {
     new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
   );
 
+  const hasPriceDrop = priceDropInfo?.priceDropped === true;
+  const percentageChange = priceDropInfo?.percentageChange;
+
+  const lastCheckedText = item.lastCheckedAt 
+    ? new Date(item.lastCheckedAt).toLocaleString([], { 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      })
+    : 'Never';
+
   return (
     <>
       <Stack.Screen
@@ -266,11 +347,62 @@ export default function ItemDetailScreen() {
             {/* Item Title */}
             <Text style={styles.itemTitle}>{item.title}</Text>
 
-            {/* Current Price */}
+            {/* Current Price with Price Drop Badge */}
             <View style={styles.priceCard}>
-              <Text style={styles.priceLabel}>Current Price</Text>
+              <View style={styles.priceCardHeader}>
+                <Text style={styles.priceLabel}>Current Price</Text>
+                {hasPriceDrop && percentageChange && (
+                  <View style={styles.priceDropBadge}>
+                    <IconSymbol
+                      ios_icon_name="arrow.down"
+                      android_material_icon_name="arrow-downward"
+                      size={14}
+                      color="#10B981"
+                    />
+                    <Text style={styles.priceDropText}>
+                      {Math.abs(percentageChange).toFixed(0)}% off
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.currentPrice}>{priceText}</Text>
+              
+              {/* Last Checked Timestamp */}
+              {item.originalUrl && (
+                <View style={styles.lastCheckedRow}>
+                  <IconSymbol
+                    ios_icon_name="clock"
+                    android_material_icon_name="schedule"
+                    size={14}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.lastCheckedText}>Last checked: {lastCheckedText}</Text>
+                </View>
+              )}
             </View>
+
+            {/* Check Price Button (only if item has originalUrl) */}
+            {item.originalUrl && (
+              <TouchableOpacity 
+                style={styles.checkPriceButton} 
+                onPress={handleCheckPrice}
+                disabled={checkingPrice}
+              >
+                {checkingPrice ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <IconSymbol
+                      ios_icon_name="arrow.clockwise"
+                      android_material_icon_name="refresh"
+                      size={18}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.checkPriceButtonText}>Check Price Now</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Source Domain */}
             {item.sourceDomain && (
@@ -512,6 +644,9 @@ export default function ItemDetailScreen() {
                     color={colors.textSecondary}
                   />
                   <Text style={styles.emptyStateText}>No price history yet</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Price history will appear here after price checks
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.historyList}>
@@ -590,18 +725,64 @@ const styles = StyleSheet.create({
     backgroundColor: colors.highlight,
     padding: 16,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  priceCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   priceLabel: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: 4,
+  },
+  priceDropBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  priceDropText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#10B981',
   },
   currentPrice: {
     fontSize: 32,
     fontWeight: '700',
     color: colors.text,
+    marginBottom: 8,
+  },
+  lastCheckedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  lastCheckedText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  checkPriceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+    marginBottom: 16,
+  },
+  checkPriceButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   infoRow: {
     flexDirection: 'row',
@@ -778,6 +959,12 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 16,
     color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   historyList: {
     gap: 12,
