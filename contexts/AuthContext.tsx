@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import { authClient, storeWebBearerToken } from "@/lib/auth";
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
+      console.log('[AuthContext] Starting signup process');
       await authClient.signUp.email({
         email,
         password,
@@ -110,14 +112,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       await fetchUser();
       
+      console.log('[AuthContext] User signed up, initializing default wishlist');
       // Initialize default wishlist for new user
       try {
-        const { authenticatedPost } = await import('@/utils/api');
-        await authenticatedPost('/api/users/init-defaults', {});
-        console.log('Default wishlist initialized for new user');
+        const { authenticatedPost, authenticatedGet } = await import('@/utils/api');
+        const result = await authenticatedPost('/api/users/init-defaults', {});
+        console.log('[AuthContext] Default wishlist initialized:', result);
+        
+        // Fetch the default wishlist and navigate to it
+        const wishlists = await authenticatedGet<Array<{ id: string; name: string; isDefault: boolean }>>('/api/wishlists');
+        console.log('[AuthContext] Fetched wishlists:', wishlists.length);
+        
+        const defaultWishlist = wishlists.find(w => w.isDefault) || wishlists[0];
+        
+        if (defaultWishlist) {
+          console.log('[AuthContext] Navigating to default wishlist:', defaultWishlist.id);
+          // Use dynamic import to avoid circular dependency
+          const { router } = await import('expo-router');
+          router.replace(`/wishlist/${defaultWishlist.id}`);
+        } else {
+          console.log('[AuthContext] No wishlist found, navigating to wishlists list');
+          const { router } = await import('expo-router');
+          router.replace('/wishlists');
+        }
       } catch (initError) {
-        console.error('Failed to initialize default wishlist:', initError);
-        // Don't throw - user can create wishlists manually
+        console.error('[AuthContext] Failed to initialize default wishlist:', initError);
+        // Navigate to wishlists list as fallback
+        const { router } = await import('expo-router');
+        router.replace('/wishlists');
       }
     } catch (error) {
       console.error("Email sign up failed:", error);

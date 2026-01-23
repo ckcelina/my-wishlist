@@ -1,3 +1,4 @@
+
 import React, { useState } from "react";
 import {
   View,
@@ -14,7 +15,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "expo-router";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "forgot";
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -49,12 +50,36 @@ export default function AuthScreen() {
         router.replace("/wishlists");
       } else {
         await signUpWithEmail(email, password, name);
-        console.log('[Auth] Sign up successful, redirecting to wishlists');
-        router.replace("/wishlists");
+        console.log('[Auth] Sign up successful, AuthContext will handle navigation');
+        // Navigation is handled in AuthContext after creating default wishlist
       }
     } catch (error: any) {
       console.error('[Auth] Authentication error:', error);
       Alert.alert("Error", error.message || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert("Error", "Please enter your email address");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      console.log('[Auth] Sending password reset email to:', email);
+      // TODO: Backend Integration - POST /api/auth/forgot-password with { email }
+      // For now, show a placeholder message
+      Alert.alert(
+        "Password Reset",
+        "Password reset functionality will be available soon. Please contact support if you need help accessing your account.",
+        [{ text: "OK", onPress: () => setMode("signin") }]
+      );
+    } catch (error: any) {
+      console.error('[Auth] Forgot password error:', error);
+      Alert.alert("Error", error.message || "Failed to send reset email");
     } finally {
       setLoading(false);
     }
@@ -81,97 +106,152 @@ export default function AuthScreen() {
     }
   };
 
+  const renderForgotPasswordScreen = () => {
+    return (
+      <View style={styles.content}>
+        <Text style={styles.title}>Reset Password</Text>
+        <Text style={styles.subtitle}>
+          Enter your email address and we&apos;ll send you a link to reset your password.
+        </Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <TouchableOpacity
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          onPress={handleForgotPassword}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>Send Reset Link</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.switchModeButton}
+          onPress={() => setMode("signin")}
+        >
+          <Text style={styles.switchModeText}>Back to Sign In</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderAuthScreen = () => {
+    return (
+      <View style={styles.content}>
+        <Text style={styles.title}>
+          {mode === "signin" ? "Sign In" : "Sign Up"}
+        </Text>
+
+        {mode === "signup" && (
+          <TextInput
+            style={styles.input}
+            placeholder="Name (optional)"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
+        )}
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+
+        {mode === "signin" && (
+          <TouchableOpacity
+            style={styles.forgotPasswordButton}
+            onPress={() => setMode("forgot")}
+          >
+            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          onPress={handleEmailAuth}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryButtonText}>
+              {mode === "signin" ? "Sign In" : "Sign Up"}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.switchModeButton}
+          onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
+        >
+          <Text style={styles.switchModeText}>
+            {mode === "signin"
+              ? "Don't have an account? Sign Up"
+              : "Already have an account? Sign In"}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or continue with</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={styles.socialButton}
+          onPress={() => handleSocialAuth("google")}
+          disabled={loading}
+        >
+          <Text style={styles.socialButtonText}>Continue with Google</Text>
+        </TouchableOpacity>
+
+        {Platform.OS === "ios" && (
+          <TouchableOpacity
+            style={[styles.socialButton, styles.appleButton]}
+            onPress={() => handleSocialAuth("apple")}
+            disabled={loading}
+          >
+            <Text style={[styles.socialButtonText, styles.appleButtonText]}>
+              Continue with Apple
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Text style={styles.title}>
-            {mode === "signin" ? "Sign In" : "Sign Up"}
-          </Text>
-
-          {mode === "signup" && (
-            <TextInput
-              style={styles.input}
-              placeholder="Name (optional)"
-              value={name}
-              onChangeText={setName}
-              autoCapitalize="words"
-            />
-          )}
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-
-          <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.buttonDisabled]}
-            onPress={handleEmailAuth}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryButtonText}>
-                {mode === "signin" ? "Sign In" : "Sign Up"}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.switchModeButton}
-            onPress={() => setMode(mode === "signin" ? "signup" : "signin")}
-          >
-            <Text style={styles.switchModeText}>
-              {mode === "signin"
-                ? "Don't have an account? Sign Up"
-                : "Already have an account? Sign In"}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or continue with</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={() => handleSocialAuth("google")}
-            disabled={loading}
-          >
-            <Text style={styles.socialButtonText}>Continue with Google</Text>
-          </TouchableOpacity>
-
-          {Platform.OS === "ios" && (
-            <TouchableOpacity
-              style={[styles.socialButton, styles.appleButton]}
-              onPress={() => handleSocialAuth("apple")}
-              disabled={loading}
-            >
-              <Text style={[styles.socialButtonText, styles.appleButtonText]}>
-                Continue with Apple
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {mode === "forgot" ? renderForgotPasswordScreen() : renderAuthScreen()}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -199,9 +279,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: "bold",
-    marginBottom: 32,
+    marginBottom: 12,
     textAlign: "center",
     color: "#000",
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 22,
   },
   input: {
     height: 50,
@@ -212,6 +299,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontSize: 16,
     backgroundColor: "#fff",
+  },
+  forgotPasswordButton: {
+    alignSelf: "flex-end",
+    marginBottom: 8,
+  },
+  forgotPasswordText: {
+    color: "#007AFF",
+    fontSize: 14,
+    fontWeight: "500",
   },
   primaryButton: {
     height: 50,
