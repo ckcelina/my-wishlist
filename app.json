@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "WishZen",
-    "slug": "WishZen",
+    "name": "My Wishlist",
+    "slug": "My Wishlist",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
@@ -45,5 +45,5 @@
       "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
     }
   },
-  "scheme": "wishzen"
+  "scheme": "My Wishlist"
 }
