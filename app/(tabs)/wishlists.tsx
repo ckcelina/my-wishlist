@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { Logo } from '@/components/Logo';
 import { Button } from '@/components/design-system/Button';
 import { Card } from '@/components/design-system/Card';
 import { EmptyState } from '@/components/design-system/EmptyState';
@@ -293,7 +294,8 @@ export default function WishlistsScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <OfflineNotice />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Wishlists</Text>
+          <Logo size="small" style={styles.logo} />
+          <Text style={styles.headerTitle}>Your Wishlists</Text>
         </View>
         <ScrollView style={styles.content}>
           <ListItemSkeleton />
@@ -309,7 +311,8 @@ export default function WishlistsScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <OfflineNotice />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Wishlists</Text>
+          <Logo size="small" style={styles.logo} />
+          <Text style={styles.headerTitle}>Your Wishlists</Text>
         </View>
         <ErrorState
           title="Failed to load wishlists"
@@ -329,16 +332,10 @@ export default function WishlistsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <OfflineNotice />
+      
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Wishlists</Text>
-        <TouchableOpacity onPress={openCreateModal} style={styles.headerButton}>
-          <IconSymbol
-            ios_icon_name="add"
-            android_material_icon_name="add"
-            size={28}
-            color={colors.primary}
-          />
-        </TouchableOpacity>
+        <Logo size="small" style={styles.logo} />
+        <Text style={styles.headerTitle}>Your Wishlists</Text>
       </View>
 
       <ScrollView
@@ -350,8 +347,8 @@ export default function WishlistsScreen() {
         {wishlists.length === 0 ? (
           <EmptyState
             icon="favorite-border"
-            title="No wishlists yet"
-            description="Create your first wishlist to start saving items you love"
+            title="Start your first wishlist"
+            description="Create a wishlist to save items you love from any app or website"
             actionLabel="Create Wishlist"
             onAction={openCreateModal}
           />
@@ -407,20 +404,18 @@ export default function WishlistsScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      <View style={styles.fabContainer}>
-        <TouchableOpacity
-          style={styles.fab}
-          onPress={openCreateModal}
-          activeOpacity={0.8}
-        >
-          <IconSymbol
-            ios_icon_name="add"
-            android_material_icon_name="add"
-            size={28}
-            color={colors.textInverse}
-          />
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={openCreateModal}
+        activeOpacity={0.8}
+      >
+        <IconSymbol
+          ios_icon_name="add"
+          android_material_icon_name="add"
+          size={28}
+          color={colors.textInverse}
+        />
+      </TouchableOpacity>
 
       <Modal
         visible={createModalVisible}
@@ -520,17 +515,19 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 48 : 0,
   },
   header: {
-    ...containerStyles.spaceBetween,
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  logo: {
+    marginBottom: spacing.sm,
+  },
   headerTitle: {
     ...typography.titleLarge,
-  },
-  headerButton: {
-    padding: spacing.xs,
+    textAlign: 'center',
   },
   content: {
     flex: 1,
@@ -583,17 +580,16 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 100,
   },
-  fabContainer: {
+  fab: {
     position: 'absolute',
     bottom: 100,
     right: spacing.md,
-  },
-  fab: {
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.primary,
-    ...containerStyles.center,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: colors.shadowDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 1,

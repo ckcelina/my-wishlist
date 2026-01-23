@@ -9,10 +9,11 @@ interface CardProps {
   style?: ViewStyle;
   elevated?: boolean;
   flat?: boolean;
+  interactive?: boolean;
   onPress?: () => void;
 }
 
-export function Card({ children, style, elevated = false, flat = false, onPress }: CardProps) {
+export function Card({ children, style, elevated = false, flat = false, interactive = false, onPress }: CardProps) {
   const { theme } = useAppTheme();
   const componentStyles = createComponentStyles(theme);
   
@@ -23,7 +24,7 @@ export function Card({ children, style, elevated = false, flat = false, onPress 
     style,
   ];
   
-  if (onPress) {
+  if (onPress || interactive) {
     return (
       <Pressable
         onPress={onPress}
