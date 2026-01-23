@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Stack } from 'expo-router';
 import FloatingTabBar, { TabBarItem } from '@/components/FloatingTabBar';
@@ -11,6 +12,12 @@ export default function TabLayout() {
       route: '/(tabs)/wishlists',
       icon: 'favorite',
       label: 'Wishlists',
+    },
+    {
+      name: 'add',
+      route: '/(tabs)/add',
+      icon: 'add-circle',
+      label: 'Add',
     },
     {
       name: 'profile',
@@ -30,6 +37,7 @@ export default function TabLayout() {
         }}
       >
         <Stack.Screen key="wishlists" name="wishlists" />
+        <Stack.Screen key="add" name="add" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>
       <FloatingTabBar tabs={tabs} />

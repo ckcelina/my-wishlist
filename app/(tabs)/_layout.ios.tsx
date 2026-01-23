@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
 
@@ -7,6 +8,10 @@ export default function TabLayout() {
       <NativeTabs.Trigger key="wishlists" name="wishlists">
         <Icon sf="heart.fill" />
         <Label>Wishlists</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger key="add" name="add">
+        <Icon sf="plus.circle.fill" />
+        <Label>Add</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="profile" name="profile">
         <Icon sf="person.fill" />
