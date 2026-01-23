@@ -315,6 +315,40 @@ Do not include any markdown, explanations, or extra text.`,
           'Single item price checked'
         );
 
+        // Send notification if price dropped
+        if (priceChanged && oldPrice !== null && oldPrice > priceData.price) {
+          app.logger.info(
+            {
+              itemId: id,
+              userId,
+              oldPrice,
+              newPrice: priceData.price,
+            },
+            'Price dropped, triggering notification'
+          );
+
+          // Send notification asynchronously (don't wait for it)
+          fetch(`http://localhost:${process.env.PORT || 3000}/api/notifications/send-price-drop`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId,
+              itemId: id,
+              itemTitle: item.title,
+              oldPrice,
+              newPrice: priceData.price,
+              currency: priceData.currency,
+            }),
+          }).catch((err) => {
+            app.logger.warn(
+              { err, itemId: id },
+              'Failed to trigger price drop notification'
+            );
+          });
+        }
+
         return {
           success: true,
           priceChanged,

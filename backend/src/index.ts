@@ -6,6 +6,7 @@ import { registerWishlistRoutes } from './routes/wishlists.js';
 import { registerItemRoutes } from './routes/items.js';
 import { registerUploadRoutes } from './routes/upload.js';
 import { registerPricingRoutes } from './routes/pricing.js';
+import { registerNotificationRoutes } from './routes/notifications.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -28,6 +29,7 @@ registerWishlistRoutes(app);
 registerItemRoutes(app);
 registerUploadRoutes(app);
 registerPricingRoutes(app);
+registerNotificationRoutes(app);
 
 await app.run();
 app.logger.info('Application running');

@@ -6,6 +6,7 @@ import {
   decimal,
   index,
   unique,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { user } from './auth-schema.js';
@@ -90,6 +91,28 @@ export const sharedWishlists = pgTable(
   (table) => [index('shared_wishlists_wishlist_id_idx').on(table.wishlistId)]
 );
 
+// User settings table
+export const userSettings = pgTable(
+  'user_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .unique()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    priceDropAlertsEnabled: boolean('price_drop_alerts_enabled').default(false).notNull(),
+    expoPushToken: text('expo_push_token'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('user_settings_user_id_idx').on(table.userId)]
+);
+
 // Relations
 export const wishlistsRelations = relations(wishlists, ({ many, one }) => ({
   items: many(wishlistItems),
@@ -130,3 +153,10 @@ export const sharedWishlistsRelations = relations(
     }),
   })
 );
+
+export const userSettingsRelations = relations(userSettings, ({ one }) => ({
+  user: one(user, {
+    fields: [userSettings.userId],
+    references: [user.id],
+  }),
+}));
