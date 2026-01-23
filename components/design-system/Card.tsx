@@ -1,54 +1,57 @@
 
 import React from 'react';
-import { View, TouchableOpacity, ViewStyle } from 'react-native';
-import { cardStyles } from '@/styles/designSystem';
+import { View, StyleSheet, ViewStyle, Pressable } from 'react-native';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { createComponentStyles } from '@/styles/theme';
 
 interface CardProps {
   children: React.ReactNode;
-  variant?: 'base' | 'elevated' | 'flat';
-  interactive?: boolean;
-  onPress?: () => void;
   style?: ViewStyle;
+  elevated?: boolean;
+  flat?: boolean;
+  onPress?: () => void;
 }
 
-export function Card({
-  children,
-  variant = 'base',
-  interactive = false,
-  onPress,
-  style,
-}: CardProps) {
-  const getCardStyle = () => {
-    const baseStyle = [cardStyles.base];
-    
-    if (variant === 'elevated') {
-      baseStyle.push(cardStyles.elevated);
-    } else if (variant === 'flat') {
-      baseStyle.push(cardStyles.flat);
-    }
-    
-    if (interactive) {
-      baseStyle.push(cardStyles.interactive);
-    }
-    
-    if (style) {
-      baseStyle.push(style);
-    }
-    
-    return baseStyle;
-  };
+export function Card({ children, style, elevated = false, flat = false, onPress }: CardProps) {
+  const { theme } = useAppTheme();
+  const componentStyles = createComponentStyles(theme);
   
-  if (interactive && onPress) {
+  const cardStyle = [
+    componentStyles.card,
+    elevated && styles.elevated,
+    flat && styles.flat,
+    style,
+  ];
+  
+  if (onPress) {
     return (
-      <TouchableOpacity
-        style={getCardStyle()}
+      <Pressable
         onPress={onPress}
-        activeOpacity={0.7}
+        style={({ pressed }) => [
+          cardStyle,
+          pressed && styles.pressed,
+        ]}
       >
         {children}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
   
-  return <View style={getCardStyle()}>{children}</View>;
+  return <View style={cardStyle}>{children}</View>;
 }
+
+const styles = StyleSheet.create({
+  elevated: {
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  flat: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+});

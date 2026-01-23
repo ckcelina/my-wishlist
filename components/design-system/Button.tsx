@@ -1,7 +1,8 @@
 
 import React from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
-import { buttonStyles, colors } from '@/styles/designSystem';
+import { Pressable, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { createComponentStyles, createTypography } from '@/styles/theme';
 
 interface ButtonProps {
   title: string;
@@ -22,66 +23,53 @@ export function Button({
   style,
   textStyle,
 }: ButtonProps) {
-  const getButtonStyle = () => {
-    const baseStyle = [buttonStyles.base];
-    
-    if (variant === 'primary') {
-      baseStyle.push(buttonStyles.primary);
-    } else if (variant === 'secondary') {
-      baseStyle.push(buttonStyles.secondary);
-    } else if (variant === 'destructive') {
-      baseStyle.push(buttonStyles.destructive);
-    } else if (variant === 'ghost') {
-      baseStyle.push(buttonStyles.ghost);
-    }
-    
-    if (disabled || loading) {
-      baseStyle.push(buttonStyles.disabled);
-    }
-    
-    if (style) {
-      baseStyle.push(style);
-    }
-    
-    return baseStyle;
-  };
+  const { theme } = useAppTheme();
+  const componentStyles = createComponentStyles(theme);
+  const typography = createTypography(theme);
   
-  const getTextStyle = () => {
-    const baseTextStyle = [];
-    
-    if (variant === 'primary') {
-      baseTextStyle.push(buttonStyles.primaryText);
-    } else if (variant === 'secondary') {
-      baseTextStyle.push(buttonStyles.secondaryText);
-    } else if (variant === 'destructive') {
-      baseTextStyle.push(buttonStyles.destructiveText);
-    } else if (variant === 'ghost') {
-      baseTextStyle.push(buttonStyles.ghostText);
-    }
-    
-    if (textStyle) {
-      baseTextStyle.push(textStyle);
-    }
-    
-    return baseTextStyle;
-  };
+  const isDisabled = disabled || loading;
   
-  const spinnerColor = variant === 'secondary' || variant === 'ghost' 
-    ? colors.primary 
-    : colors.textInverse;
+  const buttonStyle = [
+    componentStyles.button,
+    variant === 'secondary' && componentStyles.buttonSecondary,
+    style,
+  ];
+  
+  const textColor = variant === 'primary' || variant === 'destructive' 
+    ? theme.colors.background 
+    : theme.colors.text;
+  
+  const buttonTextStyle = [
+    typography.button,
+    { color: textColor },
+    textStyle,
+  ];
   
   return (
-    <TouchableOpacity
-      style={getButtonStyle()}
+    <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.7}
+      disabled={isDisabled}
+      style={({ pressed }) => [
+        buttonStyle,
+        pressed && !isDisabled && styles.pressed,
+        isDisabled && styles.disabled,
+      ]}
     >
       {loading ? (
-        <ActivityIndicator color={spinnerColor} />
+        <ActivityIndicator color={textColor} />
       ) : (
-        <Text style={getTextStyle()}>{title}</Text>
+        <Text style={buttonTextStyle}>{title}</Text>
       )}
-    </TouchableOpacity>
+    </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+});

@@ -4,8 +4,8 @@ import { colors as designSystemColors } from './designSystem';
 
 // Export design system colors for backward compatibility
 export const colors = {
-  primary: designSystemColors.primary,
-  secondary: designSystemColors.primary,
+  primary: designSystemColors.accent,
+  secondary: designSystemColors.accent,
   accent: designSystemColors.accent,
   background: designSystemColors.background,
   backgroundAlt: designSystemColors.backgroundAlt,

@@ -1,16 +1,32 @@
 
 import React from 'react';
-import { View } from 'react-native';
-import { dividerStyles } from '@/styles/designSystem';
+import { View, StyleSheet, ViewStyle } from 'react-native';
+import { useAppTheme } from '@/contexts/ThemeContext';
 
 interface DividerProps {
-  orientation?: 'horizontal' | 'vertical';
+  style?: ViewStyle;
+  vertical?: boolean;
 }
 
-export function Divider({ orientation = 'horizontal' }: DividerProps) {
-  const dividerStyle = orientation === 'horizontal' 
-    ? dividerStyles.horizontal 
-    : dividerStyles.vertical;
+export function Divider({ style, vertical = false }: DividerProps) {
+  const { theme } = useAppTheme();
+  
+  const dividerStyle = vertical
+    ? [styles.vertical, { backgroundColor: theme.colors.divider }, style]
+    : [styles.horizontal, { backgroundColor: theme.colors.divider }, style];
   
   return <View style={dividerStyle} />;
 }
+
+const styles = StyleSheet.create({
+  horizontal: {
+    height: 1,
+    width: '100%',
+    marginVertical: 16,
+  },
+  vertical: {
+    width: 1,
+    height: '100%',
+    marginHorizontal: 16,
+  },
+});

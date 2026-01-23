@@ -1,3 +1,4 @@
+
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
@@ -12,54 +13,68 @@ import {
   DarkTheme,
   DefaultTheme,
   Theme,
-  ThemeProvider,
+  ThemeProvider as NavigationThemeProvider,
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BACKEND_URL } from "@/utils/api";
-// Note: Error logging is auto-initialized via index.ts import
+import {
+  PlayfairDisplay_400Regular,
+  PlayfairDisplay_700Bold,
+} from '@expo-google-fonts/playfair-display';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)", // Start with tabs (auth will redirect if needed)
+  initialRouteName: "(tabs)",
 };
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const router = useRouter();
-  const [loaded] = useFonts({
+  
+  const [fontsLoaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+    PlayfairDisplay_400Regular,
+    PlayfairDisplay_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
   });
 
   useEffect(() => {
-    if (loaded) {
+    if (fontsLoaded) {
+      console.log('[App] Fonts loaded successfully');
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [fontsLoaded]);
 
   useEffect(() => {
-    // Log backend URL for debugging
     console.log('[App] Backend URL configured:', BACKEND_URL);
-  }, []);
+    console.log('[App] Current color scheme:', colorScheme);
+  }, [colorScheme]);
 
-  // Set up notification handlers
   useEffect(() => {
     console.log('[App] Setting up notification handlers');
 
-    // Handle notifications received while app is in foreground
     const notificationListener = Notifications.addNotificationReceivedListener(notification => {
       console.log('[App] Notification received in foreground:', notification);
     });
 
-    // Handle notification taps
     const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
       console.log('[App] Notification tapped:', response);
       
-      // Navigate to item detail if itemId is in the notification data
       const itemId = response.notification.request.content.data?.itemId;
       if (itemId && typeof itemId === 'string') {
         console.log('[App] Navigating to item:', itemId);
@@ -67,7 +82,6 @@ export default function RootLayout() {
       }
     });
 
-    // Check if app was opened from a notification
     Notifications.getLastNotificationResponseAsync().then(response => {
       if (response) {
         console.log('[App] App opened from notification:', response);
@@ -97,97 +111,96 @@ export default function RootLayout() {
     }
   }, [networkState.isConnected, networkState.isInternetReachable]);
 
-  if (!loaded) {
+  if (!fontsLoaded) {
     return null;
   }
 
-  const CustomDefaultTheme: Theme = {
+  // Custom theme for My Wishlist
+  const CustomLightTheme: Theme = {
     ...DefaultTheme,
     dark: false,
     colors: {
-      primary: "rgb(0, 122, 255)", // System Blue
-      background: "rgb(242, 242, 247)", // Light mode background
-      card: "rgb(255, 255, 255)", // White cards/surfaces
-      text: "rgb(0, 0, 0)", // Black text for light mode
-      border: "rgb(216, 216, 220)", // Light gray for separators/borders
-      notification: "rgb(255, 59, 48)", // System Red
+      primary: "#3b2a1f",
+      background: "#ede8e3",
+      card: "#ffffff",
+      text: "#3b2a1f",
+      border: "rgba(0,0,0,0.08)",
+      notification: "#FF3B30",
     },
   };
 
   const CustomDarkTheme: Theme = {
     ...DarkTheme,
+    dark: true,
     colors: {
-      primary: "rgb(10, 132, 255)", // System Blue (Dark Mode)
-      background: "rgb(1, 1, 1)", // True black background for OLED displays
-      card: "rgb(28, 28, 30)", // Dark card/surface color
-      text: "rgb(255, 255, 255)", // White text for dark mode
-      border: "rgb(44, 44, 46)", // Dark gray for separators/borders
-      notification: "rgb(255, 69, 58)", // System Red (Dark Mode)
+      primary: "#FFFFFF",
+      background: "#765943",
+      card: "rgba(255,255,255,0.08)",
+      text: "#FFFFFF",
+      border: "rgba(255,255,255,0.15)",
+      notification: "#FF3B30",
     },
   };
+
   return (
     <>
       <StatusBar style="auto" animated />
-        <ThemeProvider
-          value={colorScheme === "dark" ? CustomDarkTheme : CustomDefaultTheme}
-        >
+      <NavigationThemeProvider
+        value={colorScheme === "dark" ? CustomDarkTheme : CustomLightTheme}
+      >
+        <ThemeProvider>
           <AuthProvider>
             <WidgetProvider>
               <GestureHandlerRootView>
-              <Stack>
-                {/* Auth screens */}
-                <Stack.Screen name="auth" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                
-                {/* Main app with tabs */}
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                
-                {/* Wishlist detail screen */}
-                <Stack.Screen 
-                  name="wishlist/[id]" 
-                  options={{ 
-                    headerShown: true,
-                    title: 'Wishlist',
-                    headerBackTitle: 'Back'
-                  }} 
-                />
-                
-                {/* Item detail screen */}
-                <Stack.Screen 
-                  name="item/[id]" 
-                  options={{ 
-                    headerShown: true,
-                    title: 'Item Details',
-                    headerBackTitle: 'Back'
-                  }} 
-                />
-                
-                {/* Shared wishlist view screen (public, no auth required) */}
-                <Stack.Screen 
-                  name="shared/[shareSlug]" 
-                  options={{ 
-                    headerShown: true,
-                    title: 'Shared Wishlist',
-                    headerBackTitle: 'Back'
-                  }} 
-                />
-                
-                {/* Alert settings screen */}
-                <Stack.Screen 
-                  name="alerts" 
-                  options={{ 
-                    headerShown: true,
-                    title: 'Alert Settings',
-                    headerBackTitle: 'Back'
-                  }} 
-                />
-              </Stack>
-              <SystemBars style={"auto"} />
+                <Stack>
+                  <Stack.Screen name="auth" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  
+                  <Stack.Screen 
+                    name="wishlist/[id]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Wishlist',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="item/[id]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Item Details',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="shared/[shareSlug]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Shared Wishlist',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="alerts" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Alert Settings',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                </Stack>
+                <SystemBars style={"auto"} />
               </GestureHandlerRootView>
             </WidgetProvider>
           </AuthProvider>
         </ThemeProvider>
+      </NavigationThemeProvider>
     </>
   );
 }

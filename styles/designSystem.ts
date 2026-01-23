@@ -1,54 +1,66 @@
 
 import { StyleSheet, TextStyle, ViewStyle } from 'react-native';
+import { Theme, lightTheme, darkTheme } from './theme';
 
 // ═══════════════════════════════════════════════════════
-// 🎨 DESIGN TOKENS - Premium, Calm, Modern Aesthetic
+// 🎨 DESIGN SYSTEM - MY WISHLIST
+// ═══════════════════════════════════════════════════════
+
+// Export theme utilities
+export { lightTheme, darkTheme };
+export type { Theme };
+
+// Default to light theme for static exports (components should use useAppTheme hook)
+const defaultTheme = lightTheme;
+
+// ═══════════════════════════════════════════════════════
+// 🎨 COLORS - Backward compatibility
 // ═══════════════════════════════════════════════════════
 
 export const colors = {
-  // Primary palette - Soft, calming colors
-  primary: '#6366F1',           // Soft Indigo - primary actions
-  primaryLight: '#818CF8',      // Light Indigo - hover states
-  primaryDark: '#4F46E5',       // Dark Indigo - pressed states
+  // Primary palette
+  primary: '#6366F1',
+  primaryLight: '#818CF8',
+  primaryDark: '#4F46E5',
   
-  // Neutral palette - Soft, breathable backgrounds
-  background: '#FAFAFA',        // Soft neutral background
-  backgroundAlt: '#F5F5F5',     // Alternate background
-  surface: '#FFFFFF',           // Card/surface background
+  // Neutral palette
+  background: defaultTheme.colors.background,
+  backgroundAlt: defaultTheme.colors.backgroundSecondary,
+  surface: defaultTheme.colors.card,
   
   // Text hierarchy
-  textPrimary: '#1F2937',       // Primary text - dark gray
-  textSecondary: '#6B7280',     // Secondary text - medium gray
-  textTertiary: '#9CA3AF',      // Tertiary text - light gray
-  textInverse: '#FFFFFF',       // Text on dark backgrounds
+  textPrimary: defaultTheme.colors.text,
+  textSecondary: defaultTheme.colors.textSecondary,
+  textTertiary: 'rgba(59,42,31,0.5)',
+  textInverse: '#FFFFFF',
   
   // Borders and dividers
-  border: '#E5E7EB',            // Subtle borders
-  borderLight: '#F3F4F6',       // Very light borders
-  divider: '#E5E7EB',           // Dividers
+  border: defaultTheme.colors.border,
+  borderLight: 'rgba(0,0,0,0.05)',
+  divider: defaultTheme.colors.divider,
   
   // Semantic colors
-  success: '#10B981',           // Success green
-  successLight: '#D1FAE5',      // Success background
-  warning: '#F59E0B',           // Warning amber
-  warningLight: '#FEF3C7',      // Warning background
-  error: '#EF4444',             // Error red
-  errorLight: '#FEE2E2',        // Error background
-  info: '#3B82F6',              // Info blue
-  infoLight: '#DBEAFE',         // Info background
+  success: defaultTheme.colors.success,
+  successLight: '#D1FAE5',
+  warning: defaultTheme.colors.warning,
+  warningLight: '#FEF3C7',
+  error: defaultTheme.colors.error,
+  errorLight: '#FEE2E2',
+  info: defaultTheme.colors.info,
+  infoLight: '#DBEAFE',
   
   // Accent colors
-  accent: '#EC4899',            // Pink accent
-  accentLight: '#FCE7F3',       // Light pink
+  accent: defaultTheme.colors.accent,
+  accentLight: defaultTheme.colors.accentLight,
   
-  // Shadows (for elevation)
+  // Shadows
   shadowLight: 'rgba(0, 0, 0, 0.05)',
   shadowMedium: 'rgba(0, 0, 0, 0.1)',
   shadowDark: 'rgba(0, 0, 0, 0.15)',
 };
 
 // ═══════════════════════════════════════════════════════
-// 📏 SPACING SCALE - Consistent spacing throughout the app
+// 📏 SPACING SCALE
 // ═══════════════════════════════════════════════════════
 
 export const spacing = {
@@ -62,14 +74,14 @@ export const spacing = {
 };
 
 // ═══════════════════════════════════════════════════════
-// 🔤 TYPOGRAPHY HIERARCHY - Clear text hierarchy
+// 🔤 TYPOGRAPHY HIERARCHY
 // ═══════════════════════════════════════════════════════
 
 export const typography = StyleSheet.create({
-  // Display text - Large, bold headings
+  // Display text - Large, elegant headings (Playfair Display)
   displayLarge: {
     fontSize: 32,
-    fontWeight: '700',
+    fontWeight: '400',
     lineHeight: 40,
     color: colors.textPrimary,
     letterSpacing: -0.5,
@@ -77,16 +89,16 @@ export const typography = StyleSheet.create({
   
   displayMedium: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: '400',
     lineHeight: 36,
     color: colors.textPrimary,
     letterSpacing: -0.5,
   } as TextStyle,
   
-  // Titles - Section headings
+  // Titles - Section headings (Playfair Display)
   titleLarge: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '400',
     lineHeight: 32,
     color: colors.textPrimary,
     letterSpacing: -0.3,
@@ -94,7 +106,7 @@ export const typography = StyleSheet.create({
   
   titleMedium: {
     fontSize: 20,
-    fontWeight: '600',
+    fontWeight: '400',
     lineHeight: 28,
     color: colors.textPrimary,
     letterSpacing: -0.2,
@@ -102,12 +114,12 @@ export const typography = StyleSheet.create({
   
   titleSmall: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '400',
     lineHeight: 24,
     color: colors.textPrimary,
   } as TextStyle,
   
-  // Body text - Regular content
+  // Body text - Regular content (Inter)
   bodyLarge: {
     fontSize: 16,
     fontWeight: '400',
@@ -168,11 +180,10 @@ export const typography = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 🔘 BUTTON STYLES - Primary, Secondary, Destructive
+// 🔘 BUTTON STYLES
 // ═══════════════════════════════════════════════════════
 
 export const buttonStyles = StyleSheet.create({
-  // Base button style
   base: {
     borderRadius: 12,
     paddingVertical: spacing.md,
@@ -183,9 +194,8 @@ export const buttonStyles = StyleSheet.create({
     gap: spacing.sm,
   } as ViewStyle,
   
-  // Primary button - Main CTAs
   primary: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.accent,
     shadowColor: colors.shadowMedium,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
@@ -197,7 +207,6 @@ export const buttonStyles = StyleSheet.create({
     backgroundColor: colors.primaryDark,
   } as ViewStyle,
   
-  // Secondary button - Less prominent actions
   secondary: {
     backgroundColor: colors.surface,
     borderWidth: 1.5,
@@ -209,7 +218,6 @@ export const buttonStyles = StyleSheet.create({
     borderColor: colors.textTertiary,
   } as ViewStyle,
   
-  // Destructive button - Delete, remove actions
   destructive: {
     backgroundColor: colors.error,
     shadowColor: colors.shadowMedium,
@@ -223,7 +231,6 @@ export const buttonStyles = StyleSheet.create({
     backgroundColor: '#DC2626',
   } as ViewStyle,
   
-  // Ghost button - Minimal style
   ghost: {
     backgroundColor: 'transparent',
   } as ViewStyle,
@@ -232,12 +239,10 @@ export const buttonStyles = StyleSheet.create({
     backgroundColor: colors.backgroundAlt,
   } as ViewStyle,
   
-  // Disabled state
   disabled: {
     opacity: 0.5,
   } as ViewStyle,
   
-  // Button text styles
   primaryText: {
     ...typography.buttonMedium,
     color: colors.textInverse,
@@ -260,7 +265,7 @@ export const buttonStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 🃏 CARD STYLES - Subtle shadows and rounded corners
+// 🃏 CARD STYLES
 // ═══════════════════════════════════════════════════════
 
 export const cardStyles = StyleSheet.create({
@@ -302,7 +307,7 @@ export const cardStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 📦 CONTAINER STYLES - Layout containers
+// 📦 CONTAINER STYLES
 // ═══════════════════════════════════════════════════════
 
 export const containerStyles = StyleSheet.create({
@@ -344,7 +349,7 @@ export const containerStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 🔲 INPUT STYLES - Form inputs
+// 🔲 INPUT STYLES
 // ═══════════════════════════════════════════════════════
 
 export const inputStyles = StyleSheet.create({
@@ -379,7 +384,7 @@ export const inputStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 🏷️ BADGE STYLES - Status badges
+// 🏷️ BADGE STYLES
 // ═══════════════════════════════════════════════════════
 
 export const badgeStyles = StyleSheet.create({
