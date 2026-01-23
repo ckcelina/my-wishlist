@@ -1233,4 +1233,406 @@ Do not include any markdown, explanations, or extra text.`,
       }
     }
   );
+
+  // Helper function to extract domain from URL
+  function extractDomain(url: string): string | null {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.hostname;
+    } catch {
+      return null;
+    }
+  }
+
+  // Helper function to check if store is available in location
+  async function isStoreAvailableInLocation(
+    domain: string,
+    countryCode: string | null,
+    city: string | null
+  ): Promise<{ available: boolean; reason?: string }> {
+    // If no location provided, assume available
+    if (!countryCode) {
+      return { available: true };
+    }
+
+    // Check if store exists in database
+    const dbStore = await app.db.query.stores.findFirst({
+      where: eq(schema.stores.domain, domain),
+      with: {
+        shippingRules: true,
+      },
+    });
+
+    // If store not in database, assume available (graceful fallback)
+    if (!dbStore) {
+      return { available: true };
+    }
+
+    // Parse countriesSupported
+    const supportedCountries = typeof dbStore.countriesSupported === 'string'
+      ? JSON.parse(dbStore.countriesSupported)
+      : dbStore.countriesSupported;
+
+    // Check if country is supported
+    if (!supportedCountries.includes(countryCode)) {
+      return {
+        available: false,
+        reason: 'Store does not ship to this country',
+      };
+    }
+
+    // Check shipping rules for this country
+    const shippingRule = dbStore.shippingRules.find(
+      (rule) => rule.countryCode === countryCode
+    );
+
+    if (shippingRule && !shippingRule.shipsToCountry) {
+      return {
+        available: false,
+        reason: 'Store does not ship to this country',
+      };
+    }
+
+    // If store requires city, check city filtering
+    if (dbStore.requiresCity && city && shippingRule) {
+      // Parse city blacklist
+      const blacklist = shippingRule.cityBlacklist
+        ? (typeof shippingRule.cityBlacklist === 'string'
+            ? JSON.parse(shippingRule.cityBlacklist)
+            : shippingRule.cityBlacklist)
+        : null;
+
+      // Check city blacklist
+      if (blacklist && blacklist.includes(city)) {
+        return {
+          available: false,
+          reason: 'Store does not ship to your city',
+        };
+      }
+
+      // Parse city whitelist
+      const whitelist = shippingRule.cityWhitelist
+        ? (typeof shippingRule.cityWhitelist === 'string'
+            ? JSON.parse(shippingRule.cityWhitelist)
+            : shippingRule.cityWhitelist)
+        : null;
+
+      // Check city whitelist
+      if (whitelist && whitelist.length > 0 && !whitelist.includes(city)) {
+        return {
+          available: false,
+          reason: 'Store does not ship to your city',
+        };
+      }
+
+      if (!shippingRule.shipsToCity) {
+        return {
+          available: false,
+          reason: 'Store does not ship to your city',
+        };
+      }
+    }
+
+    return { available: true };
+  }
+
+  // POST /api/items/find-alternatives - Find alternative sellers for a product
+  app.fastify.post(
+    '/api/items/find-alternatives',
+    {
+      schema: {
+        description: 'Find alternative sellers for a product',
+        tags: ['items'],
+        body: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' },
+            originalUrl: { type: 'string' },
+            countryCode: { type: 'string' },
+            city: { type: 'string' },
+          },
+          required: ['title'],
+        },
+        response: {
+          200: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                storeName: { type: 'string' },
+                domain: { type: 'string' },
+                price: { type: 'number' },
+                currency: { type: 'string' },
+                url: { type: 'string' },
+                availability: { type: 'string', enum: ['available', 'unavailable'] },
+                reason: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          title: string;
+          originalUrl?: string;
+          countryCode?: string;
+          city?: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const { title, originalUrl, countryCode, city } = request.body;
+
+      app.logger.info(
+        { title, countryCode, city },
+        'Finding alternative sellers'
+      );
+
+      try {
+        // Use GPT-5.2 to generate realistic alternative store options
+        const result = await generateText({
+          model: gateway('openai/gpt-5.2'),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Help me find sellers for this product.
+
+Product Title: "${title}"
+
+Generate a JSON array of 5-10 realistic online stores that would likely sell this product. Include major retailers and marketplaces.
+
+For each store, provide:
+- storeName: The official store name (e.g., "Amazon", "eBay", "Walmart")
+- domain: The website domain (e.g., "amazon.com", "ebay.com")
+- price: A realistic price for this product
+- currency: The currency code (e.g., "USD")
+- url: A realistic product URL format for that store
+
+Return ONLY valid JSON in this exact format:
+[
+  { "storeName": "...", "domain": "...", "price": number, "currency": "...", "url": "..." },
+  ...
+]
+
+Do not include any markdown, explanations, or extra text.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        // Parse the response
+        const aiStores = JSON.parse(result.text);
+
+        // Validate the response structure
+        if (!Array.isArray(aiStores)) {
+          throw new Error('Invalid response format from AI');
+        }
+
+        const validatedStores = aiStores
+          .filter(
+            (store: any) =>
+              store.storeName &&
+              store.domain &&
+              typeof store.price === 'number' &&
+              store.currency &&
+              store.url
+          )
+          .slice(0, 10);
+
+        // Check availability for each store
+        const storesWithAvailability = await Promise.all(
+          validatedStores.map(async (store: any) => {
+            const { available, reason } = await isStoreAvailableInLocation(
+              store.domain,
+              countryCode || null,
+              city || null
+            );
+
+            return {
+              storeName: store.storeName,
+              domain: store.domain,
+              price: store.price,
+              currency: store.currency,
+              url: store.url,
+              availability: available ? 'available' : 'unavailable',
+              reason,
+            };
+          })
+        );
+
+        // Filter to only return available stores
+        const availableStores = storesWithAvailability.filter(
+          (store) => store.availability === 'available'
+        );
+
+        app.logger.info(
+          {
+            title,
+            totalFound: validatedStores.length,
+            availableCount: availableStores.length,
+            countryCode,
+          },
+          'Alternative sellers found'
+        );
+
+        return availableStores;
+      } catch (error) {
+        app.logger.error(
+          { err: error, title },
+          'Failed to find alternative sellers'
+        );
+        return reply.status(400).send({
+          error: 'Failed to find alternative sellers',
+        });
+      }
+    }
+  );
+
+  // POST /api/items/identify-from-image - Identify product from image
+  app.fastify.post(
+    '/api/items/identify-from-image',
+    {
+      schema: {
+        description: 'Identify a product from an image',
+        tags: ['items'],
+        body: {
+          type: 'object',
+          properties: {
+            imageUrl: { type: 'string' },
+            imageBase64: { type: 'string' },
+          },
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              bestGuessTitle: { type: ['string', 'null'] },
+              bestGuessCategory: { type: ['string', 'null'] },
+              keywords: { type: 'array', items: { type: 'string' } },
+              confidence: { type: 'number' },
+              suggestedProducts: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    imageUrl: { type: ['string', 'null'] },
+                    likelyUrl: { type: ['string', 'null'] },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          imageUrl?: string;
+          imageBase64?: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const { imageUrl, imageBase64 } = request.body;
+
+      if (!imageUrl && !imageBase64) {
+        return reply.status(400).send({
+          error: 'Either imageUrl or imageBase64 is required',
+        });
+      }
+
+      app.logger.info(
+        { hasUrl: !!imageUrl, hasBase64: !!imageBase64 },
+        'Identifying product from image'
+      );
+
+      try {
+        // Use GPT-5.2 vision to analyze the image
+        const result = await generateText({
+          model: gateway('openai/gpt-5.2'),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `Analyze this product image and identify what it is. Provide:
+1. Best guess title (or null if unclear)
+2. Best guess category (e.g., "Electronics", "Clothing", "Home & Garden")
+3. List of keywords that describe the product
+4. Confidence score (0 to 1) - how confident you are in the identification
+5. Up to 3 alternative product titles if not confident
+6. Likely URL patterns where this product might be found
+
+Return ONLY valid JSON in this exact format:
+{
+  "bestGuessTitle": "...",
+  "bestGuessCategory": "...",
+  "keywords": ["...", "..."],
+  "confidence": 0.95,
+  "suggestedProducts": [
+    { "title": "...", "imageUrl": null, "likelyUrl": null },
+    ...
+  ]
+}
+
+Note: imageUrl and likelyUrl should be null - we don't search for them.`,
+                },
+                imageUrl
+                  ? {
+                      type: 'image',
+                      image: imageUrl,
+                    }
+                  : {
+                      type: 'image',
+                      image: imageBase64 || '',
+                    },
+              ],
+            },
+          ],
+        });
+
+        // Parse the response
+        const identified = JSON.parse(result.text);
+
+        app.logger.info(
+          { title: identified.bestGuessTitle, confidence: identified.confidence },
+          'Product identified'
+        );
+
+        return {
+          bestGuessTitle: identified.bestGuessTitle || null,
+          bestGuessCategory: identified.bestGuessCategory || null,
+          keywords: Array.isArray(identified.keywords) ? identified.keywords : [],
+          confidence:
+            typeof identified.confidence === 'number'
+              ? Math.min(1, Math.max(0, identified.confidence))
+              : 0,
+          suggestedProducts: Array.isArray(identified.suggestedProducts)
+            ? identified.suggestedProducts.map((product: any) => ({
+                title: product.title || '',
+                imageUrl: product.imageUrl || null,
+                likelyUrl: product.likelyUrl || null,
+              }))
+            : [],
+        };
+      } catch (error) {
+        app.logger.error(
+          { err: error },
+          'Failed to identify product from image'
+        );
+        return reply.status(400).send({
+          error: 'Failed to identify product from image',
+        });
+      }
+    }
+  );
 }

@@ -262,6 +262,16 @@ ${htmlContent.substring(0, 8000)}`,
             properties: {
               success: { type: 'boolean' },
               createdCount: { type: 'number' },
+              warnings: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    warning: { type: 'string' },
+                  },
+                },
+              },
             },
           },
         },
@@ -298,12 +308,44 @@ ${htmlContent.substring(0, 8000)}`,
           return reply.status(404).send({ error: 'Wishlist not found' });
         }
 
-        // Insert items
+        // Get user's location for availability checks
+        const userLocation = await app.db.query.userLocation.findFirst({
+          where: eq(schema.userLocation.userId, userId),
+        });
+
+        // Insert items with availability checks
         let createdCount = 0;
+        const warnings: { title: string; warning: string }[] = [];
+
         for (const item of items) {
           try {
             const urlObj = new URL(item.productUrl);
             const sourceDomain = urlObj.hostname;
+
+            // Check store availability if user has location
+            if (userLocation && sourceDomain) {
+              const dbStore = await app.db.query.stores.findFirst({
+                where: eq(schema.stores.domain, sourceDomain),
+                with: { shippingRules: true },
+              });
+
+              if (dbStore) {
+                const supportedCountries = typeof dbStore.countriesSupported === 'string'
+                  ? JSON.parse(dbStore.countriesSupported)
+                  : dbStore.countriesSupported;
+
+                if (!supportedCountries.includes(userLocation.countryCode)) {
+                  warnings.push({
+                    title: item.title,
+                    warning: 'May not deliver to your location',
+                  });
+                  app.logger.debug(
+                    { domain: sourceDomain, countryCode: userLocation.countryCode },
+                    'Store not available in user location'
+                  );
+                }
+              }
+            }
 
             await app.db.insert(schema.wishlistItems).values({
               wishlistId,
@@ -326,13 +368,14 @@ ${htmlContent.substring(0, 8000)}`,
         }
 
         app.logger.info(
-          { wishlistId, createdCount },
+          { wishlistId, createdCount, warningCount: warnings.length },
           'Items imported successfully'
         );
 
         return {
           success: true,
           createdCount,
+          warnings,
         };
       } catch (error) {
         app.logger.error(
@@ -380,6 +423,16 @@ ${htmlContent.substring(0, 8000)}`,
               success: { type: 'boolean' },
               wishlistId: { type: 'string' },
               createdCount: { type: 'number' },
+              warnings: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    title: { type: 'string' },
+                    warning: { type: 'string' },
+                  },
+                },
+              },
             },
           },
         },
@@ -417,12 +470,44 @@ ${htmlContent.substring(0, 8000)}`,
 
         app.logger.info({ wishlistId: newWishlist.id }, 'Wishlist created');
 
-        // Insert items
+        // Get user's location for availability checks
+        const userLocation = await app.db.query.userLocation.findFirst({
+          where: eq(schema.userLocation.userId, userId),
+        });
+
+        // Insert items with availability checks
         let createdCount = 0;
+        const warnings: { title: string; warning: string }[] = [];
+
         for (const item of items) {
           try {
             const urlObj = new URL(item.productUrl);
             const sourceDomain = urlObj.hostname;
+
+            // Check store availability if user has location
+            if (userLocation && sourceDomain) {
+              const dbStore = await app.db.query.stores.findFirst({
+                where: eq(schema.stores.domain, sourceDomain),
+                with: { shippingRules: true },
+              });
+
+              if (dbStore) {
+                const supportedCountries = typeof dbStore.countriesSupported === 'string'
+                  ? JSON.parse(dbStore.countriesSupported)
+                  : dbStore.countriesSupported;
+
+                if (!supportedCountries.includes(userLocation.countryCode)) {
+                  warnings.push({
+                    title: item.title,
+                    warning: 'May not deliver to your location',
+                  });
+                  app.logger.debug(
+                    { domain: sourceDomain, countryCode: userLocation.countryCode },
+                    'Store not available in user location'
+                  );
+                }
+              }
+            }
 
             await app.db.insert(schema.wishlistItems).values({
               wishlistId: newWishlist.id,
@@ -445,7 +530,7 @@ ${htmlContent.substring(0, 8000)}`,
         }
 
         app.logger.info(
-          { wishlistId: newWishlist.id, createdCount },
+          { wishlistId: newWishlist.id, createdCount, warningCount: warnings.length },
           'Wishlist created and items imported'
         );
 
@@ -453,6 +538,7 @@ ${htmlContent.substring(0, 8000)}`,
           success: true,
           wishlistId: newWishlist.id,
           createdCount,
+          warnings,
         };
       } catch (error) {
         app.logger.error(
