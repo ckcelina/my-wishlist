@@ -39,6 +39,17 @@ const CURRENCY_OPTIONS = [
   { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
 ];
 
+interface UserLocation {
+  id: string;
+  userId: string;
+  countryCode: string;
+  countryName: string;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+  updatedAt: string;
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
@@ -48,6 +59,7 @@ export default function ProfileScreen() {
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
 
   const fetchSettings = useCallback(async () => {
     console.log('[ProfileScreen] Fetching user settings');
@@ -62,16 +74,27 @@ export default function ProfileScreen() {
       setDefaultCurrency(data.defaultCurrency || 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
-    } finally {
-      setLoading(false);
+    }
+  }, []);
+
+  const fetchLocation = useCallback(async () => {
+    console.log('[ProfileScreen] Fetching user location');
+    try {
+      const data = await authenticatedGet<UserLocation | null>('/api/users/location');
+      console.log('[ProfileScreen] Location fetched:', data);
+      setUserLocation(data);
+    } catch (error) {
+      console.error('[ProfileScreen] Error fetching location:', error);
     }
   }, []);
 
   useEffect(() => {
     if (user) {
-      fetchSettings();
+      Promise.all([fetchSettings(), fetchLocation()]).finally(() => {
+        setLoading(false);
+      });
     }
-  }, [user, fetchSettings]);
+  }, [user, fetchSettings, fetchLocation]);
 
   const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; defaultCurrency?: string }) => {
     console.log('[ProfileScreen] Updating settings:', updates);
@@ -161,12 +184,22 @@ export default function ProfileScreen() {
     Alert.alert('Terms of Service', 'Terms of service coming soon.');
   };
 
+  const handleEditLocation = () => {
+    console.log('[ProfileScreen] User tapped Edit Location');
+    haptics.light();
+    router.push('/location');
+  };
+
   const userNameText = user?.name || 'User';
   const userEmailText = user?.email || '';
   const userInitial = userNameText.charAt(0).toUpperCase();
   
   const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === defaultCurrency) || CURRENCY_OPTIONS[0];
   const currencyDisplayText = `${selectedCurrency.symbol} ${selectedCurrency.code}`;
+
+  const locationDisplayText = userLocation 
+    ? `${userLocation.countryName}${userLocation.city ? `, ${userLocation.city}` : ''}`
+    : 'Not set';
 
   if (loading) {
     return (
@@ -221,6 +254,44 @@ export default function ProfileScreen() {
               </View>
             </PressableScale>
           </Card>
+        </Animated.View>
+
+        {/* Shopping Location Section */}
+        <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.section}>
+          <Text style={styles.sectionTitle}>SHOPPING LOCATION</Text>
+          
+          <Card style={styles.card}>
+            <PressableScale
+              style={styles.menuItem}
+              onPress={handleEditLocation}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="location"
+                  android_material_icon_name="location-on"
+                  size={24}
+                  color={colors.textSecondary}
+                />
+                <View style={styles.locationInfo}>
+                  <Text style={styles.menuItemText}>Location</Text>
+                  <Text style={styles.locationValue}>{locationDisplayText}</Text>
+                </View>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textTertiary}
+              />
+            </PressableScale>
+          </Card>
+          
+          {!userLocation && (
+            <Text style={styles.locationHint}>
+              Set your location to see stores that ship to your area
+            </Text>
+          )}
         </Animated.View>
 
         {/* Preferences Section */}
@@ -524,6 +595,21 @@ const styles = StyleSheet.create({
   currencyValue: {
     ...typography.bodyMedium,
     color: colors.textSecondary,
+  },
+  locationInfo: {
+    flex: 1,
+  },
+  locationValue: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    marginTop: spacing.xs,
+  },
+  locationHint: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    fontStyle: 'italic',
   },
   bottomPadding: {
     height: 100,

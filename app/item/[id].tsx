@@ -23,6 +23,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { authenticatedPost } from '@/utils/api';
 
 interface PriceHistoryEntry {
   price: string;
@@ -57,6 +58,13 @@ interface PriceDropInfo {
   percentageChange: number | null;
 }
 
+interface FilteredStoresResponse {
+  stores: OtherStore[];
+  userLocation: { countryCode: string; city: string | null } | null;
+  hasLocation: boolean;
+  message?: string;
+}
+
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -75,6 +83,8 @@ export default function ItemDetailScreen() {
   const [loadingStores, setLoadingStores] = useState(false);
   const [checkingPrice, setCheckingPrice] = useState(false);
   const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo | null>(null);
+  const [hasUserLocation, setHasUserLocation] = useState(true);
+  const [storesMessage, setStoresMessage] = useState<string | null>(null);
 
   // Edit form state
   const [editedTitle, setEditedTitle] = useState('');
@@ -83,62 +93,43 @@ export default function ItemDetailScreen() {
   const [editedNotes, setEditedNotes] = useState('');
   const [editedImageUrl, setEditedImageUrl] = useState('');
 
-  const fetchOtherStores = useCallback(async (title: string, originalUrl?: string) => {
-    console.log('ItemDetailScreen: Fetching other stores via Supabase Edge Function');
+  const fetchOtherStores = useCallback(async () => {
+    console.log('[ItemDetailScreen] Fetching filtered stores based on user location');
     try {
       setLoadingStores(true);
       
-      // Get the current session token
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Call Supabase Edge Function
-      const response = await fetch(
-        'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/find-alternatives',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || ''}`,
-          },
-          body: JSON.stringify({
-            title,
-            originalUrl,
-          }),
-        }
+      // Call the new filtered endpoint
+      const data = await authenticatedPost<FilteredStoresResponse>(
+        `/api/items/${id}/find-other-stores-filtered`,
+        {}
       );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('ItemDetailScreen: Edge Function error:', errorText);
-        throw new Error('Failed to fetch alternatives');
-      }
-
-      const data = await response.json();
-      console.log('ItemDetailScreen: Found', data.alternatives?.length || 0, 'other stores');
-      setOtherStores(data.alternatives || []);
+      
+      console.log('[ItemDetailScreen] Filtered stores response:', data);
+      setOtherStores(data.stores || []);
+      setHasUserLocation(data.hasLocation);
+      setStoresMessage(data.message || null);
     } catch (error) {
-      console.error('ItemDetailScreen: Error fetching other stores:', error);
+      console.error('[ItemDetailScreen] Error fetching filtered stores:', error);
       setOtherStores([]);
+      setStoresMessage('Failed to load stores');
     } finally {
       setLoadingStores(false);
     }
-  }, []);
+  }, [id]);
 
   const fetchItem = useCallback(async () => {
-    console.log('ItemDetailScreen: Fetching item details');
+    console.log('[ItemDetailScreen] Fetching item details');
     try {
       setLoading(true);
       const { authenticatedGet } = await import('@/utils/api');
       const data = await authenticatedGet<ItemDetail>(`/api/items/${id}`);
-      console.log('ItemDetailScreen: Fetched item:', data.title);
+      console.log('[ItemDetailScreen] Fetched item:', data.title);
       setItem(data);
       
-      // Fetch alternatives after item is loaded
-      if (data.title) {
-        fetchOtherStores(data.title, data.originalUrl || undefined);
-      }
+      // Fetch filtered alternatives after item is loaded
+      fetchOtherStores();
     } catch (error) {
-      console.error('ItemDetailScreen: Error fetching item:', error);
+      console.error('[ItemDetailScreen] Error fetching item:', error);
       Alert.alert('Error', 'Failed to load item details');
     } finally {
       setLoading(false);
@@ -146,19 +137,19 @@ export default function ItemDetailScreen() {
   }, [id, fetchOtherStores]);
 
   const fetchPriceDropInfo = useCallback(async () => {
-    console.log('ItemDetailScreen: Fetching price drop info');
+    console.log('[ItemDetailScreen] Fetching price drop info');
     try {
       const { authenticatedGet } = await import('@/utils/api');
       const data = await authenticatedGet<PriceDropInfo>(`/api/items/${id}/price-dropped`);
-      console.log('ItemDetailScreen: Price drop info:', data);
+      console.log('[ItemDetailScreen] Price drop info:', data);
       setPriceDropInfo(data);
     } catch (error) {
-      console.error('ItemDetailScreen: Error fetching price drop info:', error);
+      console.error('[ItemDetailScreen] Error fetching price drop info:', error);
     }
   }, [id]);
 
   useEffect(() => {
-    console.log('ItemDetailScreen: Component mounted, item ID:', id);
+    console.log('[ItemDetailScreen] Component mounted, item ID:', id);
     if (id) {
       fetchItem();
       fetchPriceDropInfo();
@@ -166,7 +157,7 @@ export default function ItemDetailScreen() {
   }, [id, fetchItem, fetchPriceDropInfo]);
 
   const handleCheckPrice = async () => {
-    console.log('ItemDetailScreen: Manually checking price');
+    console.log('[ItemDetailScreen] Manually checking price');
     if (!item?.originalUrl) {
       Alert.alert('No URL', 'This item does not have an original URL to check the price from.');
       return;
@@ -183,7 +174,7 @@ export default function ItemDetailScreen() {
         lastCheckedAt: string;
       }>(`/api/items/${id}/check-price`, {});
       
-      console.log('ItemDetailScreen: Price check result:', result);
+      console.log('[ItemDetailScreen] Price check result:', result);
       
       if (result.success) {
         if (result.priceChanged) {
@@ -205,7 +196,7 @@ export default function ItemDetailScreen() {
         Alert.alert('Check Failed', 'Could not retrieve the current price. The page may have changed or is unavailable.');
       }
     } catch (error) {
-      console.error('ItemDetailScreen: Error checking price:', error);
+      console.error('[ItemDetailScreen] Error checking price:', error);
       Alert.alert('Error', 'Failed to check price. Please try again later.');
     } finally {
       setCheckingPrice(false);
@@ -214,7 +205,7 @@ export default function ItemDetailScreen() {
 
   const handleEditPress = () => {
     if (!item) return;
-    console.log('ItemDetailScreen: Opening edit modal');
+    console.log('[ItemDetailScreen] Opening edit modal');
     setEditedTitle(item.title);
     setEditedPrice(item.currentPrice || '');
     setEditedCurrency(item.currency);
@@ -224,7 +215,7 @@ export default function ItemDetailScreen() {
   };
 
   const uploadImage = async (imageUri: string): Promise<string | null> => {
-    console.log('ItemDetailScreen: Uploading image to backend:', imageUri);
+    console.log('[ItemDetailScreen] Uploading image to backend:', imageUri);
     try {
       const { authenticatedPost } = await import('@/utils/api');
       
@@ -256,17 +247,17 @@ export default function ItemDetailScreen() {
       }
 
       const data = await response.json();
-      console.log('ItemDetailScreen: Image uploaded successfully:', data.url);
+      console.log('[ItemDetailScreen] Image uploaded successfully:', data.url);
       return data.url;
     } catch (error) {
-      console.error('ItemDetailScreen: Error uploading image:', error);
+      console.error('[ItemDetailScreen] Error uploading image:', error);
       Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
       return null;
     }
   };
 
   const handlePickImage = async () => {
-    console.log('ItemDetailScreen: Picking image');
+    console.log('[ItemDetailScreen] Picking image');
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
@@ -277,22 +268,22 @@ export default function ItemDetailScreen() {
 
       if (!result.canceled && result.assets[0]) {
         const imageUri = result.assets[0].uri;
-        console.log('ItemDetailScreen: Image selected:', imageUri);
+        console.log('[ItemDetailScreen] Image selected:', imageUri);
         setEditedImageUrl(imageUri);
       }
     } catch (error) {
-      console.error('ItemDetailScreen: Error picking image:', error);
+      console.error('[ItemDetailScreen] Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image');
     }
   };
 
   const handleRemoveImage = () => {
-    console.log('ItemDetailScreen: Removing image');
+    console.log('[ItemDetailScreen] Removing image');
     setEditedImageUrl('');
   };
 
   const handleSaveEdit = async () => {
-    console.log('ItemDetailScreen: Saving item changes');
+    console.log('[ItemDetailScreen] Saving item changes');
     if (!editedTitle.trim()) {
       Alert.alert('Error', 'Item title cannot be empty');
       return;
@@ -310,7 +301,7 @@ export default function ItemDetailScreen() {
       // Upload image if it's a local file (starts with file://)
       let finalImageUrl = editedImageUrl;
       if (editedImageUrl && editedImageUrl.startsWith('file://')) {
-        console.log('ItemDetailScreen: Uploading local image to backend');
+        console.log('[ItemDetailScreen] Uploading local image to backend');
         const uploadedUrl = await uploadImage(editedImageUrl);
         if (uploadedUrl) {
           finalImageUrl = uploadedUrl;
@@ -327,12 +318,12 @@ export default function ItemDetailScreen() {
         notes: editedNotes,
         imageUrl: finalImageUrl || null,
       });
-      console.log('ItemDetailScreen: Item updated successfully');
+      console.log('[ItemDetailScreen] Item updated successfully');
       setItem(updatedItem);
       setShowEditModal(false);
       Alert.alert('Success', 'Item updated successfully');
     } catch (error) {
-      console.error('ItemDetailScreen: Error updating item:', error);
+      console.error('[ItemDetailScreen] Error updating item:', error);
       Alert.alert('Error', 'Failed to update item');
     } finally {
       setSaving(false);
@@ -341,29 +332,34 @@ export default function ItemDetailScreen() {
 
   const handleOpenUrl = async () => {
     if (item?.originalUrl) {
-      console.log('ItemDetailScreen: Opening source URL:', item.originalUrl);
+      console.log('[ItemDetailScreen] Opening source URL:', item.originalUrl);
       try {
         await Linking.openURL(item.originalUrl);
       } catch (error) {
-        console.error('ItemDetailScreen: Error opening URL:', error);
+        console.error('[ItemDetailScreen] Error opening URL:', error);
         Alert.alert('Error', 'Failed to open link');
       }
     }
   };
 
   const handleViewPriceHistory = () => {
-    console.log('ItemDetailScreen: Navigating to price history screen');
+    console.log('[ItemDetailScreen] Navigating to price history screen');
     router.push(`/item/price-history/${id}`);
   };
 
   const handleOpenStoreUrl = async (url: string, storeName: string) => {
-    console.log('ItemDetailScreen: Opening store URL:', storeName, url);
+    console.log('[ItemDetailScreen] Opening store URL:', storeName, url);
     try {
       await Linking.openURL(url);
     } catch (error) {
-      console.error('ItemDetailScreen: Error opening store URL:', error);
+      console.error('[ItemDetailScreen] Error opening store URL:', error);
       Alert.alert('Error', 'Failed to open link');
     }
+  };
+
+  const handleSetLocation = () => {
+    console.log('[ItemDetailScreen] User tapped Set Location');
+    router.push('/location');
   };
 
   if (loading || !item) {
@@ -553,10 +549,43 @@ export default function ItemDetailScreen() {
             <View style={styles.otherStoresSection}>
               <Text style={styles.sectionTitle}>Other Stores</Text>
               
+              {/* Location Banner */}
+              {!hasUserLocation && (
+                <TouchableOpacity style={styles.locationBanner} onPress={handleSetLocation}>
+                  <View style={styles.locationBannerLeft}>
+                    <IconSymbol
+                      ios_icon_name="location"
+                      android_material_icon_name="location-on"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.locationBannerText}>
+                      Set your shopping location to see available stores
+                    </Text>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </TouchableOpacity>
+              )}
+              
               {loadingStores ? (
                 <View style={styles.storesLoadingContainer}>
                   <ActivityIndicator size="small" color={colors.primary} />
-                  <Text style={styles.storesLoadingText}>Finding other stores...</Text>
+                  <Text style={styles.storesLoadingText}>Finding stores for your location...</Text>
+                </View>
+              ) : storesMessage ? (
+                <View style={styles.messageContainer}>
+                  <IconSymbol
+                    ios_icon_name="info.circle"
+                    android_material_icon_name="info"
+                    size={24}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.messageText}>{storesMessage}</Text>
                 </View>
               ) : otherStores.length === 0 ? (
                 <View style={styles.noStoresContainer}>
@@ -566,7 +595,11 @@ export default function ItemDetailScreen() {
                     size={32}
                     color={colors.textSecondary}
                   />
-                  <Text style={styles.noStoresText}>No other stores found</Text>
+                  <Text style={styles.noStoresText}>
+                    {hasUserLocation 
+                      ? 'No stores available for your location' 
+                      : 'No other stores found'}
+                  </Text>
                 </View>
               ) : (
                 <View style={styles.storesList}>
@@ -1075,6 +1108,29 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: 16,
   },
+  locationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.highlight,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
+  },
+  locationBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  locationBannerText: {
+    fontSize: 14,
+    color: colors.text,
+    flex: 1,
+    lineHeight: 20,
+  },
   storesLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1086,6 +1142,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
   },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  messageText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    flex: 1,
+  },
   noStoresContainer: {
     alignItems: 'center',
     paddingVertical: 32,
@@ -1094,6 +1163,7 @@ const styles = StyleSheet.create({
   noStoresText: {
     fontSize: 14,
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   storesList: {
     gap: 12,
