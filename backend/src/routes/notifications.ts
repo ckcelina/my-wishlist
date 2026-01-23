@@ -403,4 +403,88 @@ export function registerNotificationRoutes(app: App) {
       }
     }
   );
+
+  // POST /api/users/push-token - Update Expo push notification token
+  app.fastify.post(
+    '/api/users/push-token',
+    {
+      schema: {
+        description: 'Update Expo push notification token',
+        tags: ['users', 'notifications'],
+        body: {
+          type: 'object',
+          properties: {
+            expoPushToken: { type: 'string' },
+          },
+          required: ['expoPushToken'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          expoPushToken: string;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const { expoPushToken } = request.body;
+
+      app.logger.info({ userId }, 'Updating Expo push token');
+
+      try {
+        // Get or create settings
+        let settings = await app.db.query.userSettings.findFirst({
+          where: eq(schema.userSettings.userId, userId),
+        });
+
+        if (!settings) {
+          app.logger.info({ userId }, 'Creating default user settings');
+
+          const [created] = await app.db
+            .insert(schema.userSettings)
+            .values({
+              userId,
+              priceDropAlertsEnabled: false,
+              defaultCurrency: 'USD',
+              expoPushToken,
+            })
+            .returning();
+
+          settings = created;
+        } else {
+          // Update existing settings with new push token
+          const [updated] = await app.db
+            .update(schema.userSettings)
+            .set({ expoPushToken })
+            .where(eq(schema.userSettings.userId, userId))
+            .returning();
+
+          settings = updated;
+        }
+
+        app.logger.info({ userId }, 'Expo push token updated successfully');
+
+        return { success: true };
+      } catch (error) {
+        app.logger.error(
+          { err: error, userId },
+          'Failed to update push token'
+        );
+        return reply.status(500).send({ error: 'Failed to update push token' });
+      }
+    }
+  );
 }
