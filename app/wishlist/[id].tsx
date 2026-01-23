@@ -23,6 +23,12 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import * as Clipboard from 'expo-clipboard';
+import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
+import { ErrorState } from '@/components/design-system/ErrorState';
+import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
+import { EmptyState } from '@/components/design-system/EmptyState';
+import { OfflineNotice } from '@/components/design-system/OfflineNotice';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 interface Item {
   id: string;
@@ -62,14 +68,18 @@ export default function WishlistDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { user, loading: authLoading } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [wishlist, setWishlist] = useState<Wishlist | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showStopSharingConfirm, setShowStopSharingConfirm] = useState(false);
   const [newName, setNewName] = useState('');
   const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo>({});
   const [shareVisibility, setShareVisibility] = useState<'public' | 'unlisted'>('public');
@@ -84,20 +94,18 @@ export default function WishlistDetailScreen() {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
     try {
       setLoading(true);
+      setError(null);
       const { authenticatedGet } = await import('@/utils/api');
       
-      // Fetch wishlist details
       const wishlistData = await authenticatedGet<Wishlist>(`/api/wishlists/${id}`);
       console.log('WishlistDetailScreen: Fetched wishlist:', wishlistData.name);
       setWishlist(wishlistData);
       setNewName(wishlistData.name);
       
-      // Fetch items
       const itemsData = await authenticatedGet<Item[]>(`/api/wishlists/${id}/items`);
       console.log('WishlistDetailScreen: Fetched items:', itemsData.length);
       setItems(itemsData);
 
-      // Fetch price drop info for each item
       const priceDropData: PriceDropInfo = {};
       await Promise.all(
         itemsData.map(async (item) => {
@@ -120,7 +128,7 @@ export default function WishlistDetailScreen() {
       setPriceDropInfo(priceDropData);
     } catch (error) {
       console.error('WishlistDetailScreen: Error fetching data:', error);
-      Alert.alert('Error', 'Failed to load wishlist');
+      setError('Failed to load wishlist. Please check your connection and try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -139,11 +147,9 @@ export default function WishlistDetailScreen() {
     }
   }, [user, id, authLoading, fetchWishlistAndItems, router]);
 
-  // Filter and sort items
   const filteredAndSortedItems = useMemo(() => {
     console.log('WishlistDetailScreen: Filtering and sorting items with search:', searchTerm, 'sort:', sortOption);
     
-    // Filter by search term
     let filtered = items;
     if (searchTerm.trim()) {
       const searchLower = searchTerm.toLowerCase();
@@ -152,7 +158,6 @@ export default function WishlistDetailScreen() {
       );
     }
 
-    // Sort items
     const sorted = [...filtered];
     if (sortOption === 'Recently added') {
       sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -174,6 +179,10 @@ export default function WishlistDetailScreen() {
   }, [items, searchTerm, sortOption]);
 
   const handleRefresh = () => {
+    if (!isOnline) {
+      Alert.alert('Offline', 'You are currently offline. Please check your internet connection and try again.');
+      return;
+    }
     console.log('WishlistDetailScreen: User triggered refresh');
     setRefreshing(true);
     fetchWishlistAndItems();
@@ -196,6 +205,11 @@ export default function WishlistDetailScreen() {
       return;
     }
 
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to rename a wishlist.');
+      return;
+    }
+
     try {
       const { authenticatedPut } = await import('@/utils/api');
       const updated = await authenticatedPut<Wishlist>(`/api/wishlists/${id}`, {
@@ -211,35 +225,25 @@ export default function WishlistDetailScreen() {
     }
   };
 
-  const handleDeleteWishlist = () => {
-    console.log('WishlistDetailScreen: Delete wishlist requested');
-    setShowMenu(false);
+  const handleDeleteWishlist = async () => {
+    console.log('WishlistDetailScreen: Deleting wishlist:', id);
     
-    const wishlistName = wishlist?.name || 'this wishlist';
-    
-    Alert.alert(
-      'Delete Wishlist',
-      `Are you sure you want to delete "${wishlistName}"? This will also delete all items in it.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            console.log('WishlistDetailScreen: Deleting wishlist:', id);
-            try {
-              const { authenticatedDelete } = await import('@/utils/api');
-              await authenticatedDelete(`/api/wishlists/${id}`);
-              console.log('WishlistDetailScreen: Wishlist deleted successfully');
-              router.back();
-            } catch (error) {
-              console.error('WishlistDetailScreen: Error deleting wishlist:', error);
-              Alert.alert('Error', 'Failed to delete wishlist');
-            }
-          },
-        },
-      ]
-    );
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to delete a wishlist.');
+      setShowDeleteConfirm(false);
+      return;
+    }
+
+    try {
+      const { authenticatedDelete } = await import('@/utils/api');
+      await authenticatedDelete(`/api/wishlists/${id}`);
+      console.log('WishlistDetailScreen: Wishlist deleted successfully');
+      setShowDeleteConfirm(false);
+      router.back();
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error deleting wishlist:', error);
+      Alert.alert('Error', 'Failed to delete wishlist');
+    }
   };
 
   const openRenameModal = () => {
@@ -252,7 +256,6 @@ export default function WishlistDetailScreen() {
     console.log('WishlistDetailScreen: Opening share modal');
     setShowMenu(false);
     
-    // Fetch existing share settings
     try {
       const { authenticatedGet } = await import('@/utils/api');
       const shareData = await authenticatedGet<{
@@ -265,7 +268,6 @@ export default function WishlistDetailScreen() {
         setExistingShareSlug(shareData.shareSlug);
         setShareVisibility((shareData.visibility as 'public' | 'unlisted') || 'public');
         
-        // Construct share URL
         const baseUrl = 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev';
         const url = `${baseUrl}/shared/${shareData.shareSlug}`;
         setShareUrl(url);
@@ -296,6 +298,12 @@ export default function WishlistDetailScreen() {
 
   const handleCreateOrUpdateShare = async () => {
     console.log('WishlistDetailScreen: Creating/updating share with visibility:', shareVisibility);
+    
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to create a share link.');
+      return;
+    }
+
     setShareLoading(true);
     
     try {
@@ -327,6 +335,11 @@ export default function WishlistDetailScreen() {
   const handleRegenerateShare = async () => {
     console.log('WishlistDetailScreen: Regenerating share link');
     
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to regenerate the share link.');
+      return;
+    }
+
     Alert.alert(
       'Regenerate Link',
       'This will create a new link and invalidate the old one. Anyone with the old link will no longer be able to access this wishlist.',
@@ -401,40 +414,40 @@ export default function WishlistDetailScreen() {
   const handleStopSharing = async () => {
     console.log('WishlistDetailScreen: Stopping sharing');
     
-    Alert.alert(
-      'Stop Sharing',
-      'This will delete the share link. Anyone with the link will no longer be able to access this wishlist.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Stop Sharing',
-          style: 'destructive',
-          onPress: async () => {
-            setShareLoading(true);
-            try {
-              const { authenticatedDelete } = await import('@/utils/api');
-              await authenticatedDelete(`/api/wishlists/${id}/share`);
-              
-              console.log('WishlistDetailScreen: Sharing stopped');
-              setExistingShareSlug(null);
-              setShareUrl('');
-              setShowShareModal(false);
-              
-              Alert.alert('Success', 'Sharing has been disabled');
-            } catch (error) {
-              console.error('WishlistDetailScreen: Error stopping sharing:', error);
-              Alert.alert('Error', 'Failed to stop sharing');
-            } finally {
-              setShareLoading(false);
-            }
-          },
-        },
-      ]
-    );
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to stop sharing.');
+      setShowStopSharingConfirm(false);
+      return;
+    }
+
+    setShareLoading(true);
+    try {
+      const { authenticatedDelete } = await import('@/utils/api');
+      await authenticatedDelete(`/api/wishlists/${id}/share`);
+      
+      console.log('WishlistDetailScreen: Sharing stopped');
+      setExistingShareSlug(null);
+      setShareUrl('');
+      setShowShareModal(false);
+      setShowStopSharingConfirm(false);
+      
+      Alert.alert('Success', 'Sharing has been disabled');
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error stopping sharing:', error);
+      Alert.alert('Error', 'Failed to stop sharing');
+    } finally {
+      setShareLoading(false);
+    }
   };
 
   const handleRefreshPrices = async () => {
     console.log('WishlistDetailScreen: Refreshing prices for wishlist:', id);
+    
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to refresh prices.');
+      return;
+    }
+
     setRefreshingPrices(true);
     
     try {
@@ -454,7 +467,6 @@ export default function WishlistDetailScreen() {
       
       console.log('WishlistDetailScreen: Price refresh complete:', response);
       
-      // Show result to user
       const itemsCheckedText = `${response.itemsChecked} ${response.itemsChecked === 1 ? 'item' : 'items'}`;
       const itemsUpdatedText = `${response.itemsUpdated} ${response.itemsUpdated === 1 ? 'price' : 'prices'}`;
       
@@ -481,7 +493,6 @@ export default function WishlistDetailScreen() {
         );
       }
       
-      // Refresh the list to show updated prices
       await fetchWishlistAndItems();
     } catch (error) {
       console.error('WishlistDetailScreen: Error refreshing prices:', error);
@@ -494,6 +505,56 @@ export default function WishlistDetailScreen() {
   const wishlistName = wishlist?.name || 'Wishlist';
   const hasSearchOrSort = searchTerm.trim() !== '' || sortOption !== 'Recently added';
   const resultCountText = `${filteredAndSortedItems.length} ${filteredAndSortedItems.length === 1 ? 'item' : 'items'}`;
+
+  if (loading && !wishlist) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Loading...',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <OfflineNotice />
+          <View style={styles.searchSortContainer}>
+            <View style={styles.searchContainer}>
+              <View style={{ width: 20, height: 20, backgroundColor: colors.backgroundAlt, borderRadius: 10 }} />
+              <View style={{ flex: 1, height: 20, backgroundColor: colors.backgroundAlt, borderRadius: 4 }} />
+            </View>
+            <View style={{ width: 44, height: 44, backgroundColor: colors.backgroundAlt, borderRadius: 12 }} />
+          </View>
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+            <ListItemSkeleton />
+            <ListItemSkeleton />
+            <ListItemSkeleton />
+          </ScrollView>
+        </SafeAreaView>
+      </>
+    );
+  }
+
+  if (error) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Error',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <OfflineNotice />
+          <ErrorState
+            message={error}
+            onRetry={fetchWishlistAndItems}
+          />
+        </SafeAreaView>
+      </>
+    );
+  }
 
   return (
     <>
@@ -543,7 +604,7 @@ export default function WishlistDetailScreen() {
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        {/* Search and Sort Bar */}
+        <OfflineNotice />
         <View style={styles.searchSortContainer}>
           <View style={styles.searchContainer}>
             <IconSymbol
@@ -585,7 +646,6 @@ export default function WishlistDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Result count when filtering/sorting */}
         {hasSearchOrSort && (
           <View style={styles.resultCountContainer}>
             <Text style={styles.resultCountText}>{resultCountText}</Text>
@@ -602,34 +662,22 @@ export default function WishlistDetailScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
         >
-          {loading && items.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>Loading items...</Text>
-            </View>
-          ) : filteredAndSortedItems.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <IconSymbol
-                ios_icon_name="gift"
-                android_material_icon_name="card-giftcard"
-                size={64}
-                color={colors.textSecondary}
+          {filteredAndSortedItems.length === 0 ? (
+            searchTerm.trim() ? (
+              <EmptyState
+                icon="search"
+                title="No items found"
+                description="Try a different search term"
               />
-              {searchTerm.trim() ? (
-                <>
-                  <Text style={styles.emptyText}>No items found</Text>
-                  <Text style={styles.emptySubtext}>
-                    Try a different search term
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.emptyText}>No items yet</Text>
-                  <Text style={styles.emptySubtext}>
-                    Tap the + button to add your first item
-                  </Text>
-                </>
-              )}
-            </View>
+            ) : (
+              <EmptyState
+                icon="card-giftcard"
+                title="No items yet"
+                description="Add items from any app or website using the share button"
+                actionLabel="Add Item"
+                onAction={handleAddItem}
+              />
+            )
           ) : (
             filteredAndSortedItems.map((item) => {
               const priceText = item.currentPrice 
@@ -685,7 +733,6 @@ export default function WishlistDetailScreen() {
           )}
         </ScrollView>
 
-        {/* Floating Action Button */}
         <TouchableOpacity
           style={styles.fab}
           onPress={handleAddItem}
@@ -699,7 +746,6 @@ export default function WishlistDetailScreen() {
           />
         </TouchableOpacity>
 
-        {/* Menu Modal */}
         <Modal
           visible={showMenu}
           transparent
@@ -726,7 +772,10 @@ export default function WishlistDetailScreen() {
               <View style={styles.menuDivider} />
               <TouchableOpacity
                 style={styles.menuItem}
-                onPress={handleDeleteWishlist}
+                onPress={() => {
+                  setShowMenu(false);
+                  setShowDeleteConfirm(true);
+                }}
               >
                 <IconSymbol
                   ios_icon_name="trash"
@@ -742,7 +791,18 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
 
-        {/* Rename Modal */}
+        <ConfirmDialog
+          visible={showDeleteConfirm}
+          title="Delete Wishlist"
+          message={`Are you sure you want to delete "${wishlistName}"? This will also delete all items in it. This action cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          onConfirm={handleDeleteWishlist}
+          onCancel={() => setShowDeleteConfirm(false)}
+          destructive
+          icon="delete"
+        />
+
         <Modal
           visible={showRenameModal}
           transparent
@@ -785,7 +845,6 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
 
-        {/* Sort Modal */}
         <Modal
           visible={showSortModal}
           transparent
@@ -871,7 +930,6 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
 
-        {/* Share Modal */}
         <Modal
           visible={showShareModal}
           transparent
@@ -964,7 +1022,6 @@ export default function WishlistDetailScreen() {
 
               {existingShareSlug ? (
                 <ScrollView style={styles.shareModalScroll}>
-                  {/* Share link display */}
                   <View style={styles.shareLinkContainer}>
                     <Text style={styles.shareLinkLabel}>Share Link</Text>
                     <View style={styles.shareLinkBox}>
@@ -974,7 +1031,6 @@ export default function WishlistDetailScreen() {
                     </View>
                   </View>
 
-                  {/* Action buttons for existing share */}
                   <View style={styles.shareActionsContainer}>
                     <TouchableOpacity
                       style={styles.shareActionButton}
@@ -1019,7 +1075,6 @@ export default function WishlistDetailScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Update visibility button */}
                   <TouchableOpacity
                     style={[styles.button, styles.updateButton]}
                     onPress={handleCreateOrUpdateShare}
@@ -1042,7 +1097,7 @@ export default function WishlistDetailScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.button, styles.deleteShareButton]}
-                      onPress={handleStopSharing}
+                      onPress={() => setShowStopSharingConfirm(true)}
                       disabled={shareLoading}
                     >
                       <Text style={styles.deleteShareButtonText}>
@@ -1076,6 +1131,18 @@ export default function WishlistDetailScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        <ConfirmDialog
+          visible={showStopSharingConfirm}
+          title="Stop Sharing"
+          message="This will delete the share link. Anyone with the link will no longer be able to access this wishlist."
+          confirmLabel="Stop Sharing"
+          cancelLabel="Cancel"
+          onConfirm={handleStopSharing}
+          onCancel={() => setShowStopSharingConfirm(false)}
+          destructive
+          icon="link"
+        />
       </SafeAreaView>
     </>
   );
@@ -1155,24 +1222,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 8,
     paddingBottom: 100,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
   },
   itemCard: {
     flexDirection: 'row',

@@ -22,8 +22,12 @@ import { Card } from '@/components/design-system/Card';
 import { EmptyState } from '@/components/design-system/EmptyState';
 import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
 import { Badge } from '@/components/design-system/Badge';
+import { ErrorState } from '@/components/design-system/ErrorState';
+import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
+import { OfflineNotice } from '@/components/design-system/OfflineNotice';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
 import { supabase } from '@/lib/supabase';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 
 interface Wishlist {
   id: string;
@@ -37,11 +41,14 @@ interface Wishlist {
 export default function WishlistsScreen() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [newWishlistName, setNewWishlistName] = useState('');
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
 
@@ -53,6 +60,8 @@ export default function WishlistsScreen() {
 
     try {
       console.log('[WishlistsScreen] Fetching wishlists for user:', user.id);
+      setError(null);
+      
       const response = await supabase
         .from('wishlists')
         .select('*, wishlist_items(count)')
@@ -74,7 +83,7 @@ export default function WishlistsScreen() {
       setWishlists(wishlistsData);
     } catch (error: any) {
       console.error('[WishlistsScreen] Error fetching wishlists:', error);
-      Alert.alert('Error', 'Failed to load wishlists');
+      setError('Failed to load wishlists. Please check your connection and try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -93,14 +102,23 @@ export default function WishlistsScreen() {
   }, [user, authLoading, fetchWishlists, router]);
 
   const handleRefresh = useCallback(() => {
+    if (!isOnline) {
+      Alert.alert('Offline', 'You are currently offline. Please check your internet connection and try again.');
+      return;
+    }
     console.log('[WishlistsScreen] User pulled to refresh');
     setRefreshing(true);
     fetchWishlists();
-  }, [fetchWishlists]);
+  }, [fetchWishlists, isOnline]);
 
   const handleCreateWishlist = async () => {
     if (!newWishlistName.trim()) {
       Alert.alert('Error', 'Please enter a wishlist name');
+      return;
+    }
+
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to create a wishlist.');
       return;
     }
 
@@ -125,13 +143,18 @@ export default function WishlistsScreen() {
       router.push(`/wishlist/${response.data.id}`);
     } catch (error: any) {
       console.error('[WishlistsScreen] Error creating wishlist:', error);
-      Alert.alert('Error', 'Failed to create wishlist');
+      Alert.alert('Error', 'Failed to create wishlist. Please try again.');
     }
   };
 
   const handleRenameWishlist = async () => {
     if (!selectedWishlist || !newWishlistName.trim()) {
       Alert.alert('Error', 'Please enter a wishlist name');
+      return;
+    }
+
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to rename a wishlist.');
       return;
     }
 
@@ -151,49 +174,36 @@ export default function WishlistsScreen() {
       fetchWishlists();
     } catch (error: any) {
       console.error('[WishlistsScreen] Error renaming wishlist:', error);
-      Alert.alert('Error', 'Failed to rename wishlist');
+      Alert.alert('Error', 'Failed to rename wishlist. Please try again.');
     }
   };
 
-  const handleDeleteWishlist = (wishlist: Wishlist) => {
-    if (wishlist.isDefault) {
-      Alert.alert('Error', 'Cannot delete default wishlist');
+  const handleDeleteWishlist = async () => {
+    if (!selectedWishlist) return;
+
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to delete a wishlist.');
+      setDeleteConfirmVisible(false);
       return;
     }
 
-    const itemText = wishlist.itemCount === 1 ? 'item' : 'items';
-    const message = wishlist.itemCount > 0
-      ? `Are you sure you want to delete "${wishlist.name}"? This will also delete ${wishlist.itemCount} ${itemText}.`
-      : `Are you sure you want to delete "${wishlist.name}"?`;
+    try {
+      console.log('[WishlistsScreen] Deleting wishlist:', selectedWishlist.id);
+      const response = await supabase
+        .from('wishlists')
+        .delete()
+        .eq('id', selectedWishlist.id);
 
-    Alert.alert(
-      'Delete Wishlist',
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[WishlistsScreen] Deleting wishlist:', wishlist.id);
-              const response = await supabase
-                .from('wishlists')
-                .delete()
-                .eq('id', wishlist.id);
+      if (response.error) throw response.error;
 
-              if (response.error) throw response.error;
-
-              console.log('[WishlistsScreen] Wishlist deleted successfully');
-              fetchWishlists();
-            } catch (error: any) {
-              console.error('[WishlistsScreen] Error deleting wishlist:', error);
-              Alert.alert('Error', 'Failed to delete wishlist');
-            }
-          },
-        },
-      ]
-    );
+      console.log('[WishlistsScreen] Wishlist deleted successfully');
+      setDeleteConfirmVisible(false);
+      setSelectedWishlist(null);
+      fetchWishlists();
+    } catch (error: any) {
+      console.error('[WishlistsScreen] Error deleting wishlist:', error);
+      Alert.alert('Error', 'Failed to delete wishlist. Please try again.');
+    }
   };
 
   const handleWishlistPress = (wishlist: Wishlist) => {
@@ -203,22 +213,40 @@ export default function WishlistsScreen() {
 
   const openOverflowMenu = (wishlist: Wishlist) => {
     console.log('[WishlistsScreen] User tapped overflow menu for:', wishlist.name);
-    Alert.alert(
-      wishlist.name,
-      'Choose an action',
-      [
-        {
-          text: 'Rename',
-          onPress: () => openRenameModal(wishlist),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDeleteWishlist(wishlist),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    
+    if (wishlist.isDefault) {
+      Alert.alert(
+        wishlist.name,
+        'Choose an action',
+        [
+          {
+            text: 'Rename',
+            onPress: () => openRenameModal(wishlist),
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      Alert.alert(
+        wishlist.name,
+        'Choose an action',
+        [
+          {
+            text: 'Rename',
+            onPress: () => openRenameModal(wishlist),
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              setSelectedWishlist(wishlist);
+              setDeleteConfirmVisible(true);
+            },
+          },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    }
   };
 
   const openRenameModal = (wishlist: Wishlist) => {
@@ -245,13 +273,16 @@ export default function WishlistsScreen() {
       return 'Just now';
     }
     if (diffMins < 60) {
-      return `${diffMins}m ago`;
+      const minsText = `${diffMins}m ago`;
+      return minsText;
     }
     if (diffHours < 24) {
-      return `${diffHours}h ago`;
+      const hoursText = `${diffHours}h ago`;
+      return hoursText;
     }
     if (diffDays < 7) {
-      return `${diffDays}d ago`;
+      const daysText = `${diffDays}d ago`;
+      return daysText;
     }
     
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -260,6 +291,7 @@ export default function WishlistsScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <OfflineNotice />
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Wishlists</Text>
         </View>
@@ -272,8 +304,31 @@ export default function WishlistsScreen() {
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <OfflineNotice />
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Wishlists</Text>
+        </View>
+        <ErrorState
+          title="Failed to load wishlists"
+          message={error}
+          onRetry={fetchWishlists}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  const deleteMessage = selectedWishlist 
+    ? selectedWishlist.itemCount > 0
+      ? `Are you sure you want to delete "${selectedWishlist.name}"? This will also delete ${selectedWishlist.itemCount} ${selectedWishlist.itemCount === 1 ? 'item' : 'items'}. This action cannot be undone.`
+      : `Are you sure you want to delete "${selectedWishlist.name}"? This action cannot be undone.`
+    : '';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <OfflineNotice />
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Wishlists</Text>
         <TouchableOpacity onPress={openCreateModal} style={styles.headerButton}>
@@ -295,9 +350,9 @@ export default function WishlistsScreen() {
         {wishlists.length === 0 ? (
           <EmptyState
             icon="favorite-border"
-            title="Create your first wishlist"
-            description="Start saving items you love by creating your first wishlist"
-            actionLabel="New Wishlist"
+            title="No wishlists yet"
+            description="Create your first wishlist to start saving items you love"
+            actionLabel="Create Wishlist"
             onAction={openCreateModal}
           />
         ) : (
@@ -440,6 +495,21 @@ export default function WishlistsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <ConfirmDialog
+        visible={deleteConfirmVisible}
+        title="Delete Wishlist"
+        message={deleteMessage}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={handleDeleteWishlist}
+        onCancel={() => {
+          setDeleteConfirmVisible(false);
+          setSelectedWishlist(null);
+        }}
+        destructive
+        icon="delete"
+      />
     </SafeAreaView>
   );
 }
