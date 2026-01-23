@@ -84,39 +84,6 @@ export default function ItemDetailScreen() {
   const [editedNotes, setEditedNotes] = useState('');
   const [editedImageUrl, setEditedImageUrl] = useState('');
 
-  const fetchItem = useCallback(async () => {
-    console.log('ItemDetailScreen: Fetching item details');
-    try {
-      setLoading(true);
-      const { authenticatedGet } = await import('@/utils/api');
-      const data = await authenticatedGet<ItemDetail>(`/api/items/${id}`);
-      console.log('ItemDetailScreen: Fetched item:', data.title);
-      setItem(data);
-      
-      // Fetch alternatives after item is loaded
-      if (data.title) {
-        fetchOtherStores(data.title, data.originalUrl || undefined);
-      }
-    } catch (error) {
-      console.error('ItemDetailScreen: Error fetching item:', error);
-      Alert.alert('Error', 'Failed to load item details');
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  const fetchPriceDropInfo = useCallback(async () => {
-    console.log('ItemDetailScreen: Fetching price drop info');
-    try {
-      const { authenticatedGet } = await import('@/utils/api');
-      const data = await authenticatedGet<PriceDropInfo>(`/api/items/${id}/price-dropped`);
-      console.log('ItemDetailScreen: Price drop info:', data);
-      setPriceDropInfo(data);
-    } catch (error) {
-      console.error('ItemDetailScreen: Error fetching price drop info:', error);
-    }
-  }, [id]);
-
   const fetchOtherStores = useCallback(async (title: string, originalUrl?: string) => {
     console.log('ItemDetailScreen: Fetching other stores via Supabase Edge Function');
     try {
@@ -157,6 +124,39 @@ export default function ItemDetailScreen() {
       setLoadingStores(false);
     }
   }, []);
+
+  const fetchItem = useCallback(async () => {
+    console.log('ItemDetailScreen: Fetching item details');
+    try {
+      setLoading(true);
+      const { authenticatedGet } = await import('@/utils/api');
+      const data = await authenticatedGet<ItemDetail>(`/api/items/${id}`);
+      console.log('ItemDetailScreen: Fetched item:', data.title);
+      setItem(data);
+      
+      // Fetch alternatives after item is loaded
+      if (data.title) {
+        fetchOtherStores(data.title, data.originalUrl || undefined);
+      }
+    } catch (error) {
+      console.error('ItemDetailScreen: Error fetching item:', error);
+      Alert.alert('Error', 'Failed to load item details');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, fetchOtherStores]);
+
+  const fetchPriceDropInfo = useCallback(async () => {
+    console.log('ItemDetailScreen: Fetching price drop info');
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const data = await authenticatedGet<PriceDropInfo>(`/api/items/${id}/price-dropped`);
+      console.log('ItemDetailScreen: Price drop info:', data);
+      setPriceDropInfo(data);
+    } catch (error) {
+      console.error('ItemDetailScreen: Error fetching price drop info:', error);
+    }
+  }, [id]);
 
   useEffect(() => {
     console.log('ItemDetailScreen: Component mounted, item ID:', id);
