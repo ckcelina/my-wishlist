@@ -1,16 +1,20 @@
-import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
 
+import { StyleSheet } from 'react-native';
+import { colors as designSystemColors } from './designSystem';
+
+// Export design system colors for backward compatibility
 export const colors = {
-  primary: '#6366F1',      // Soft Indigo - primary actions
-  secondary: '#8B5CF6',    // Purple - secondary elements
-  accent: '#EC4899',       // Pink - highlights and accents
-  background: '#FFFFFF',   // White - main background
-  backgroundAlt: '#F9FAFB', // Light gray - alternate background
-  text: '#111827',         // Dark gray - primary text
-  textSecondary: '#6B7280', // Medium gray - secondary text
-  card: '#FFFFFF',         // White - card background
-  border: '#E5E7EB',       // Light gray - borders
-  highlight: '#FEF3C7',    // Light yellow - price highlights
+  primary: designSystemColors.primary,
+  secondary: designSystemColors.primary,
+  accent: designSystemColors.accent,
+  background: designSystemColors.background,
+  backgroundAlt: designSystemColors.backgroundAlt,
+  text: designSystemColors.textPrimary,
+  textSecondary: designSystemColors.textSecondary,
+  card: designSystemColors.surface,
+  border: designSystemColors.border,
+  highlight: designSystemColors.warningLight,
+  grey: designSystemColors.border,
 };
 
 export const buttonStyles = StyleSheet.create({
@@ -52,7 +56,7 @@ export const commonStyles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     color: colors.text,
-    marginBottom: 10
+    marginBottom: 10,
   },
   text: {
     fontSize: 16,
@@ -86,6 +90,6 @@ export const commonStyles = StyleSheet.create({
   icon: {
     width: 60,
     height: 60,
-    tintColor: "white",
+    tintColor: 'white',
   },
 });

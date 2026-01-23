@@ -13,11 +13,17 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { Button } from '@/components/design-system/Button';
+import { Card } from '@/components/design-system/Card';
+import { EmptyState } from '@/components/design-system/EmptyState';
+import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
+import { Badge } from '@/components/design-system/Badge';
+import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
+import { supabase } from '@/lib/supabase';
 
 interface Wishlist {
   id: string;
@@ -29,123 +35,151 @@ interface Wishlist {
 
 export default function WishlistsScreen() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [newWishlistName, setNewWishlistName] = useState('');
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
-  const [wishlistName, setWishlistName] = useState('');
 
   const fetchWishlists = useCallback(async () => {
-    console.log('WishlistsScreen: Fetching wishlists');
-    try {
-      setDataLoading(true);
-      const { authenticatedGet } = await import('@/utils/api');
-      const data = await authenticatedGet<Wishlist[]>('/api/wishlists');
-      console.log('WishlistsScreen: Fetched wishlists:', data.length);
-      setWishlists(data);
-    } catch (error) {
-      console.error('WishlistsScreen: Error fetching wishlists:', error);
-      Alert.alert('Error', 'Failed to load wishlists');
-    } finally {
-      setDataLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    console.log('WishlistsScreen: Component mounted, user:', user?.email);
-    if (!loading && !user) {
-      console.log('WishlistsScreen: No user found, redirecting to auth');
-      router.replace('/auth');
+    if (!user) {
+      console.log('[WishlistsScreen] No user, skipping fetch');
       return;
     }
-    if (user) {
-      fetchWishlists();
-    }
-  }, [user, loading, router, fetchWishlists]);
 
-  const handleRefresh = () => {
-    console.log('WishlistsScreen: User triggered refresh');
+    try {
+      console.log('[WishlistsScreen] Fetching wishlists for user:', user.id);
+      const response = await supabase
+        .from('wishlists')
+        .select('*, wishlist_items(count)')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (response.error) throw response.error;
+
+      const wishlistsData = response.data.map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        isDefault: w.is_default,
+        itemCount: w.wishlist_items?.[0]?.count || 0,
+        createdAt: w.created_at,
+      }));
+
+      console.log('[WishlistsScreen] Fetched wishlists:', wishlistsData.length);
+      setWishlists(wishlistsData);
+    } catch (error: any) {
+      console.error('[WishlistsScreen] Error fetching wishlists:', error);
+      Alert.alert('Error', 'Failed to load wishlists');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        console.log('[WishlistsScreen] No user, redirecting to auth');
+        router.replace('/auth');
+      } else {
+        fetchWishlists();
+      }
+    }
+  }, [user, authLoading, fetchWishlists, router]);
+
+  const handleRefresh = useCallback(() => {
+    console.log('[WishlistsScreen] User pulled to refresh');
     setRefreshing(true);
     fetchWishlists();
-  };
+  }, [fetchWishlists]);
 
   const handleCreateWishlist = async () => {
-    console.log('WishlistsScreen: Creating new wishlist:', wishlistName);
-    if (!wishlistName.trim()) {
+    if (!newWishlistName.trim()) {
       Alert.alert('Error', 'Please enter a wishlist name');
       return;
     }
 
     try {
-      const { authenticatedPost } = await import('@/utils/api');
-      const newWishlist = await authenticatedPost<Wishlist>('/api/wishlists', { 
-        name: wishlistName 
-      });
-      console.log('WishlistsScreen: Created wishlist:', newWishlist.id);
-      setWishlists([...wishlists, { ...newWishlist, itemCount: 0, isDefault: false }]);
-      setWishlistName('');
-      setShowCreateModal(false);
-    } catch (error) {
-      console.error('WishlistsScreen: Error creating wishlist:', error);
+      console.log('[WishlistsScreen] Creating wishlist:', newWishlistName);
+      const response = await supabase
+        .from('wishlists')
+        .insert({
+          user_id: user?.id,
+          name: newWishlistName.trim(),
+          is_default: false,
+        })
+        .select()
+        .single();
+
+      if (response.error) throw response.error;
+
+      console.log('[WishlistsScreen] Wishlist created successfully');
+      setCreateModalVisible(false);
+      setNewWishlistName('');
+      fetchWishlists();
+    } catch (error: any) {
+      console.error('[WishlistsScreen] Error creating wishlist:', error);
       Alert.alert('Error', 'Failed to create wishlist');
     }
   };
 
   const handleRenameWishlist = async () => {
-    console.log('WishlistsScreen: Renaming wishlist:', selectedWishlist?.id);
-    if (!wishlistName.trim()) {
+    if (!selectedWishlist || !newWishlistName.trim()) {
       Alert.alert('Error', 'Please enter a wishlist name');
       return;
     }
 
-    if (!selectedWishlist) {
-      return;
-    }
-
     try {
-      const { authenticatedPut } = await import('@/utils/api');
-      await authenticatedPut(`/api/wishlists/${selectedWishlist.id}`, { 
-        name: wishlistName 
-      });
-      console.log('WishlistsScreen: Renamed wishlist successfully');
-      setWishlists(wishlists.map(w => 
-        w.id === selectedWishlist.id ? { ...w, name: wishlistName } : w
-      ));
-      setWishlistName('');
-      setShowRenameModal(false);
+      console.log('[WishlistsScreen] Renaming wishlist:', selectedWishlist.id);
+      const response = await supabase
+        .from('wishlists')
+        .update({ name: newWishlistName.trim() })
+        .eq('id', selectedWishlist.id);
+
+      if (response.error) throw response.error;
+
+      console.log('[WishlistsScreen] Wishlist renamed successfully');
+      setRenameModalVisible(false);
+      setNewWishlistName('');
       setSelectedWishlist(null);
-    } catch (error) {
-      console.error('WishlistsScreen: Error renaming wishlist:', error);
+      fetchWishlists();
+    } catch (error: any) {
+      console.error('[WishlistsScreen] Error renaming wishlist:', error);
       Alert.alert('Error', 'Failed to rename wishlist');
     }
   };
 
-  const handleDeleteWishlist = async (wishlist: Wishlist) => {
-    console.log('WishlistsScreen: Delete requested for wishlist:', wishlist.id);
-    setShowContextMenu(false);
-    
+  const handleDeleteWishlist = (wishlist: Wishlist) => {
+    if (wishlist.isDefault) {
+      Alert.alert('Error', 'Cannot delete default wishlist');
+      return;
+    }
+
     Alert.alert(
       'Delete Wishlist',
-      `Are you sure you want to delete "${wishlist.name}"?`,
+      `Are you sure you want to delete "${wishlist.name}"? This will also delete all items in this wishlist.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            console.log('WishlistsScreen: Deleting wishlist:', wishlist.id);
             try {
-              const { authenticatedDelete } = await import('@/utils/api');
-              await authenticatedDelete(`/api/wishlists/${wishlist.id}`);
-              console.log('WishlistsScreen: Wishlist deleted successfully');
-              setWishlists(wishlists.filter(w => w.id !== wishlist.id));
-            } catch (error) {
-              console.error('WishlistsScreen: Error deleting wishlist:', error);
+              console.log('[WishlistsScreen] Deleting wishlist:', wishlist.id);
+              const response = await supabase
+                .from('wishlists')
+                .delete()
+                .eq('id', wishlist.id);
+
+              if (response.error) throw response.error;
+
+              console.log('[WishlistsScreen] Wishlist deleted successfully');
+              fetchWishlists();
+            } catch (error: any) {
+              console.error('[WishlistsScreen] Error deleting wishlist:', error);
               Alert.alert('Error', 'Failed to delete wishlist');
             }
           },
@@ -155,251 +189,191 @@ export default function WishlistsScreen() {
   };
 
   const handleWishlistPress = (wishlist: Wishlist) => {
-    console.log('WishlistsScreen: Opening wishlist:', wishlist.id);
+    console.log('[WishlistsScreen] User tapped wishlist:', wishlist.name);
     router.push(`/wishlist/${wishlist.id}`);
   };
 
   const handleWishlistLongPress = (wishlist: Wishlist) => {
-    console.log('WishlistsScreen: Long press on wishlist:', wishlist.id);
-    setSelectedWishlist(wishlist);
-    setShowContextMenu(true);
+    console.log('[WishlistsScreen] User long-pressed wishlist:', wishlist.name);
+    Alert.alert(
+      wishlist.name,
+      'What would you like to do?',
+      [
+        {
+          text: 'Rename',
+          onPress: () => openRenameModal(wishlist),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeleteWishlist(wishlist),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
-  const openRenameModal = () => {
-    if (selectedWishlist) {
-      setWishlistName(selectedWishlist.name);
-      setShowContextMenu(false);
-      setShowRenameModal(true);
-    }
+  const openRenameModal = (wishlist: Wishlist) => {
+    setSelectedWishlist(wishlist);
+    setNewWishlistName(wishlist.name);
+    setRenameModalVisible(true);
   };
 
   const openCreateModal = () => {
-    console.log('WishlistsScreen: Opening create modal');
-    setWishlistName('');
-    setShowCreateModal(true);
+    setNewWishlistName('');
+    setCreateModalVisible(true);
   };
 
-  if (!user) {
+  if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <IconSymbol
-            ios_icon_name="heart.slash"
-            android_material_icon_name="heart-broken"
-            size={64}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.emptyText}>Please sign in to view your wishlists</Text>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>My Wishlists</Text>
         </View>
+        <ScrollView style={styles.content}>
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+          <ListItemSkeleton />
+        </ScrollView>
       </SafeAreaView>
     );
   }
 
-  const emptyText = 'No wishlists yet';
-  const emptySubtext = 'Tap the + button to create your first wishlist';
-  const loadingText = 'Loading wishlists...';
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Wishlists</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={openCreateModal}
-        >
+        <Text style={styles.headerTitle}>My Wishlists</Text>
+        <TouchableOpacity onPress={openCreateModal} style={styles.headerButton}>
           <IconSymbol
-            ios_icon_name="plus"
+            ios_icon_name="add"
             android_material_icon_name="add"
-            size={24}
+            size={28}
             color={colors.primary}
           />
         </TouchableOpacity>
       </View>
 
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        style={styles.content}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {dataLoading && wishlists.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>{loadingText}</Text>
-          </View>
-        ) : wishlists.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <IconSymbol
-              ios_icon_name="heart"
-              android_material_icon_name="favorite-border"
-              size={64}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.emptyText}>{emptyText}</Text>
-            <Text style={styles.emptySubtext}>{emptySubtext}</Text>
-          </View>
+        {wishlists.length === 0 ? (
+          <EmptyState
+            icon="favorite-border"
+            title="No Wishlists Yet"
+            description="Create your first wishlist to start saving items you love"
+            actionLabel="Create Wishlist"
+            onAction={openCreateModal}
+          />
         ) : (
-          wishlists.map((wishlist) => {
-            const itemCountText = `${wishlist.itemCount} ${wishlist.itemCount === 1 ? 'item' : 'items'}`;
-            return (
-              <TouchableOpacity
-                key={wishlist.id}
-                style={styles.wishlistCard}
-                onPress={() => handleWishlistPress(wishlist)}
-                onLongPress={() => handleWishlistLongPress(wishlist)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.wishlistIcon}>
-                  <IconSymbol
-                    ios_icon_name="heart.fill"
-                    android_material_icon_name="favorite"
-                    size={28}
-                    color={colors.primary}
-                  />
-                </View>
-                <View style={styles.wishlistInfo}>
-                  <Text style={styles.wishlistName}>{wishlist.name}</Text>
-                  <Text style={styles.wishlistCount}>{itemCountText}</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.menuButton}
-                  onPress={() => handleWishlistLongPress(wishlist)}
-                >
-                  <IconSymbol
-                    ios_icon_name="ellipsis"
-                    android_material_icon_name="more-vert"
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </TouchableOpacity>
-            );
-          })
+          <View style={styles.listContainer}>
+            {wishlists.map((wishlist, index) => {
+              const itemCountText = `${wishlist.itemCount} ${wishlist.itemCount === 1 ? 'item' : 'items'}`;
+              
+              return (
+                <React.Fragment key={index}>
+                  <Card
+                    key={index}
+                    interactive
+                    onPress={() => handleWishlistPress(wishlist)}
+                    style={styles.wishlistCard}
+                  >
+                    <TouchableOpacity
+                      onLongPress={() => handleWishlistLongPress(wishlist)}
+                      activeOpacity={1}
+                    >
+                      <View style={styles.wishlistHeader}>
+                        <View style={styles.wishlistInfo}>
+                          <Text style={styles.wishlistName}>{wishlist.name}</Text>
+                          {wishlist.isDefault && (
+                            <Badge label="Default" variant="info" />
+                          )}
+                        </View>
+                        <IconSymbol
+                          ios_icon_name="chevron-right"
+                          android_material_icon_name="chevron-right"
+                          size={24}
+                          color={colors.textTertiary}
+                        />
+                      </View>
+                      <Text style={styles.itemCount}>{itemCountText}</Text>
+                    </TouchableOpacity>
+                  </Card>
+                </React.Fragment>
+              );
+            })}
+          </View>
         )}
       </ScrollView>
 
-      {/* Create Wishlist Modal */}
       <Modal
-        visible={showCreateModal}
+        visible={createModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowCreateModal(false)}
+        onRequestClose={() => setCreateModalVisible(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowCreateModal(false)}
-        >
+        <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Create Wishlist</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="Wishlist name"
-              placeholderTextColor={colors.textSecondary}
-              value={wishlistName}
-              onChangeText={setWishlistName}
+              placeholderTextColor={colors.textTertiary}
+              value={newWishlistName}
+              onChangeText={setNewWishlistName}
               autoFocus
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setShowCreateModal(false);
-                  setWishlistName('');
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.createButton]}
+              <Button
+                title="Cancel"
+                onPress={() => setCreateModalVisible(false)}
+                variant="secondary"
+                style={styles.modalButton}
+              />
+              <Button
+                title="Create"
                 onPress={handleCreateWishlist}
-              >
-                <Text style={styles.createButtonText}>Create</Text>
-              </TouchableOpacity>
+                variant="primary"
+                style={styles.modalButton}
+              />
             </View>
           </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Rename Wishlist Modal */}
       <Modal
-        visible={showRenameModal}
+        visible={renameModalVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowRenameModal(false)}
+        onRequestClose={() => setRenameModalVisible(false)}
       >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowRenameModal(false)}
-        >
+        <Pressable style={styles.modalOverlay} onPress={() => setRenameModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Rename Wishlist</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="Wishlist name"
-              placeholderTextColor={colors.textSecondary}
-              value={wishlistName}
-              onChangeText={setWishlistName}
+              placeholderTextColor={colors.textTertiary}
+              value={newWishlistName}
+              onChangeText={setNewWishlistName}
               autoFocus
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => {
-                  setShowRenameModal(false);
-                  setWishlistName('');
-                  setSelectedWishlist(null);
-                }}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.createButton]}
+              <Button
+                title="Cancel"
+                onPress={() => setRenameModalVisible(false)}
+                variant="secondary"
+                style={styles.modalButton}
+              />
+              <Button
+                title="Rename"
                 onPress={handleRenameWishlist}
-              >
-                <Text style={styles.createButtonText}>Rename</Text>
-              </TouchableOpacity>
+                variant="primary"
+                style={styles.modalButton}
+              />
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      {/* Context Menu Modal */}
-      <Modal
-        visible={showContextMenu}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowContextMenu(false)}
-      >
-        <Pressable 
-          style={styles.modalOverlay}
-          onPress={() => setShowContextMenu(false)}
-        >
-          <Pressable style={styles.contextMenu} onPress={(e) => e.stopPropagation()}>
-            <TouchableOpacity
-              style={styles.contextMenuItem}
-              onPress={openRenameModal}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={20}
-                color={colors.text}
-              />
-              <Text style={styles.contextMenuText}>Rename</Text>
-            </TouchableOpacity>
-            <View style={styles.contextMenuDivider} />
-            <TouchableOpacity
-              style={styles.contextMenuItem}
-              onPress={() => selectedWishlist && handleDeleteWishlist(selectedWishlist)}
-            >
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={20}
-                color={colors.accent}
-              />
-              <Text style={[styles.contextMenuText, styles.deleteText]}>Delete</Text>
-            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -409,91 +383,48 @@ export default function WishlistsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background,
+    ...containerStyles.screen,
     paddingTop: Platform.OS === 'android' ? 48 : 0,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    ...containerStyles.spaceBetween,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
+  headerTitle: {
+    ...typography.titleLarge,
   },
-  addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.backgroundAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
+  headerButton: {
+    padding: spacing.xs,
   },
-  scrollView: {
+  content: {
     flex: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
+  listContainer: {
     paddingBottom: 100,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
-  },
   wishlistCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.04)',
-    elevation: 2,
+    marginBottom: spacing.md,
   },
-  wishlistIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.backgroundAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+  wishlistHeader: {
+    ...containerStyles.spaceBetween,
+    marginBottom: spacing.sm,
   },
   wishlistInfo: {
+    ...containerStyles.row,
     flex: 1,
   },
   wishlistName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
+    ...typography.titleSmall,
+    flex: 1,
   },
-  wishlistCount: {
-    fontSize: 14,
+  itemCount: {
+    ...typography.bodyMedium,
     color: colors.textSecondary,
-  },
-  menuButton: {
-    padding: 8,
   },
   modalOverlay: {
     flex: 1,
@@ -502,82 +433,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
     width: '85%',
     maxWidth: 400,
-    boxShadow: '0px 10px 40px rgba(0, 0, 0, 0.2)',
-    elevation: 5,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 20,
-    textAlign: 'center',
+    ...typography.titleMedium,
+    marginBottom: spacing.md,
   },
   modalInput: {
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: colors.text,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
+    ...inputStyles.base,
+    marginBottom: spacing.lg,
   },
   modalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.sm,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.backgroundAlt,
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  createButton: {
-    backgroundColor: colors.primary,
-  },
-  createButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  contextMenu: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    width: '70%',
-    maxWidth: 300,
-    overflow: 'hidden',
-    boxShadow: '0px 10px 40px rgba(0, 0, 0, 0.2)',
-    elevation: 5,
-  },
-  contextMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  contextMenuText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  deleteText: {
-    color: colors.accent,
-  },
-  contextMenuDivider: {
-    height: 1,
-    backgroundColor: colors.border,
   },
 });
