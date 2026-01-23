@@ -15,6 +15,7 @@ import {
   Modal,
   Pressable,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
@@ -75,6 +76,7 @@ export default function WishlistDetailScreen() {
   const [shareLoading, setShareLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('Recently added');
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
 
   const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
@@ -304,6 +306,64 @@ export default function WishlistDetailScreen() {
     }
   };
 
+  const handleRefreshPrices = async () => {
+    console.log('WishlistDetailScreen: Refreshing prices for wishlist:', id);
+    setRefreshingPrices(true);
+    
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      
+      const response = await authenticatedPost<{
+        success: boolean;
+        itemsChecked: number;
+        itemsUpdated: number;
+        priceDrops: Array<{
+          itemId: string;
+          oldPrice: number;
+          newPrice: number;
+          percentageChange: number;
+        }>;
+      }>(`/api/wishlists/${id}/refresh-prices`, {});
+      
+      console.log('WishlistDetailScreen: Price refresh complete:', response);
+      
+      // Show result to user
+      const itemsCheckedText = `${response.itemsChecked} ${response.itemsChecked === 1 ? 'item' : 'items'}`;
+      const itemsUpdatedText = `${response.itemsUpdated} ${response.itemsUpdated === 1 ? 'price' : 'prices'}`;
+      
+      if (response.priceDrops.length > 0) {
+        const priceDropsText = response.priceDrops.length === 1 
+          ? '1 price drop detected!' 
+          : `${response.priceDrops.length} price drops detected!`;
+        Alert.alert(
+          'Prices Updated',
+          `Checked ${itemsCheckedText}. Updated ${itemsUpdatedText}.\n\n${priceDropsText}`,
+          [{ text: 'OK' }]
+        );
+      } else if (response.itemsUpdated > 0) {
+        Alert.alert(
+          'Prices Updated',
+          `Checked ${itemsCheckedText}. Updated ${itemsUpdatedText}.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Prices Checked',
+          `Checked ${itemsCheckedText}. No price changes detected.`,
+          [{ text: 'OK' }]
+        );
+      }
+      
+      // Refresh the list to show updated prices
+      await fetchWishlistAndItems();
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error refreshing prices:', error);
+      Alert.alert('Error', 'Failed to refresh prices. Please try again.');
+    } finally {
+      setRefreshingPrices(false);
+    }
+  };
+
   const wishlistName = wishlist?.name || 'Wishlist';
   const hasSearchOrSort = searchTerm.trim() !== '' || sortOption !== 'Recently added';
   const resultCountText = `${filteredAndSortedItems.length} ${filteredAndSortedItems.length === 1 ? 'item' : 'items'}`;
@@ -317,6 +377,18 @@ export default function WishlistDetailScreen() {
           headerBackTitle: 'Back',
           headerRight: () => (
             <View style={styles.headerButtons}>
+              <TouchableOpacity
+                onPress={handleRefreshPrices}
+                style={styles.headerButton}
+                disabled={refreshingPrices}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.clockwise"
+                  android_material_icon_name="refresh"
+                  size={24}
+                  color={refreshingPrices ? colors.textSecondary : colors.text}
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={openShareModal}
                 style={styles.headerButton}
