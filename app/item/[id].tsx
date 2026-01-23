@@ -40,6 +40,14 @@ interface ItemDetail {
   priceHistory: PriceHistoryEntry[];
 }
 
+interface OtherStore {
+  storeName: string;
+  domain: string;
+  price: number;
+  currency: string;
+  url: string;
+}
+
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -55,6 +63,8 @@ export default function ItemDetailScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPriceHistoryModal, setShowPriceHistoryModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [otherStores, setOtherStores] = useState<OtherStore[]>([]);
+  const [loadingStores, setLoadingStores] = useState(false);
 
   // Edit form state
   const [editedTitle, setEditedTitle] = useState('');
@@ -67,6 +77,7 @@ export default function ItemDetailScreen() {
     console.log('ItemDetailScreen: Component mounted, item ID:', id);
     if (id) {
       fetchItem();
+      fetchOtherStores();
     }
   }, [id]);
 
@@ -83,6 +94,22 @@ export default function ItemDetailScreen() {
       Alert.alert('Error', 'Failed to load item details');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchOtherStores = async () => {
+    console.log('ItemDetailScreen: Fetching other stores');
+    try {
+      setLoadingStores(true);
+      const { authenticatedPost } = await import('@/utils/api');
+      const data = await authenticatedPost<{ stores: OtherStore[] }>(`/api/items/${id}/find-other-stores`, {});
+      console.log('ItemDetailScreen: Found', data.stores.length, 'other stores');
+      setOtherStores(data.stores);
+    } catch (error) {
+      console.error('ItemDetailScreen: Error fetching other stores:', error);
+      // Don't show alert for this - it's not critical
+    } finally {
+      setLoadingStores(false);
     }
   };
 
@@ -167,6 +194,16 @@ export default function ItemDetailScreen() {
   const handleViewPriceHistory = () => {
     console.log('ItemDetailScreen: Opening price history modal');
     setShowPriceHistoryModal(true);
+  };
+
+  const handleOpenStoreUrl = async (url: string, storeName: string) => {
+    console.log('ItemDetailScreen: Opening store URL:', storeName, url);
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('ItemDetailScreen: Error opening store URL:', error);
+      Alert.alert('Error', 'Failed to open link');
+    }
   };
 
   if (loading || !item) {
@@ -291,6 +328,57 @@ export default function ItemDetailScreen() {
                 <Text style={styles.linkButtonText}>View Original Product</Text>
               </TouchableOpacity>
             )}
+
+            {/* Other Stores Section */}
+            <View style={styles.otherStoresSection}>
+              <Text style={styles.sectionTitle}>Other Stores</Text>
+              
+              {loadingStores ? (
+                <View style={styles.storesLoadingContainer}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.storesLoadingText}>Finding other stores...</Text>
+                </View>
+              ) : otherStores.length === 0 ? (
+                <View style={styles.noStoresContainer}>
+                  <IconSymbol
+                    ios_icon_name="storefront"
+                    android_material_icon_name="store"
+                    size={32}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.noStoresText}>No other stores found</Text>
+                </View>
+              ) : (
+                <View style={styles.storesList}>
+                  {otherStores.map((store, index) => {
+                    const storePriceText = `${store.currency} ${store.price.toFixed(2)}`;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.storeCard}
+                        onPress={() => handleOpenStoreUrl(store.url, store.storeName)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.storeCardLeft}>
+                          <Text style={styles.storeName}>{store.storeName}</Text>
+                          <Text style={styles.storeDomain}>{store.domain}</Text>
+                        </View>
+                        <View style={styles.storeCardRight}>
+                          <Text style={styles.storePrice}>{storePriceText}</Text>
+                          <IconSymbol
+                            ios_icon_name="chevron.right"
+                            android_material_icon_name="chevron-right"
+                            size={20}
+                            color={colors.textSecondary}
+                          />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           </View>
         </ScrollView>
 
@@ -719,5 +807,73 @@ const styles = StyleSheet.create({
   historyDate: {
     fontSize: 14,
     color: colors.textSecondary,
+  },
+  otherStoresSection: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  storesLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  storesLoadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  noStoresContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  noStoresText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  storesList: {
+    gap: 12,
+  },
+  storeCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  storeCardLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  storeName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  storeDomain: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  storeCardRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  storePrice: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });
