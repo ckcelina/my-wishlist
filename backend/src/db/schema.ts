@@ -3,9 +3,9 @@ import {
   uuid,
   text,
   timestamp,
-  boolean,
   decimal,
   index,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { user } from './auth-schema.js';
@@ -19,23 +19,18 @@ export const wishlists = pgTable(
       onDelete: 'cascade',
     }),
     name: text('name').notNull(),
-    isDefault: boolean('is_default').default(false).notNull(),
-    shareToken: text('share_token').unique(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [
-    index('wishlists_user_id_idx').on(table.userId),
-    index('wishlists_share_token_idx').on(table.shareToken),
-  ]
+  (table) => [index('wishlists_user_id_idx').on(table.userId)]
 );
 
-// Items table
-export const items = pgTable(
-  'items',
+// Wishlist Items table (renamed from items)
+export const wishlistItems = pgTable(
+  'wishlist_items',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     wishlistId: uuid('wishlist_id')
@@ -43,11 +38,12 @@ export const items = pgTable(
       .references(() => wishlists.id, {
         onDelete: 'cascade',
       }),
-    name: text('name').notNull(),
+    originalUrl: text('original_url'),
+    sourceDomain: text('source_domain'),
+    title: text('title').notNull(),
     imageUrl: text('image_url'),
     currentPrice: decimal('current_price', { precision: 10, scale: 2 }),
     currency: text('currency').default('USD').notNull(),
-    sourceUrl: text('source_url'),
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
@@ -55,9 +51,7 @@ export const items = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [
-    index('items_wishlist_id_idx').on(table.wishlistId),
-  ]
+  (table) => [index('wishlist_items_wishlist_id_idx').on(table.wishlistId)]
 );
 
 // Price history table
@@ -67,38 +61,71 @@ export const priceHistory = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     itemId: uuid('item_id')
       .notNull()
-      .references(() => items.id, {
+      .references(() => wishlistItems.id, {
         onDelete: 'cascade',
       }),
     price: decimal('price', { precision: 10, scale: 2 }).notNull(),
     currency: text('currency').default('USD').notNull(),
     recordedAt: timestamp('recorded_at').defaultNow().notNull(),
   },
-  (table) => [
-    index('price_history_item_id_idx').on(table.itemId),
-  ]
+  (table) => [index('price_history_item_id_idx').on(table.itemId)]
+);
+
+// Shared wishlists table
+export const sharedWishlists = pgTable(
+  'shared_wishlists',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    wishlistId: uuid('wishlist_id')
+      .notNull()
+      .unique()
+      .references(() => wishlists.id, {
+        onDelete: 'cascade',
+      }),
+    shareSlug: text('share_slug').notNull().unique(),
+    visibility: text('visibility').notNull(), // 'public' or 'unlisted'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('shared_wishlists_wishlist_id_idx').on(table.wishlistId)]
 );
 
 // Relations
 export const wishlistsRelations = relations(wishlists, ({ many, one }) => ({
-  items: many(items),
+  items: many(wishlistItems),
+  sharedWishlist: one(sharedWishlists, {
+    fields: [wishlists.id],
+    references: [sharedWishlists.wishlistId],
+  }),
   user: one(user, {
     fields: [wishlists.userId],
     references: [user.id],
   }),
 }));
 
-export const itemsRelations = relations(items, ({ many, one }) => ({
-  wishlist: one(wishlists, {
-    fields: [items.wishlistId],
-    references: [wishlists.id],
-  }),
-  priceHistory: many(priceHistory),
-}));
+export const wishlistItemsRelations = relations(
+  wishlistItems,
+  ({ many, one }) => ({
+    wishlist: one(wishlists, {
+      fields: [wishlistItems.wishlistId],
+      references: [wishlists.id],
+    }),
+    priceHistory: many(priceHistory),
+  })
+);
 
 export const priceHistoryRelations = relations(priceHistory, ({ one }) => ({
-  item: one(items, {
+  item: one(wishlistItems, {
     fields: [priceHistory.itemId],
-    references: [items.id],
+    references: [wishlistItems.id],
   }),
 }));
+
+export const sharedWishlistsRelations = relations(
+  sharedWishlists,
+  ({ one }) => ({
+    wishlist: one(wishlists, {
+      fields: [sharedWishlists.wishlistId],
+      references: [wishlists.id],
+    }),
+  })
+);

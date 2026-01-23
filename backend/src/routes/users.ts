@@ -6,12 +6,12 @@ import type { App } from '../index.js';
 export function registerUserRoutes(app: App) {
   const requireAuth = app.requireAuth();
 
-  // POST /api/users/init-defaults - Initialize default wishlist for new users
+  // POST /api/users/init-defaults - Initialize a default wishlist for new users
   app.fastify.post(
     '/api/users/init-defaults',
     {
       schema: {
-        description: 'Initialize default wishlist for new user',
+        description: 'Initialize a wishlist for new user',
         tags: ['users'],
         response: {
           200: {
@@ -31,38 +31,34 @@ export function registerUserRoutes(app: App) {
       app.logger.info({ userId }, 'Initializing defaults for user');
 
       try {
-        // Check if default wishlist already exists
+        // Check if any wishlist already exists
         const existing = await app.db.query.wishlists.findFirst({
-          where: and(
-            eq(schema.wishlists.userId, userId),
-            eq(schema.wishlists.isDefault, true)
-          ),
+          where: eq(schema.wishlists.userId, userId),
         });
 
         if (existing) {
-          app.logger.info({ userId }, 'Default wishlist already exists');
+          app.logger.info({ userId }, 'Wishlist already exists');
           return { success: true };
         }
 
-        // Create default wishlist
-        const [defaultWishlist] = await app.db
+        // Create initial wishlist
+        const [wishlist] = await app.db
           .insert(schema.wishlists)
           .values({
             userId,
             name: 'My Wishlist',
-            isDefault: true,
           })
           .returning();
 
         app.logger.info(
-          { userId, wishlistId: defaultWishlist.id },
-          'Default wishlist created'
+          { userId, wishlistId: wishlist.id },
+          'Wishlist created'
         );
         return { success: true };
       } catch (error) {
         app.logger.error(
           { err: error, userId },
-          'Failed to create default wishlist'
+          'Failed to create wishlist'
         );
         throw error;
       }

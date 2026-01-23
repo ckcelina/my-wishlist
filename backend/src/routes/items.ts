@@ -51,11 +51,12 @@ export function registerItemRoutes(app: App) {
               type: 'object',
               properties: {
                 id: { type: 'string' },
-                name: { type: 'string' },
+                title: { type: 'string' },
                 imageUrl: { type: 'string' },
                 currentPrice: { type: 'string' },
                 currency: { type: 'string' },
-                sourceUrl: { type: 'string' },
+                originalUrl: { type: 'string' },
+                sourceDomain: { type: 'string' },
                 createdAt: { type: 'string' },
               },
             },
@@ -75,16 +76,17 @@ export function registerItemRoutes(app: App) {
 
       const items = await app.db
         .select({
-          id: schema.items.id,
-          name: schema.items.name,
-          imageUrl: schema.items.imageUrl,
-          currentPrice: schema.items.currentPrice,
-          currency: schema.items.currency,
-          sourceUrl: schema.items.sourceUrl,
-          createdAt: schema.items.createdAt,
+          id: schema.wishlistItems.id,
+          title: schema.wishlistItems.title,
+          imageUrl: schema.wishlistItems.imageUrl,
+          currentPrice: schema.wishlistItems.currentPrice,
+          currency: schema.wishlistItems.currency,
+          originalUrl: schema.wishlistItems.originalUrl,
+          sourceDomain: schema.wishlistItems.sourceDomain,
+          createdAt: schema.wishlistItems.createdAt,
         })
-        .from(schema.items)
-        .where(eq(schema.items.wishlistId, wishlistId));
+        .from(schema.wishlistItems)
+        .where(eq(schema.wishlistItems.wishlistId, wishlistId));
 
       app.logger.info({ wishlistId, count: items.length }, 'Items fetched');
       return items;
@@ -109,11 +111,12 @@ export function registerItemRoutes(app: App) {
           200: {
             type: 'object',
             properties: {
-              name: { type: 'string' },
+              title: { type: 'string' },
               imageUrl: { type: 'string' },
               price: { type: 'string' },
               currency: { type: 'string' },
-              sourceUrl: { type: 'string' },
+              originalUrl: { type: 'string' },
+              sourceDomain: { type: 'string' },
             },
           },
         },
@@ -133,6 +136,10 @@ export function registerItemRoutes(app: App) {
       app.logger.info({ url }, 'Extracting item data from URL');
 
       try {
+        // Extract domain from URL
+        const urlObj = new URL(url);
+        const sourceDomain = urlObj.hostname;
+
         // Use GPT-5.2 vision to analyze the page
         const result = await generateText({
           model: gateway('openai/gpt-5.2'),
@@ -143,11 +150,10 @@ export function registerItemRoutes(app: App) {
                 {
                   type: 'text',
                   text: `Visit this URL and extract product information. Return a JSON object with these fields:
-- name: the product/item name
+- title: the product/item name
 - imageUrl: the best quality product image URL (or null)
 - price: the current price as a string (or null)
 - currency: the currency code like USD, EUR, GBP, etc. (default USD)
-- sourceUrl: the full URL of the page
 
 URL: ${url}
 
@@ -162,16 +168,17 @@ Return ONLY valid JSON, no markdown or extra text.`,
         const extracted = JSON.parse(result.text);
 
         app.logger.info(
-          { url, extractedName: extracted.name },
+          { url, extractedTitle: extracted.title },
           'Item data extracted'
         );
 
         return {
-          name: extracted.name || 'Unknown Item',
+          title: extracted.title || 'Unknown Item',
           imageUrl: extracted.imageUrl || null,
           price: extracted.price || null,
           currency: extracted.currency || 'USD',
-          sourceUrl: url,
+          originalUrl: url,
+          sourceDomain,
         };
       } catch (error) {
         app.logger.error(
@@ -196,25 +203,27 @@ Return ONLY valid JSON, no markdown or extra text.`,
           type: 'object',
           properties: {
             wishlistId: { type: 'string' },
-            name: { type: 'string' },
+            title: { type: 'string' },
             imageUrl: { type: 'string' },
             currentPrice: { type: 'string' },
             currency: { type: 'string' },
-            sourceUrl: { type: 'string' },
+            originalUrl: { type: 'string' },
+            sourceDomain: { type: 'string' },
             notes: { type: 'string' },
           },
-          required: ['wishlistId', 'name'],
+          required: ['wishlistId', 'title'],
         },
         response: {
           201: {
             type: 'object',
             properties: {
               id: { type: 'string' },
-              name: { type: 'string' },
+              title: { type: 'string' },
               imageUrl: { type: 'string' },
               currentPrice: { type: 'string' },
               currency: { type: 'string' },
-              sourceUrl: { type: 'string' },
+              originalUrl: { type: 'string' },
+              sourceDomain: { type: 'string' },
               notes: { type: 'string' },
               createdAt: { type: 'string' },
             },
@@ -226,11 +235,12 @@ Return ONLY valid JSON, no markdown or extra text.`,
       request: FastifyRequest<{
         Body: {
           wishlistId: string;
-          name: string;
+          title: string;
           imageUrl?: string;
           currentPrice?: string;
           currency?: string;
-          sourceUrl?: string;
+          originalUrl?: string;
+          sourceDomain?: string;
           notes?: string;
         };
       }>,
@@ -242,16 +252,17 @@ Return ONLY valid JSON, no markdown or extra text.`,
       const userId = session.user.id;
       const {
         wishlistId,
-        name,
+        title,
         imageUrl,
         currentPrice,
         currency = 'USD',
-        sourceUrl,
+        originalUrl,
+        sourceDomain,
         notes,
       } = request.body;
 
       app.logger.info(
-        { wishlistId, name, userId },
+        { wishlistId, title, userId },
         'Creating item'
       );
 
@@ -266,14 +277,15 @@ Return ONLY valid JSON, no markdown or extra text.`,
       }
 
       const [newItem] = await app.db
-        .insert(schema.items)
+        .insert(schema.wishlistItems)
         .values({
           wishlistId,
-          name,
+          title,
           imageUrl: imageUrl || null,
           currentPrice: currentPrice ? currentPrice : null,
           currency,
-          sourceUrl: sourceUrl || null,
+          originalUrl: originalUrl || null,
+          sourceDomain: sourceDomain || null,
           notes: notes || null,
         })
         .returning();
@@ -292,7 +304,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
         );
       }
 
-      app.logger.info({ itemId: newItem.id, name }, 'Item created');
+      app.logger.info({ itemId: newItem.id, title }, 'Item created');
 
       reply.status(201);
       return newItem;
@@ -316,7 +328,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
         body: {
           type: 'object',
           properties: {
-            name: { type: 'string' },
+            title: { type: 'string' },
             imageUrl: { type: 'string' },
             currentPrice: { type: 'string' },
             notes: { type: 'string' },
@@ -327,7 +339,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
             type: 'object',
             properties: {
               id: { type: 'string' },
-              name: { type: 'string' },
+              title: { type: 'string' },
               imageUrl: { type: 'string' },
               currentPrice: { type: 'string' },
               notes: { type: 'string' },
@@ -341,7 +353,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
       request: FastifyRequest<{
         Params: { id: string };
         Body: {
-          name?: string;
+          title?: string;
           imageUrl?: string;
           currentPrice?: string;
           notes?: string;
@@ -354,13 +366,13 @@ Return ONLY valid JSON, no markdown or extra text.`,
 
       const userId = session.user.id;
       const { id } = request.params;
-      const { name, imageUrl, currentPrice, notes } = request.body;
+      const { title, imageUrl, currentPrice, notes } = request.body;
 
       app.logger.info({ itemId: id, userId }, 'Updating item');
 
       // Verify ownership through wishlist
-      const item = await app.db.query.items.findFirst({
-        where: eq(schema.items.id, id),
+      const item = await app.db.query.wishlistItems.findFirst({
+        where: eq(schema.wishlistItems.id, id),
         with: {
           wishlist: true,
         },
@@ -372,7 +384,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
       }
 
       const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
+      if (title !== undefined) updateData.title = title;
       if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
       if (notes !== undefined) updateData.notes = notes || null;
       if (currentPrice !== undefined) {
@@ -394,9 +406,9 @@ Return ONLY valid JSON, no markdown or extra text.`,
       }
 
       const [updated] = await app.db
-        .update(schema.items)
+        .update(schema.wishlistItems)
         .set(updateData)
-        .where(eq(schema.items.id, id))
+        .where(eq(schema.wishlistItems.id, id))
         .returning();
 
       app.logger.info({ itemId: id }, 'Item updated');
@@ -443,8 +455,8 @@ Return ONLY valid JSON, no markdown or extra text.`,
       app.logger.info({ itemId: id, userId }, 'Deleting item');
 
       // Verify ownership through wishlist
-      const item = await app.db.query.items.findFirst({
-        where: eq(schema.items.id, id),
+      const item = await app.db.query.wishlistItems.findFirst({
+        where: eq(schema.wishlistItems.id, id),
         with: {
           wishlist: true,
         },
@@ -455,7 +467,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
         return reply.status(404).send({ error: 'Item not found' });
       }
 
-      await app.db.delete(schema.items).where(eq(schema.items.id, id));
+      await app.db.delete(schema.wishlistItems).where(eq(schema.wishlistItems.id, id));
 
       app.logger.info({ itemId: id }, 'Item deleted');
       return { success: true };
@@ -481,11 +493,12 @@ Return ONLY valid JSON, no markdown or extra text.`,
             type: 'object',
             properties: {
               id: { type: 'string' },
-              name: { type: 'string' },
+              title: { type: 'string' },
               imageUrl: { type: 'string' },
               currentPrice: { type: 'string' },
               currency: { type: 'string' },
-              sourceUrl: { type: 'string' },
+              originalUrl: { type: 'string' },
+              sourceDomain: { type: 'string' },
               notes: { type: 'string' },
               priceHistory: {
                 type: 'array',
@@ -512,8 +525,8 @@ Return ONLY valid JSON, no markdown or extra text.`,
 
       app.logger.info({ itemId: id }, 'Fetching item details');
 
-      const item = await app.db.query.items.findFirst({
-        where: eq(schema.items.id, id),
+      const item = await app.db.query.wishlistItems.findFirst({
+        where: eq(schema.wishlistItems.id, id),
         with: {
           priceHistory: {
             columns: {
@@ -537,11 +550,12 @@ Return ONLY valid JSON, no markdown or extra text.`,
 
       return {
         id: item.id,
-        name: item.name,
+        title: item.title,
         imageUrl: item.imageUrl,
         currentPrice: item.currentPrice,
         currency: item.currency,
-        sourceUrl: item.sourceUrl,
+        originalUrl: item.originalUrl,
+        sourceDomain: item.sourceDomain,
         notes: item.notes,
         priceHistory: item.priceHistory,
       };
