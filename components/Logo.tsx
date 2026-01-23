@@ -18,16 +18,16 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 export function Logo({ size = 'medium', style }: LogoProps) {
   const { isDark } = useAppTheme();
   
-  // Use placeholder logo URLs - these should be replaced with actual uploaded logos
-  const darkModeLogo = 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=400&h=400&fit=crop';
-  const lightModeLogo = 'https://images.unsplash.com/photo-1513885535751-8b9238bd345a?w=400&h=400&fit=crop';
+  // Use official My Wishlist logos
+  const darkModeLogo = require('@/assets/images/74fdce54-12b6-4e4f-a867-37dee7e10bc0.png');
+  const lightModeLogo = require('@/assets/images/42c81ce9-afb0-476b-8c24-c86782627d50.png');
   
   const logoSource = isDark ? darkModeLogo : lightModeLogo;
   
   const sizeStyles = {
-    small: { width: 32, height: 32 },
-    medium: { width: 48, height: 48 },
-    large: { width: 80, height: 80 },
+    small: { width: 80, height: 80 },
+    medium: { width: 120, height: 120 },
+    large: { width: 160, height: 160 },
   };
   
   console.log('[Logo] Rendering logo for theme:', isDark ? 'dark' : 'light');

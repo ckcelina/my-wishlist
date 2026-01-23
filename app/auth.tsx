@@ -14,6 +14,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/design-system/Button';
+import { Logo } from '@/components/Logo';
 import { colors, typography, spacing, inputStyles, containerStyles } from '@/styles/designSystem';
 
 type Mode = 'signin' | 'signup' | 'forgot-password';
@@ -108,6 +109,10 @@ export default function AuthScreen() {
 
     return (
       <View style={styles.scrollContent}>
+        <View style={styles.logoContainer}>
+          <Logo size="large" />
+        </View>
+        
         <Text style={styles.title}>{titleText}</Text>
         <Text style={styles.subtitle}>{subtitleText}</Text>
 
@@ -166,6 +171,10 @@ export default function AuthScreen() {
 
     return (
       <View style={styles.scrollContent}>
+        <View style={styles.logoContainer}>
+          <Logo size="large" />
+        </View>
+        
         <Text style={styles.title}>{titleText}</Text>
         <Text style={styles.subtitle}>{subtitleText}</Text>
 
@@ -285,6 +294,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     padding: spacing.lg,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
   },
   title: {
     ...typography.displayLarge,
