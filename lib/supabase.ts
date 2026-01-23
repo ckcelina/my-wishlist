@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type { Database } from './supabase-types';
 
 // Supabase configuration
 const SUPABASE_URL = 'https://dixgmnuayzblwpqyplsi.supabase.co';
@@ -34,8 +35,8 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-// Create Supabase client with custom storage
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// Create Supabase client with custom storage and typed database
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: ExpoSecureStoreAdapter,
     autoRefreshToken: true,

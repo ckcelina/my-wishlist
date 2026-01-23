@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { Platform } from "react-native";
 import { authClient, storeWebBearerToken } from "@/lib/auth";
 import { supabase, supabaseAuth } from "@/lib/supabase";
+import { supabaseWishlists } from "@/lib/supabase-helpers";
 
 interface User {
   id: string;
@@ -140,24 +141,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const initializeDefaultWishlist = async (): Promise<string | null> => {
-    console.log('[AuthContext] Initializing default wishlist');
+    console.log('[AuthContext] Initializing default wishlist in Supabase');
     try {
-      const { authenticatedPost, authenticatedGet } = await import('@/utils/api');
+      const currentUser = await supabaseAuth.getCurrentUser();
+      if (!currentUser) {
+        console.error('[AuthContext] No user found for wishlist initialization');
+        return null;
+      }
+
+      const existingWishlists = await supabaseWishlists.getAll();
+      console.log('[AuthContext] Existing wishlists:', existingWishlists.length);
       
-      const result = await authenticatedPost<{ success: boolean }>('/api/users/init-defaults', {});
-      console.log('[AuthContext] Default wishlist initialization result:', result);
-      
-      const wishlists = await authenticatedGet<{ id: string; name: string; isDefault?: boolean }[]>('/api/wishlists');
-      console.log('[AuthContext] Fetched wishlists after init:', wishlists.length);
-      
-      if (wishlists.length > 0) {
-        const defaultWishlist = wishlists.find(w => w.name === 'My Wishlist') || wishlists[0];
-        console.log('[AuthContext] Found default wishlist:', defaultWishlist.id);
+      if (existingWishlists.length > 0) {
+        const defaultWishlist = existingWishlists.find(w => w.name === 'My Wishlist') || existingWishlists[0];
+        console.log('[AuthContext] Found existing wishlist:', defaultWishlist.id);
         return defaultWishlist.id;
       }
+
+      const newWishlist = await supabaseWishlists.create({
+        user_id: currentUser.id,
+        name: 'My Wishlist',
+      });
       
-      console.log('[AuthContext] No wishlists found after initialization');
-      return null;
+      console.log('[AuthContext] Created default wishlist:', newWishlist.id);
+      return newWishlist.id;
     } catch (error) {
       console.error('[AuthContext] Failed to initialize default wishlist:', error);
       return null;
