@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await authenticatedPost<{ success: boolean }>('/api/users/init-defaults', {});
       console.log('[AuthContext] Default wishlist initialization result:', result);
       
-      const wishlists = await authenticatedGet<Array<{ id: string; name: string; isDefault?: boolean }>>('/api/wishlists');
+      const wishlists = await authenticatedGet<{ id: string; name: string; isDefault?: boolean }[]>('/api/wishlists');
       console.log('[AuthContext] Fetched wishlists after init:', wishlists.length);
       
       if (wishlists.length > 0) {

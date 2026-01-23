@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 interface PriceHistoryEntry {
   price: string;
@@ -83,16 +84,7 @@ export default function ItemDetailScreen() {
   const [editedNotes, setEditedNotes] = useState('');
   const [editedImageUrl, setEditedImageUrl] = useState('');
 
-  useEffect(() => {
-    console.log('ItemDetailScreen: Component mounted, item ID:', id);
-    if (id) {
-      fetchItem();
-      fetchOtherStores();
-      fetchPriceDropInfo();
-    }
-  }, [id]);
-
-  const fetchItem = async () => {
+  const fetchItem = useCallback(async () => {
     console.log('ItemDetailScreen: Fetching item details');
     try {
       setLoading(true);
@@ -100,15 +92,20 @@ export default function ItemDetailScreen() {
       const data = await authenticatedGet<ItemDetail>(`/api/items/${id}`);
       console.log('ItemDetailScreen: Fetched item:', data.title);
       setItem(data);
+      
+      // Fetch alternatives after item is loaded
+      if (data.title) {
+        fetchOtherStores(data.title, data.originalUrl || undefined);
+      }
     } catch (error) {
       console.error('ItemDetailScreen: Error fetching item:', error);
       Alert.alert('Error', 'Failed to load item details');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
-  const fetchPriceDropInfo = async () => {
+  const fetchPriceDropInfo = useCallback(async () => {
     console.log('ItemDetailScreen: Fetching price drop info');
     try {
       const { authenticatedGet } = await import('@/utils/api');
@@ -118,22 +115,56 @@ export default function ItemDetailScreen() {
     } catch (error) {
       console.error('ItemDetailScreen: Error fetching price drop info:', error);
     }
-  };
+  }, [id]);
 
-  const fetchOtherStores = async () => {
-    console.log('ItemDetailScreen: Fetching other stores');
+  const fetchOtherStores = useCallback(async (title: string, originalUrl?: string) => {
+    console.log('ItemDetailScreen: Fetching other stores via Supabase Edge Function');
     try {
       setLoadingStores(true);
-      const { authenticatedPost } = await import('@/utils/api');
-      const data = await authenticatedPost<{ stores: OtherStore[] }>(`/api/items/${id}/find-other-stores`, {});
-      console.log('ItemDetailScreen: Found', data.stores.length, 'other stores');
-      setOtherStores(data.stores);
+      
+      // Get the current session token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Call Supabase Edge Function
+      const response = await fetch(
+        'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1/find-alternatives',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || ''}`,
+          },
+          body: JSON.stringify({
+            title,
+            originalUrl,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('ItemDetailScreen: Edge Function error:', errorText);
+        throw new Error('Failed to fetch alternatives');
+      }
+
+      const data = await response.json();
+      console.log('ItemDetailScreen: Found', data.alternatives?.length || 0, 'other stores');
+      setOtherStores(data.alternatives || []);
     } catch (error) {
       console.error('ItemDetailScreen: Error fetching other stores:', error);
+      setOtherStores([]);
     } finally {
       setLoadingStores(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('ItemDetailScreen: Component mounted, item ID:', id);
+    if (id) {
+      fetchItem();
+      fetchPriceDropInfo();
+    }
+  }, [id, fetchItem, fetchPriceDropInfo]);
 
   const handleCheckPrice = async () => {
     console.log('ItemDetailScreen: Manually checking price');

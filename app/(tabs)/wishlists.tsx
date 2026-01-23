@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -39,19 +39,7 @@ export default function WishlistsScreen() {
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
   const [wishlistName, setWishlistName] = useState('');
 
-  useEffect(() => {
-    console.log('WishlistsScreen: Component mounted, user:', user?.email);
-    if (!loading && !user) {
-      console.log('WishlistsScreen: No user found, redirecting to auth');
-      router.replace('/auth');
-      return;
-    }
-    if (user) {
-      fetchWishlists();
-    }
-  }, [user, loading]);
-
-  const fetchWishlists = async () => {
+  const fetchWishlists = useCallback(async () => {
     console.log('WishlistsScreen: Fetching wishlists');
     try {
       setDataLoading(true);
@@ -66,7 +54,19 @@ export default function WishlistsScreen() {
       setDataLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    console.log('WishlistsScreen: Component mounted, user:', user?.email);
+    if (!loading && !user) {
+      console.log('WishlistsScreen: No user found, redirecting to auth');
+      router.replace('/auth');
+      return;
+    }
+    if (user) {
+      fetchWishlists();
+    }
+  }, [user, loading, router, fetchWishlists]);
 
   const handleRefresh = () => {
     console.log('WishlistsScreen: User triggered refresh');

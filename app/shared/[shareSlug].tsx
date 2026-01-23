@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -45,12 +45,7 @@ export default function SharedWishlistViewScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    console.log('SharedWishlistViewScreen: Loading shared wishlist:', shareSlug);
-    fetchSharedWishlist();
-  }, [shareSlug]);
-
-  const fetchSharedWishlist = async () => {
+  const fetchSharedWishlist = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -69,7 +64,12 @@ export default function SharedWishlistViewScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [shareSlug]);
+
+  useEffect(() => {
+    console.log('SharedWishlistViewScreen: Loading shared wishlist:', shareSlug);
+    fetchSharedWishlist();
+  }, [shareSlug, fetchSharedWishlist]);
 
   const wishlistName = data?.wishlist.name || 'Shared Wishlist';
 

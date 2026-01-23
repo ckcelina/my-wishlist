@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -71,19 +71,7 @@ export default function WishlistDetailScreen() {
   const [shareVisibility, setShareVisibility] = useState<'public' | 'unlisted'>('public');
   const [shareLoading, setShareLoading] = useState(false);
 
-  useEffect(() => {
-    console.log('WishlistDetailScreen: Component mounted, wishlist ID:', id);
-    if (!authLoading && !user) {
-      console.log('WishlistDetailScreen: No user found, redirecting to auth');
-      router.replace('/auth');
-      return;
-    }
-    if (user && id) {
-      fetchWishlistAndItems();
-    }
-  }, [user, id, authLoading]);
-
-  const fetchWishlistAndItems = async () => {
+  const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
     try {
       setLoading(true);
@@ -128,7 +116,19 @@ export default function WishlistDetailScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [id]);
+
+  useEffect(() => {
+    console.log('WishlistDetailScreen: Component mounted, wishlist ID:', id);
+    if (!authLoading && !user) {
+      console.log('WishlistDetailScreen: No user found, redirecting to auth');
+      router.replace('/auth');
+      return;
+    }
+    if (user && id) {
+      fetchWishlistAndItems();
+    }
+  }, [user, id, authLoading, fetchWishlistAndItems, router]);
 
   const handleRefresh = () => {
     console.log('WishlistDetailScreen: User triggered refresh');
