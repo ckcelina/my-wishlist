@@ -157,6 +157,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
   },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    gap: 8,
+  },
+  importButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
+  },
 });
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -813,6 +831,23 @@ export default function AddItemScreen() {
         }}
       />
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <TouchableOpacity
+          style={styles.importButton}
+          onPress={() => {
+            console.log('[AddItemScreen] User tapped Import from Store button');
+            router.push('/import-wishlist');
+          }}
+          activeOpacity={0.7}
+        >
+          <IconSymbol
+            ios_icon_name="download"
+            android_material_icon_name="download"
+            size={20}
+            color={colors.accent}
+          />
+          <Text style={styles.importButtonText}>Import from Store</Text>
+        </TouchableOpacity>
+
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'url' && styles.activeTab]}

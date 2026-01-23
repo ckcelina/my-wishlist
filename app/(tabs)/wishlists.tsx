@@ -351,9 +351,31 @@ export default function WishlistsScreen() {
             description="Create a wishlist to save items you love from any app or website"
             actionLabel="Create Wishlist"
             onAction={openCreateModal}
+            secondaryActionLabel="Bring your existing wishlists"
+            onSecondaryAction={() => {
+              console.log('[WishlistsScreen] User tapped Import Wishlist from empty state');
+              router.push('/import-wishlist');
+            }}
           />
         ) : (
           <View style={styles.listContainer}>
+            <TouchableOpacity
+              style={styles.importButton}
+              onPress={() => {
+                console.log('[WishlistsScreen] User tapped Import Wishlist button');
+                router.push('/import-wishlist');
+              }}
+              activeOpacity={0.7}
+            >
+              <IconSymbol
+                ios_icon_name="download"
+                android_material_icon_name="download"
+                size={20}
+                color={colors.accent}
+              />
+              <Text style={styles.importButtonText}>Import Wishlist</Text>
+            </TouchableOpacity>
+
             {wishlists.map((wishlist, index) => {
               const itemCountText = `${wishlist.itemCount} ${wishlist.itemCount === 1 ? 'item' : 'items'}`;
               const lastUpdatedText = formatLastUpdated(wishlist.updatedAt);
@@ -623,5 +645,23 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+  },
+  importButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    gap: spacing.sm,
+  },
+  importButtonText: {
+    ...typography.bodyLarge,
+    fontWeight: '600',
+    color: colors.accent,
   },
 });

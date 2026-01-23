@@ -11,6 +11,8 @@ interface EmptyStateProps {
   description: string;
   actionLabel?: string;
   onAction?: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
 }
 
 export function EmptyState({
@@ -19,6 +21,8 @@ export function EmptyState({
   description,
   actionLabel,
   onAction,
+  secondaryActionLabel,
+  onSecondaryAction,
 }: EmptyStateProps) {
   return (
     <View style={styles.container}>
@@ -41,6 +45,14 @@ export function EmptyState({
             onPress={onAction}
             variant="primary"
           />
+          {secondaryActionLabel && onSecondaryAction && (
+            <Button
+              title={secondaryActionLabel}
+              onPress={onSecondaryAction}
+              variant="secondary"
+              style={styles.secondaryButton}
+            />
+          )}
         </View>
       )}
     </View>
@@ -76,5 +88,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 300,
     marginTop: spacing.md,
+  },
+  secondaryButton: {
+    marginTop: spacing.sm,
   },
 });
