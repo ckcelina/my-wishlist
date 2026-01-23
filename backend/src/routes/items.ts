@@ -942,4 +942,295 @@ Do not include any markdown, explanations, or extra text.`,
       }
     }
   );
+
+  // POST /api/items/:itemId/find-other-stores-filtered - Find alternative stores filtered by user location
+  app.fastify.post(
+    '/api/items/:itemId/find-other-stores-filtered',
+    {
+      schema: {
+        description: 'Find alternative stores filtered by user location',
+        tags: ['items'],
+        params: {
+          type: 'object',
+          properties: {
+            itemId: { type: 'string' },
+          },
+          required: ['itemId'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              stores: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    storeName: { type: 'string' },
+                    domain: { type: 'string' },
+                    price: { type: 'number' },
+                    currency: { type: 'string' },
+                    url: { type: 'string' },
+                  },
+                },
+              },
+              userLocation: {
+                type: ['object', 'null'],
+                properties: {
+                  countryCode: { type: 'string' },
+                  city: { type: ['string', 'null'] },
+                },
+              },
+              hasLocation: { type: 'boolean' },
+              message: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { itemId: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const { itemId } = request.params;
+
+      app.logger.info({ itemId, userId }, 'Finding alternative stores filtered by location');
+
+      try {
+        // Fetch item details
+        const item = await app.db.query.wishlistItems.findFirst({
+          where: eq(schema.wishlistItems.id, itemId),
+        });
+
+        if (!item) {
+          app.logger.warn({ itemId }, 'Item not found');
+          return reply.status(404).send({ error: 'Item not found' });
+        }
+
+        // Get user's location
+        const userLocation = await app.db.query.userLocation.findFirst({
+          where: eq(schema.userLocation.userId, userId),
+        });
+
+        if (!userLocation) {
+          app.logger.info({ userId }, 'User location not set, returning original store only');
+          return {
+            stores: [
+              {
+                storeName: item.sourceDomain || 'Unknown',
+                domain: item.sourceDomain || '',
+                price: item.currentPrice ? parseFloat(item.currentPrice.toString()) : null,
+                currency: item.currency,
+                url: item.originalUrl || '',
+              },
+            ],
+            userLocation: null,
+            hasLocation: false,
+            message: 'Set your shopping location to see available stores',
+          };
+        }
+
+        app.logger.info(
+          { itemId, countryCode: userLocation.countryCode, city: userLocation.city },
+          'Searching for alternative stores'
+        );
+
+        // Use GPT-5.2 to generate realistic alternative store options
+        const result = await generateText({
+          model: gateway('openai/gpt-5.2'),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `You are helping a user find the same product on other online stores for price comparison.
+
+Product Title: "${item.title}"
+Current Price: ${item.currentPrice} ${item.currency}
+Current Store: ${item.sourceDomain || 'unknown'}
+
+Generate a JSON array of 3-5 realistic online stores that would likely sell this product. Include major retailers and marketplaces that commonly sell this type of product.
+
+For each store, provide:
+- storeName: The official store name (e.g., "Amazon", "eBay", "Walmart")
+- domain: The website domain (e.g., "amazon.com", "ebay.com")
+- price: A realistic price for this product at that store (similar to the current price, with reasonable variations)
+- currency: The currency code (e.g., "USD")
+- url: A realistic product URL format for that store (should follow the store's typical URL pattern)
+
+Make the results realistic and varied. Vary prices by ±10-30% to show realistic price differences between retailers.
+
+Return ONLY valid JSON in this exact format:
+[
+  { "storeName": "...", "domain": "...", "price": number, "currency": "...", "url": "..." },
+  ...
+]
+
+Do not include any markdown, explanations, or extra text.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        // Parse the response
+        const aiStores = JSON.parse(result.text);
+
+        // Validate the response structure
+        if (!Array.isArray(aiStores)) {
+          throw new Error('Invalid response format from AI');
+        }
+
+        const validatedStores = aiStores
+          .filter(
+            (store: any) =>
+              store.storeName &&
+              store.domain &&
+              typeof store.price === 'number' &&
+              store.currency &&
+              store.url
+          )
+          .slice(0, 5);
+
+        // Apply location-based filtering
+        const filteredStores: typeof validatedStores = [];
+
+        for (const aiStore of validatedStores) {
+          // Check if store exists in database
+          const dbStore = await app.db.query.stores.findFirst({
+            where: eq(schema.stores.domain, aiStore.domain),
+            with: {
+              shippingRules: true,
+            },
+          });
+
+          if (!dbStore) {
+            // Store not in database, include it anyway (graceful fallback)
+            filteredStores.push(aiStore);
+            continue;
+          }
+
+          // Parse countriesSupported if it's a string
+          const supportedCountries = typeof dbStore.countriesSupported === 'string'
+            ? JSON.parse(dbStore.countriesSupported)
+            : dbStore.countriesSupported;
+
+          // Check if country is supported
+          if (!supportedCountries.includes(userLocation.countryCode)) {
+            app.logger.debug(
+              { domain: dbStore.domain, countryCode: userLocation.countryCode },
+              'Store does not support country'
+            );
+            continue;
+          }
+
+          // Check shipping rules for this country
+          const shippingRule = dbStore.shippingRules.find(
+            (rule) => rule.countryCode === userLocation.countryCode
+          );
+
+          if (shippingRule && !shippingRule.shipsToCountry) {
+            app.logger.debug(
+              { domain: dbStore.domain, countryCode: userLocation.countryCode },
+              'Store does not ship to country'
+            );
+            continue;
+          }
+
+          // If store requires city, check city filtering
+          if (dbStore.requiresCity && userLocation.city && shippingRule) {
+            const city = userLocation.city;
+
+            // Parse city blacklist if it's a string
+            const blacklist = shippingRule.cityBlacklist
+              ? (typeof shippingRule.cityBlacklist === 'string'
+                  ? JSON.parse(shippingRule.cityBlacklist)
+                  : shippingRule.cityBlacklist)
+              : null;
+
+            // Check city blacklist
+            if (blacklist && blacklist.includes(city)) {
+              app.logger.debug(
+                { domain: dbStore.domain, city },
+                'City is blacklisted'
+              );
+              continue;
+            }
+
+            // Parse city whitelist if it's a string
+            const whitelist = shippingRule.cityWhitelist
+              ? (typeof shippingRule.cityWhitelist === 'string'
+                  ? JSON.parse(shippingRule.cityWhitelist)
+                  : shippingRule.cityWhitelist)
+              : null;
+
+            // Check city whitelist
+            if (
+              whitelist &&
+              whitelist.length > 0 &&
+              !whitelist.includes(city)
+            ) {
+              app.logger.debug(
+                { domain: dbStore.domain, city },
+                'City is not in whitelist'
+              );
+              continue;
+            }
+
+            if (!shippingRule.shipsToCity) {
+              app.logger.debug(
+                { domain: dbStore.domain, city },
+                'Store does not ship to city'
+              );
+              continue;
+            }
+          }
+
+          // Store passed all filters, include it
+          filteredStores.push(aiStore);
+        }
+
+        app.logger.info(
+          { itemId, storeCount: filteredStores.length, countryCode: userLocation.countryCode },
+          'Alternative stores found'
+        );
+
+        if (filteredStores.length === 0) {
+          return {
+            stores: [],
+            userLocation: {
+              countryCode: userLocation.countryCode,
+              city: userLocation.city || null,
+            },
+            hasLocation: true,
+            message: 'No available stores found for your location',
+          };
+        }
+
+        return {
+          stores: filteredStores,
+          userLocation: {
+            countryCode: userLocation.countryCode,
+            city: userLocation.city || null,
+          },
+          hasLocation: true,
+        };
+      } catch (error) {
+        app.logger.error(
+          { err: error, itemId },
+          'Failed to find filtered stores'
+        );
+        return reply.status(400).send({
+          error: 'Failed to search for stores',
+        });
+      }
+    }
+  );
 }

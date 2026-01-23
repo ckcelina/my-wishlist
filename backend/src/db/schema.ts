@@ -161,3 +161,91 @@ export const userSettingsRelations = relations(userSettings, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// User location table
+export const userLocation = pgTable(
+  'user_location',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .unique()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    countryCode: text('country_code').notNull(),
+    countryName: text('country_name').notNull(),
+    city: text('city'),
+    region: text('region'),
+    postalCode: text('postal_code'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('user_location_user_id_idx').on(table.userId)]
+);
+
+// Stores table
+export const stores = pgTable(
+  'stores',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    domain: text('domain').notNull().unique(),
+    type: text('type', { enum: ['website', 'marketplace'] }).notNull(),
+    countriesSupported: text('countries_supported').notNull(), // JSON string stored as text
+    requiresCity: boolean('requires_city').default(false).notNull(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('stores_domain_idx').on(table.domain)]
+);
+
+// Store shipping rules table
+export const storeShippingRules = pgTable(
+  'store_shipping_rules',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    storeId: uuid('store_id')
+      .notNull()
+      .references(() => stores.id, {
+        onDelete: 'cascade',
+      }),
+    countryCode: text('country_code').notNull(),
+    cityWhitelist: text('city_whitelist'), // JSON string stored as text
+    cityBlacklist: text('city_blacklist'), // JSON string stored as text
+    shipsToCountry: boolean('ships_to_country').default(true).notNull(),
+    shipsToCity: boolean('ships_to_city').default(true).notNull(),
+    deliveryMethods: text('delivery_methods'), // JSON string stored as text
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('store_shipping_rules_store_id_idx').on(table.storeId)]
+);
+
+// Relations
+export const userLocationRelations = relations(userLocation, ({ one }) => ({
+  user: one(user, {
+    fields: [userLocation.userId],
+    references: [user.id],
+  }),
+}));
+
+export const storesRelations = relations(stores, ({ many }) => ({
+  shippingRules: many(storeShippingRules),
+}));
+
+export const storeShippingRulesRelations = relations(
+  storeShippingRules,
+  ({ one }) => ({
+    store: one(stores, {
+      fields: [storeShippingRules.storeId],
+      references: [stores.id],
+    }),
+  })
+);
