@@ -450,6 +450,174 @@ export function registerWishlistRoutes(app: App) {
     }
   );
 
+  // GET /api/wishlists/:id/share - Get current share settings for a wishlist
+  app.fastify.get(
+    '/api/wishlists/:id/share',
+    {
+      schema: {
+        description: 'Get current share settings for a wishlist',
+        tags: ['wishlists'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              shareSlug: { type: 'string' },
+              visibility: { type: 'string' },
+              shareUrl: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const { id } = request.params;
+
+      app.logger.info({ wishlistId: id, userId }, 'Fetching share settings');
+
+      // Verify ownership
+      const wishlist = await app.db.query.wishlists.findFirst({
+        where: eq(schema.wishlists.id, id),
+      });
+
+      if (!wishlist || wishlist.userId !== userId) {
+        app.logger.warn({ wishlistId: id, userId }, 'Wishlist not found');
+        return reply.status(404).send({ error: 'Wishlist not found' });
+      }
+
+      // Get share record
+      const sharedWishlist = await app.db.query.sharedWishlists.findFirst({
+        where: eq(schema.sharedWishlists.wishlistId, id),
+      });
+
+      if (!sharedWishlist) {
+        app.logger.warn({ wishlistId: id }, 'Wishlist is not shared');
+        return reply.status(404).send({ error: 'Wishlist is not shared' });
+      }
+
+      const shareUrl = `/api/wishlists/shared/${sharedWishlist.shareSlug}`;
+
+      app.logger.info(
+        {
+          wishlistId: id,
+          shareSlug: sharedWishlist.shareSlug,
+          visibility: sharedWishlist.visibility,
+        },
+        'Share settings retrieved'
+      );
+
+      return {
+        shareSlug: sharedWishlist.shareSlug,
+        visibility: sharedWishlist.visibility,
+        shareUrl,
+      };
+    }
+  );
+
+  // POST /api/wishlists/:id/regenerate-share - Regenerate share slug for a wishlist
+  app.fastify.post(
+    '/api/wishlists/:id/regenerate-share',
+    {
+      schema: {
+        description: 'Regenerate share slug for a wishlist',
+        tags: ['wishlists'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              shareSlug: { type: 'string' },
+              visibility: { type: 'string' },
+              shareUrl: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const session = await requireAuth(request, reply);
+      if (!session) return;
+
+      const userId = session.user.id;
+      const { id } = request.params;
+
+      app.logger.info({ wishlistId: id, userId }, 'Regenerating share slug');
+
+      // Verify ownership
+      const wishlist = await app.db.query.wishlists.findFirst({
+        where: eq(schema.wishlists.id, id),
+      });
+
+      if (!wishlist || wishlist.userId !== userId) {
+        app.logger.warn({ wishlistId: id, userId }, 'Wishlist not found');
+        return reply.status(404).send({ error: 'Wishlist not found' });
+      }
+
+      // Get existing share record
+      const sharedWishlist = await app.db.query.sharedWishlists.findFirst({
+        where: eq(schema.sharedWishlists.wishlistId, id),
+      });
+
+      if (!sharedWishlist) {
+        app.logger.warn({ wishlistId: id }, 'Wishlist is not shared');
+        return reply.status(404).send({ error: 'Wishlist is not shared' });
+      }
+
+      // Generate new unique share slug
+      const newShareSlug = await generateUniqueShareSlug();
+
+      // Update share record with new slug
+      const [updated] = await app.db
+        .update(schema.sharedWishlists)
+        .set({ shareSlug: newShareSlug })
+        .where(eq(schema.sharedWishlists.wishlistId, id))
+        .returning();
+
+      const shareUrl = `/api/wishlists/shared/${updated.shareSlug}`;
+
+      app.logger.info(
+        {
+          wishlistId: id,
+          oldShareSlug: sharedWishlist.shareSlug,
+          newShareSlug: updated.shareSlug,
+        },
+        'Share slug regenerated'
+      );
+
+      return {
+        shareSlug: updated.shareSlug,
+        visibility: updated.visibility,
+        shareUrl,
+      };
+    }
+  );
+
   // GET /api/wishlists/shared/:shareSlug - Public read-only access to wishlist
   app.fastify.get(
     '/api/wishlists/shared/:shareSlug',
