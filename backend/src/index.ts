@@ -5,6 +5,7 @@ import { registerUserRoutes } from './routes/users.js';
 import { registerWishlistRoutes } from './routes/wishlists.js';
 import { registerItemRoutes } from './routes/items.js';
 import { registerUploadRoutes } from './routes/upload.js';
+import { registerPricingRoutes } from './routes/pricing.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -26,6 +27,7 @@ registerUserRoutes(app);
 registerWishlistRoutes(app);
 registerItemRoutes(app);
 registerUploadRoutes(app);
+registerPricingRoutes(app);
 
 await app.run();
 app.logger.info('Application running');

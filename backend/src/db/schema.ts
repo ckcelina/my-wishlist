@@ -45,6 +45,7 @@ export const wishlistItems = pgTable(
     currentPrice: decimal('current_price', { precision: 10, scale: 2 }),
     currency: text('currency').default('USD').notNull(),
     notes: text('notes'),
+    lastCheckedAt: timestamp('last_checked_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
