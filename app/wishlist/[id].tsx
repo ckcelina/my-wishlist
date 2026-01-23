@@ -77,6 +77,8 @@ export default function WishlistDetailScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('Recently added');
   const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [existingShareSlug, setExistingShareSlug] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string>('');
 
   const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
@@ -246,9 +248,38 @@ export default function WishlistDetailScreen() {
     setShowRenameModal(true);
   };
 
-  const openShareModal = () => {
+  const openShareModal = async () => {
     console.log('WishlistDetailScreen: Opening share modal');
     setShowMenu(false);
+    
+    // Fetch existing share settings
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const shareData = await authenticatedGet<{
+        shareSlug: string | null;
+        visibility: string | null;
+      }>(`/api/wishlists/${id}/share`);
+      
+      if (shareData.shareSlug) {
+        console.log('WishlistDetailScreen: Existing share found:', shareData.shareSlug);
+        setExistingShareSlug(shareData.shareSlug);
+        setShareVisibility((shareData.visibility as 'public' | 'unlisted') || 'public');
+        
+        // Construct share URL
+        const baseUrl = 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev';
+        const url = `${baseUrl}/shared/${shareData.shareSlug}`;
+        setShareUrl(url);
+      } else {
+        console.log('WishlistDetailScreen: No existing share found');
+        setExistingShareSlug(null);
+        setShareUrl('');
+      }
+    } catch (error) {
+      console.log('WishlistDetailScreen: No existing share or error fetching:', error);
+      setExistingShareSlug(null);
+      setShareUrl('');
+    }
+    
     setShowShareModal(true);
   };
 
@@ -263,8 +294,8 @@ export default function WishlistDetailScreen() {
     setShowSortModal(false);
   };
 
-  const handleShareWishlist = async () => {
-    console.log('WishlistDetailScreen: Sharing wishlist with visibility:', shareVisibility);
+  const handleCreateOrUpdateShare = async () => {
+    console.log('WishlistDetailScreen: Creating/updating share with visibility:', shareVisibility);
     setShareLoading(true);
     
     try {
@@ -278,32 +309,128 @@ export default function WishlistDetailScreen() {
         visibility: shareVisibility,
       });
       
-      console.log('WishlistDetailScreen: Share created:', response.shareSlug);
+      console.log('WishlistDetailScreen: Share created/updated:', response.shareSlug);
       
-      const shareUrl = response.shareUrl;
+      setExistingShareSlug(response.shareSlug);
+      setShareUrl(response.shareUrl);
       
-      setShowShareModal(false);
-      
-      // Share the link
-      if (Platform.OS === 'web') {
-        await Clipboard.setStringAsync(shareUrl);
-        Alert.alert('Link Copied', 'Share link has been copied to clipboard');
-      } else {
-        try {
-          await Share.share({
-            message: `Check out my wishlist: ${wishlist?.name}\n${shareUrl}`,
-            url: shareUrl,
-          });
-        } catch (error) {
-          console.error('WishlistDetailScreen: Error sharing:', error);
-        }
-      }
+      const messageText = existingShareSlug ? 'Visibility updated successfully!' : 'Share link created successfully!';
+      Alert.alert('Success', messageText);
     } catch (error) {
       console.error('WishlistDetailScreen: Error creating share link:', error);
       Alert.alert('Error', 'Failed to create share link');
     } finally {
       setShareLoading(false);
     }
+  };
+
+  const handleRegenerateShare = async () => {
+    console.log('WishlistDetailScreen: Regenerating share link');
+    
+    Alert.alert(
+      'Regenerate Link',
+      'This will create a new link and invalidate the old one. Anyone with the old link will no longer be able to access this wishlist.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Regenerate',
+          style: 'destructive',
+          onPress: async () => {
+            setShareLoading(true);
+            try {
+              const { authenticatedPost } = await import('@/utils/api');
+              
+              const response = await authenticatedPost<{
+                shareSlug: string;
+                visibility: string;
+                shareUrl: string;
+              }>(`/api/wishlists/${id}/regenerate-share`, {});
+              
+              console.log('WishlistDetailScreen: Share regenerated:', response.shareSlug);
+              
+              setExistingShareSlug(response.shareSlug);
+              setShareUrl(response.shareUrl);
+              setShareVisibility((response.visibility as 'public' | 'unlisted') || 'public');
+              
+              Alert.alert('Success', 'New share link generated!');
+            } catch (error) {
+              console.error('WishlistDetailScreen: Error regenerating share link:', error);
+              Alert.alert('Error', 'Failed to regenerate share link');
+            } finally {
+              setShareLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCopyLink = async () => {
+    console.log('WishlistDetailScreen: Copying share link');
+    if (!shareUrl) {
+      Alert.alert('Error', 'No share link available');
+      return;
+    }
+    
+    try {
+      await Clipboard.setStringAsync(shareUrl);
+      Alert.alert('Copied', 'Share link copied to clipboard');
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error copying link:', error);
+      Alert.alert('Error', 'Failed to copy link');
+    }
+  };
+
+  const handleShareLink = async () => {
+    console.log('WishlistDetailScreen: Sharing link via system share');
+    if (!shareUrl) {
+      Alert.alert('Error', 'No share link available');
+      return;
+    }
+    
+    try {
+      await Share.share({
+        message: `Check out my wishlist: ${wishlist?.name}\n${shareUrl}`,
+        url: shareUrl,
+      });
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error sharing:', error);
+    }
+  };
+
+  const handleStopSharing = async () => {
+    console.log('WishlistDetailScreen: Stopping sharing');
+    
+    Alert.alert(
+      'Stop Sharing',
+      'This will delete the share link. Anyone with the link will no longer be able to access this wishlist.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop Sharing',
+          style: 'destructive',
+          onPress: async () => {
+            setShareLoading(true);
+            try {
+              const { authenticatedDelete } = await import('@/utils/api');
+              await authenticatedDelete(`/api/wishlists/${id}/share`);
+              
+              console.log('WishlistDetailScreen: Sharing stopped');
+              setExistingShareSlug(null);
+              setShareUrl('');
+              setShowShareModal(false);
+              
+              Alert.alert('Success', 'Sharing has been disabled');
+            } catch (error) {
+              console.error('WishlistDetailScreen: Error stopping sharing:', error);
+              Alert.alert('Error', 'Failed to stop sharing');
+            } finally {
+              setShareLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleRefreshPrices = async () => {
@@ -758,7 +885,7 @@ export default function WishlistDetailScreen() {
             <Pressable style={styles.shareModalContainer}>
               <Text style={styles.modalTitle}>Share Wishlist</Text>
               <Text style={styles.modalSubtitle}>
-                Choose who can view this wishlist
+                {existingShareSlug ? 'Manage your share settings' : 'Choose who can view this wishlist'}
               </Text>
               
               <TouchableOpacity
@@ -767,6 +894,7 @@ export default function WishlistDetailScreen() {
                   shareVisibility === 'public' && styles.visibilityOptionSelected,
                 ]}
                 onPress={() => setShareVisibility('public')}
+                disabled={shareLoading}
               >
                 <View style={styles.visibilityOptionContent}>
                   <IconSymbol
@@ -803,6 +931,7 @@ export default function WishlistDetailScreen() {
                   shareVisibility === 'unlisted' && styles.visibilityOptionSelected,
                 ]}
                 onPress={() => setShareVisibility('unlisted')}
+                disabled={shareLoading}
               >
                 <View style={styles.visibilityOptionContent}>
                   <IconSymbol
@@ -833,24 +962,117 @@ export default function WishlistDetailScreen() {
                 )}
               </TouchableOpacity>
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.cancelButton]}
-                  onPress={() => setShowShareModal(false)}
-                  disabled={shareLoading}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.saveButton]}
-                  onPress={handleShareWishlist}
-                  disabled={shareLoading}
-                >
-                  <Text style={styles.saveButtonText}>
-                    {shareLoading ? 'Creating...' : 'Share'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              {existingShareSlug ? (
+                <ScrollView style={styles.shareModalScroll}>
+                  {/* Share link display */}
+                  <View style={styles.shareLinkContainer}>
+                    <Text style={styles.shareLinkLabel}>Share Link</Text>
+                    <View style={styles.shareLinkBox}>
+                      <Text style={styles.shareLinkText} numberOfLines={1}>
+                        {shareUrl}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Action buttons for existing share */}
+                  <View style={styles.shareActionsContainer}>
+                    <TouchableOpacity
+                      style={styles.shareActionButton}
+                      onPress={handleCopyLink}
+                      disabled={shareLoading}
+                    >
+                      <IconSymbol
+                        ios_icon_name="doc.on.doc"
+                        android_material_icon_name="content-copy"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.shareActionText}>Copy Link</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.shareActionButton}
+                      onPress={handleShareLink}
+                      disabled={shareLoading}
+                    >
+                      <IconSymbol
+                        ios_icon_name="square.and.arrow.up"
+                        android_material_icon_name="share"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.shareActionText}>Share</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.shareActionButton}
+                      onPress={handleRegenerateShare}
+                      disabled={shareLoading}
+                    >
+                      <IconSymbol
+                        ios_icon_name="arrow.clockwise"
+                        android_material_icon_name="refresh"
+                        size={20}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.shareActionText}>Regenerate</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Update visibility button */}
+                  <TouchableOpacity
+                    style={[styles.button, styles.updateButton]}
+                    onPress={handleCreateOrUpdateShare}
+                    disabled={shareLoading}
+                  >
+                    {shareLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Update Visibility</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={[styles.button, styles.cancelButton]}
+                      onPress={() => setShowShareModal(false)}
+                      disabled={shareLoading}
+                    >
+                      <Text style={styles.cancelButtonText}>Close</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.deleteShareButton]}
+                      onPress={handleStopSharing}
+                      disabled={shareLoading}
+                    >
+                      <Text style={styles.deleteShareButtonText}>
+                        Stop Sharing
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              ) : (
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity
+                    style={[styles.button, styles.cancelButton]}
+                    onPress={() => setShowShareModal(false)}
+                    disabled={shareLoading}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, styles.saveButton]}
+                    onPress={handleCreateOrUpdateShare}
+                    disabled={shareLoading}
+                  >
+                    {shareLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.saveButtonText}>Create Link</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
             </Pressable>
           </Pressable>
         </Modal>
@@ -1102,8 +1324,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginHorizontal: 20,
     padding: 20,
-    width: '85%',
-    maxWidth: 400,
+    width: '90%',
+    maxWidth: 450,
+    maxHeight: '80%',
   },
   modalTitle: {
     fontSize: 20,
@@ -1191,5 +1414,66 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  shareLinkContainer: {
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  shareLinkLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  shareLinkBox: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  shareLinkText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  shareActionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  shareActionButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 6,
+  },
+  shareActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  deleteShareButton: {
+    backgroundColor: '#FEE2E2',
+  },
+  deleteShareButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  shareModalScroll: {
+    maxHeight: 500,
+  },
+  updateButton: {
+    backgroundColor: colors.primary,
+    marginTop: 8,
+    marginBottom: 16,
   },
 });

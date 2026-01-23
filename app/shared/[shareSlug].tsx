@@ -46,21 +46,32 @@ export default function SharedWishlistViewScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchSharedWishlist = useCallback(async () => {
+    console.log('SharedWishlistViewScreen: Fetching shared wishlist with slug:', shareSlug);
     try {
       setLoading(true);
       setError(null);
       
-      const { apiGet } = await import('@/utils/api');
-      const wishlistData = await apiGet<SharedWishlistData>(
-        `/api/wishlists/shared/${shareSlug}`
+      // Fetch shared wishlist data (no authentication required)
+      const response = await fetch(
+        `https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev/api/wishlists/shared/${shareSlug}`
       );
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Wishlist not found or no longer shared');
+        }
+        throw new Error('Failed to load wishlist');
+      }
+      
+      const wishlistData = await response.json() as SharedWishlistData;
       
       console.log('SharedWishlistViewScreen: Loaded wishlist:', wishlistData.wishlist.name);
       console.log('SharedWishlistViewScreen: Items count:', wishlistData.items.length);
       setData(wishlistData);
     } catch (err) {
       console.error('SharedWishlistViewScreen: Error loading shared wishlist:', err);
-      setError('Failed to load wishlist. The link may be invalid or expired.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load wishlist. The link may be invalid or expired.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
