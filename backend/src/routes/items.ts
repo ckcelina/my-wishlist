@@ -663,4 +663,142 @@ Return ONLY valid JSON, no markdown or extra text.`,
       };
     }
   );
+
+  // POST /api/items/:id/find-other-stores - Find the same item in other online stores
+  app.fastify.post(
+    '/api/items/:id/find-other-stores',
+    {
+      schema: {
+        description: 'Find the same item in other online stores for price comparison',
+        tags: ['items'],
+        params: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+          },
+          required: ['id'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              stores: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    storeName: { type: 'string' },
+                    domain: { type: 'string' },
+                    price: { type: 'number' },
+                    currency: { type: 'string' },
+                    url: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Params: { id: string };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const { id } = request.params;
+
+      app.logger.info({ itemId: id }, 'Finding item in other stores');
+
+      try {
+        // Fetch item details
+        const item = await app.db.query.wishlistItems.findFirst({
+          where: eq(schema.wishlistItems.id, id),
+        });
+
+        if (!item) {
+          app.logger.warn({ itemId: id }, 'Item not found');
+          return reply.status(404).send({ error: 'Item not found' });
+        }
+
+        app.logger.info(
+          { itemId: id, title: item.title, price: item.currentPrice },
+          'Searching for item in other stores'
+        );
+
+        // Use GPT-5.2 to generate realistic alternative store options
+        const result = await generateText({
+          model: gateway('openai/gpt-5.2'),
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `You are helping a user find the same product on other online stores for price comparison.
+
+Product Title: "${item.title}"
+Current Price: ${item.currentPrice} ${item.currency}
+Current Store: ${item.sourceDomain || 'unknown'}
+
+Generate a JSON array of 3-5 realistic online stores that would likely sell this product. Include major retailers and marketplaces that commonly sell this type of product.
+
+For each store, provide:
+- storeName: The official store name (e.g., "Amazon", "eBay", "Walmart")
+- domain: The website domain (e.g., "amazon.com", "ebay.com")
+- price: A realistic price for this product at that store (similar to the current price, with reasonable variations)
+- currency: The currency code (e.g., "USD")
+- url: A realistic product URL format for that store (should follow the store's typical URL pattern)
+
+Make the results realistic and varied. Vary prices by ±10-30% to show realistic price differences between retailers.
+
+Return ONLY valid JSON in this exact format:
+[
+  { "storeName": "...", "domain": "...", "price": number, "currency": "...", "url": "..." },
+  ...
+]
+
+Do not include any markdown, explanations, or extra text.`,
+                },
+              ],
+            },
+          ],
+        });
+
+        // Parse the response
+        const stores = JSON.parse(result.text);
+
+        // Validate the response structure
+        if (!Array.isArray(stores)) {
+          throw new Error('Invalid response format from AI');
+        }
+
+        const validatedStores = stores
+          .filter(
+            (store: any) =>
+              store.storeName &&
+              store.domain &&
+              typeof store.price === 'number' &&
+              store.currency &&
+              store.url
+          )
+          .slice(0, 5); // Limit to 5 stores
+
+        app.logger.info(
+          { itemId: id, storeCount: validatedStores.length },
+          'Alternative stores found'
+        );
+
+        return { stores: validatedStores };
+      } catch (error) {
+        app.logger.error(
+          { err: error, itemId: id },
+          'Failed to find item in other stores'
+        );
+        return reply.status(400).send({
+          error: 'Failed to search for item in other stores',
+        });
+      }
+    }
+  );
 }
