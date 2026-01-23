@@ -68,7 +68,15 @@
     "plugins": [
       "expo-font",
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/natively-dark.png",
+          "color": "#000000",
+          "defaultChannel": "price-drops"
+        }
+      ]
     ],
     "scheme": "wishzen",
     "experiments": {

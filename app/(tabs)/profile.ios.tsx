@@ -224,7 +224,11 @@ export default function ProfileScreen() {
 
               <Divider />
 
-              <View style={styles.menuItem}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => router.push('/alerts')}
+                activeOpacity={0.7}
+              >
                 <View style={styles.menuItemLeft}>
                   <IconSymbol
                     ios_icon_name="bell.fill"
@@ -234,14 +238,18 @@ export default function ProfileScreen() {
                   />
                   <Text style={styles.menuItemText}>Price Drop Alerts</Text>
                 </View>
-                <Switch
-                  value={priceDropAlerts}
-                  onValueChange={handleTogglePriceAlerts}
-                  trackColor={{ false: colors.border, true: colors.primaryLight }}
-                  thumbColor={priceDropAlerts ? colors.primary : colors.surface}
-                  ios_backgroundColor={colors.border}
-                />
-              </View>
+                <View style={styles.menuItemRight}>
+                  <Text style={styles.currencyValue}>
+                    {priceDropAlerts ? 'Enabled' : 'Disabled'}
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={colors.textTertiary}
+                  />
+                </View>
+              </TouchableOpacity>
             </Card>
           </View>
 

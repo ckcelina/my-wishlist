@@ -1,12 +1,13 @@
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useColorScheme, Alert } from "react-native";
 import { useNetworkState } from "expo-network";
+import * as Notifications from "expo-notifications";
 import {
   DarkTheme,
   DefaultTheme,
@@ -29,6 +30,7 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
+  const router = useRouter();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
@@ -43,6 +45,45 @@ export default function RootLayout() {
     // Log backend URL for debugging
     console.log('[App] Backend URL configured:', BACKEND_URL);
   }, []);
+
+  // Set up notification handlers
+  useEffect(() => {
+    console.log('[App] Setting up notification handlers');
+
+    // Handle notifications received while app is in foreground
+    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
+      console.log('[App] Notification received in foreground:', notification);
+    });
+
+    // Handle notification taps
+    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('[App] Notification tapped:', response);
+      
+      // Navigate to item detail if itemId is in the notification data
+      const itemId = response.notification.request.content.data?.itemId;
+      if (itemId && typeof itemId === 'string') {
+        console.log('[App] Navigating to item:', itemId);
+        router.push(`/item/${itemId}`);
+      }
+    });
+
+    // Check if app was opened from a notification
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response) {
+        console.log('[App] App opened from notification:', response);
+        const itemId = response.notification.request.content.data?.itemId;
+        if (itemId && typeof itemId === 'string') {
+          console.log('[App] Navigating to item from launch:', itemId);
+          router.push(`/item/${itemId}`);
+        }
+      }
+    });
+
+    return () => {
+      notificationListener.remove();
+      responseListener.remove();
+    };
+  }, [router]);
 
   React.useEffect(() => {
     if (
@@ -128,6 +169,16 @@ export default function RootLayout() {
                   options={{ 
                     headerShown: true,
                     title: 'Shared Wishlist',
+                    headerBackTitle: 'Back'
+                  }} 
+                />
+                
+                {/* Alert settings screen */}
+                <Stack.Screen 
+                  name="alerts" 
+                  options={{ 
+                    headerShown: true,
+                    title: 'Alert Settings',
                     headerBackTitle: 'Back'
                   }} 
                 />
