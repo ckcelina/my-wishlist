@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { Platform } from "react-native";
 import { authClient, storeWebBearerToken } from "@/lib/auth";
+import { supabase, supabaseAuth } from "@/lib/supabase";
 
 interface User {
   id: string;
@@ -20,6 +21,7 @@ interface AuthContextType {
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchUser: () => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -73,13 +75,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetchUser();
+    
+    // Listen for Supabase auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[AuthContext] Supabase auth state changed:', event);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
+        const supabaseUser = session.user;
+        setUser({
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
+          image: supabaseUser.user_metadata?.avatar_url,
+        });
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUser = async () => {
     try {
       setLoading(true);
+      
+      // Try Supabase first
+      const supabaseUser = await supabaseAuth.getCurrentUser();
+      if (supabaseUser) {
+        console.log('[AuthContext] Supabase user found:', supabaseUser.id);
+        setUser({
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
+          image: supabaseUser.user_metadata?.avatar_url,
+        });
+        return;
+      }
+      
+      // Fallback to Better Auth
       const session = await authClient.getSession();
       if (session?.data?.user) {
+        console.log('[AuthContext] Better Auth user found');
         setUser(session.data.user as User);
       } else {
         setUser(null);
@@ -94,7 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      await authClient.signIn.email({ email, password });
+      console.log('[AuthContext] Signing in with email via Supabase');
+      await supabaseAuth.signIn(email, password);
       await fetchUser();
     } catch (error) {
       console.error("Email sign in failed:", error);
@@ -104,12 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      console.log('[AuthContext] Starting signup process');
-      await authClient.signUp.email({
-        email,
-        password,
-        name,
-      });
+      console.log('[AuthContext] Starting signup process via Supabase');
+      await supabaseAuth.signUp(email, password, name);
       await fetchUser();
       
       console.log('[AuthContext] User signed up, initializing default wishlist');
@@ -182,10 +218,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
+      console.log('[AuthContext] Signing out');
+      
+      // Sign out from both Supabase and Better Auth
+      await supabaseAuth.signOut();
       await authClient.signOut();
+      
       setUser(null);
     } catch (error) {
       console.error("Sign out failed:", error);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email: string) => {
+    try {
+      console.log('[AuthContext] Resetting password for:', email);
+      await supabaseAuth.resetPassword(email);
+    } catch (error) {
+      console.error("Password reset failed:", error);
       throw error;
     }
   };
@@ -202,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGitHub,
         signOut,
         fetchUser,
+        resetPassword,
       }}
     >
       {children}
