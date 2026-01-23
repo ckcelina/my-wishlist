@@ -31,6 +31,7 @@ interface Wishlist {
   isDefault: boolean;
   itemCount: number;
   createdAt: string;
+  updatedAt: string;
 }
 
 export default function WishlistsScreen() {
@@ -66,6 +67,7 @@ export default function WishlistsScreen() {
         isDefault: w.is_default,
         itemCount: w.wishlist_items?.[0]?.count || 0,
         createdAt: w.created_at,
+        updatedAt: w.updated_at,
       }));
 
       console.log('[WishlistsScreen] Fetched wishlists:', wishlistsData.length);
@@ -116,10 +118,11 @@ export default function WishlistsScreen() {
 
       if (response.error) throw response.error;
 
-      console.log('[WishlistsScreen] Wishlist created successfully');
+      console.log('[WishlistsScreen] Wishlist created successfully, opening it');
       setCreateModalVisible(false);
       setNewWishlistName('');
-      fetchWishlists();
+      
+      router.push(`/wishlist/${response.data.id}`);
     } catch (error: any) {
       console.error('[WishlistsScreen] Error creating wishlist:', error);
       Alert.alert('Error', 'Failed to create wishlist');
@@ -158,9 +161,14 @@ export default function WishlistsScreen() {
       return;
     }
 
+    const itemText = wishlist.itemCount === 1 ? 'item' : 'items';
+    const message = wishlist.itemCount > 0
+      ? `Are you sure you want to delete "${wishlist.name}"? This will also delete ${wishlist.itemCount} ${itemText}.`
+      : `Are you sure you want to delete "${wishlist.name}"?`;
+
     Alert.alert(
       'Delete Wishlist',
-      `Are you sure you want to delete "${wishlist.name}"? This will also delete all items in this wishlist.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -193,11 +201,11 @@ export default function WishlistsScreen() {
     router.push(`/wishlist/${wishlist.id}`);
   };
 
-  const handleWishlistLongPress = (wishlist: Wishlist) => {
-    console.log('[WishlistsScreen] User long-pressed wishlist:', wishlist.name);
+  const openOverflowMenu = (wishlist: Wishlist) => {
+    console.log('[WishlistsScreen] User tapped overflow menu for:', wishlist.name);
     Alert.alert(
       wishlist.name,
-      'What would you like to do?',
+      'Choose an action',
       [
         {
           text: 'Rename',
@@ -220,15 +228,40 @@ export default function WishlistsScreen() {
   };
 
   const openCreateModal = () => {
+    console.log('[WishlistsScreen] User tapped New Wishlist button');
     setNewWishlistName('');
     setCreateModalVisible(true);
+  };
+
+  const formatLastUpdated = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) {
+      return 'Just now';
+    }
+    if (diffMins < 60) {
+      return `${diffMins}m ago`;
+    }
+    if (diffHours < 24) {
+      return `${diffHours}h ago`;
+    }
+    if (diffDays < 7) {
+      return `${diffDays}d ago`;
+    }
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Wishlists</Text>
+          <Text style={styles.headerTitle}>Wishlists</Text>
         </View>
         <ScrollView style={styles.content}>
           <ListItemSkeleton />
@@ -242,7 +275,7 @@ export default function WishlistsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Wishlists</Text>
+        <Text style={styles.headerTitle}>Wishlists</Text>
         <TouchableOpacity onPress={openCreateModal} style={styles.headerButton}>
           <IconSymbol
             ios_icon_name="add"
@@ -262,51 +295,77 @@ export default function WishlistsScreen() {
         {wishlists.length === 0 ? (
           <EmptyState
             icon="favorite-border"
-            title="No Wishlists Yet"
-            description="Create your first wishlist to start saving items you love"
-            actionLabel="Create Wishlist"
+            title="Create your first wishlist"
+            description="Start saving items you love by creating your first wishlist"
+            actionLabel="New Wishlist"
             onAction={openCreateModal}
           />
         ) : (
           <View style={styles.listContainer}>
             {wishlists.map((wishlist, index) => {
               const itemCountText = `${wishlist.itemCount} ${wishlist.itemCount === 1 ? 'item' : 'items'}`;
+              const lastUpdatedText = formatLastUpdated(wishlist.updatedAt);
               
               return (
                 <React.Fragment key={index}>
                   <Card
-                    key={index}
                     interactive
                     onPress={() => handleWishlistPress(wishlist)}
                     style={styles.wishlistCard}
                   >
-                    <TouchableOpacity
-                      onLongPress={() => handleWishlistLongPress(wishlist)}
-                      activeOpacity={1}
-                    >
-                      <View style={styles.wishlistHeader}>
-                        <View style={styles.wishlistInfo}>
+                    <View style={styles.cardContent}>
+                      <View style={styles.wishlistInfo}>
+                        <View style={styles.wishlistHeader}>
                           <Text style={styles.wishlistName}>{wishlist.name}</Text>
                           {wishlist.isDefault && (
                             <Badge label="Default" variant="info" />
                           )}
                         </View>
+                        
+                        <View style={styles.wishlistMeta}>
+                          <Text style={styles.itemCount}>{itemCountText}</Text>
+                          <Text style={styles.metaDivider}>•</Text>
+                          <Text style={styles.lastUpdated}>{lastUpdatedText}</Text>
+                        </View>
+                      </View>
+                      
+                      <TouchableOpacity
+                        onPress={() => openOverflowMenu(wishlist)}
+                        style={styles.overflowButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
                         <IconSymbol
-                          ios_icon_name="chevron-right"
-                          android_material_icon_name="chevron-right"
+                          ios_icon_name="more-vert"
+                          android_material_icon_name="more-vert"
                           size={24}
                           color={colors.textTertiary}
                         />
-                      </View>
-                      <Text style={styles.itemCount}>{itemCountText}</Text>
-                    </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
                   </Card>
                 </React.Fragment>
               );
             })}
           </View>
         )}
+        
+        <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      <View style={styles.fabContainer}>
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={openCreateModal}
+          activeOpacity={0.8}
+        >
+          <IconSymbol
+            ios_icon_name="add"
+            android_material_icon_name="add"
+            size={28}
+            color={colors.textInverse}
+          />
+        </TouchableOpacity>
+      </View>
 
       <Modal
         visible={createModalVisible}
@@ -316,7 +375,7 @@ export default function WishlistsScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Create Wishlist</Text>
+            <Text style={styles.modalTitle}>New Wishlist</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="Wishlist name"
@@ -324,6 +383,8 @@ export default function WishlistsScreen() {
               value={newWishlistName}
               onChangeText={setNewWishlistName}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleCreateWishlist}
             />
             <View style={styles.modalButtons}>
               <Button
@@ -359,6 +420,8 @@ export default function WishlistsScreen() {
               value={newWishlistName}
               onChangeText={setNewWishlistName}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleRenameWishlist}
             />
             <View style={styles.modalButtons}>
               <Button
@@ -405,26 +468,67 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
   listContainer: {
-    paddingBottom: 100,
+    paddingBottom: spacing.md,
   },
   wishlistCard: {
     marginBottom: spacing.md,
   },
-  wishlistHeader: {
-    ...containerStyles.spaceBetween,
-    marginBottom: spacing.sm,
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   wishlistInfo: {
-    ...containerStyles.row,
     flex: 1,
+    marginRight: spacing.sm,
+  },
+  wishlistHeader: {
+    ...containerStyles.row,
+    marginBottom: spacing.xs,
   },
   wishlistName: {
     ...typography.titleSmall,
     flex: 1,
   },
+  wishlistMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   itemCount: {
     ...typography.bodyMedium,
     color: colors.textSecondary,
+  },
+  metaDivider: {
+    ...typography.bodyMedium,
+    color: colors.textTertiary,
+  },
+  lastUpdated: {
+    ...typography.bodyMedium,
+    color: colors.textTertiary,
+  },
+  overflowButton: {
+    padding: spacing.xs,
+  },
+  bottomSpacer: {
+    height: 100,
+  },
+  fabContainer: {
+    position: 'absolute',
+    bottom: 100,
+    right: spacing.md,
+  },
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    ...containerStyles.center,
+    shadowColor: colors.shadowDark,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 6,
   },
   modalOverlay: {
     flex: 1,
