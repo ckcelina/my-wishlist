@@ -1,3 +1,4 @@
+
 import React from 'react';
 import {
   View,
@@ -28,6 +29,7 @@ export interface TabBarItem {
   route: Href;
   icon: keyof typeof MaterialIcons.glyphMap;
   label: string;
+  emphasized?: boolean; // Mark tab as primary CTA
 }
 
 interface FloatingTabBarProps {
@@ -39,7 +41,7 @@ interface FloatingTabBarProps {
 
 export default function FloatingTabBar({
   tabs,
-  containerWidth = screenWidth / 2.5,
+  containerWidth = screenWidth * 0.85,
   borderRadius = 35,
   bottomMargin
 }: FloatingTabBarProps) {
@@ -95,10 +97,9 @@ export default function FloatingTabBar({
   }, [activeTabIndex, animatedValue]);
 
   const handleTabPress = (route: Href) => {
+    console.log('Tab pressed:', route);
     router.push(route);
   };
-
-  // Remove unnecessary tabBarStyle animation to prevent flickering
 
   const tabWidthPercent = ((100 / tabs.length) - 1).toFixed(2);
 
@@ -117,27 +118,31 @@ export default function FloatingTabBar({
     };
   });
 
+  // Brand colors from design system
+  const brandColor = theme.dark ? '#765943' : '#ede8e3';
+  const accentColor = theme.dark ? '#FFFFFF' : '#3b2a1f';
+
   // Dynamic styles based on theme
   const dynamicStyles = {
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
-      borderColor: 'rgba(255, 255, 255, 1)',
+      borderColor: theme.dark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(59, 42, 31, 0.15)',
       ...Platform.select({
         ios: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.8)'
-            : 'rgba(255, 255, 255, 0.6)',
+            ? 'rgba(118, 89, 67, 0.8)'
+            : 'rgba(237, 232, 227, 0.8)',
         },
         android: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
-            : 'rgba(255, 255, 255, 0.6)',
+            ? 'rgba(118, 89, 67, 0.95)'
+            : 'rgba(237, 232, 227, 0.95)',
         },
         web: {
           backgroundColor: theme.dark
-            ? 'rgba(28, 28, 30, 0.95)'
-            : 'rgba(255, 255, 255, 0.6)',
+            ? 'rgba(118, 89, 67, 0.95)'
+            : 'rgba(237, 232, 227, 0.95)',
           backdropFilter: 'blur(10px)',
         },
       }),
@@ -148,8 +153,8 @@ export default function FloatingTabBar({
     indicator: {
       ...styles.indicator,
       backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.08)' // Subtle white overlay in dark mode
-        : 'rgba(0, 0, 0, 0.04)', // Subtle black overlay in light mode
+        ? 'rgba(255, 255, 255, 0.12)' // Subtle white overlay in dark mode
+        : 'rgba(59, 42, 31, 0.08)', // Subtle dark overlay in light mode
       width: `${tabWidthPercent}%` as `${number}%`, // Dynamic width based on number of tabs
     },
   };
@@ -172,27 +177,42 @@ export default function FloatingTabBar({
           <View style={styles.tabsContainer}>
             {tabs.map((tab, index) => {
               const isActive = activeTabIndex === index;
+              const isEmphasized = tab.emphasized === true;
+
+              // Icon size - larger for emphasized tab
+              const iconSize = isEmphasized ? 28 : 24;
+              
+              // Icon color - brand color for active, muted for inactive
+              const iconColor = isActive 
+                ? accentColor 
+                : (theme.dark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(59, 42, 31, 0.6)');
 
               return (
                 <React.Fragment key={index}>
                 <TouchableOpacity
-                  key={index} // Use index as key
                   style={styles.tab}
                   onPress={() => handleTabPress(tab.route)}
                   activeOpacity={0.7}
                 >
-                  <View key={index} style={styles.tabContent}>
+                  <View style={styles.tabContent}>
                     <IconSymbol
                       android_material_icon_name={tab.icon}
                       ios_icon_name={tab.icon}
-                      size={24}
-                      color={isActive ? theme.colors.primary : (theme.dark ? '#98989D' : '#000000')}
+                      size={iconSize}
+                      color={iconColor}
                     />
                     <Text
                       style={[
                         styles.tabLabel,
-                        { color: theme.dark ? '#98989D' : '#8E8E93' },
-                        isActive && { color: theme.colors.primary, fontWeight: '600' },
+                        { 
+                          color: theme.dark 
+                            ? 'rgba(255, 255, 255, 0.6)' 
+                            : 'rgba(59, 42, 31, 0.6)' 
+                        },
+                        isActive && { 
+                          color: accentColor, 
+                          fontWeight: '600' 
+                        },
                       ]}
                     >
                       {tab.label}
@@ -242,7 +262,7 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    height: 60,
+    height: 64,
     alignItems: 'center',
     paddingHorizontal: 4,
   },
@@ -255,10 +275,10 @@ const styles = StyleSheet.create({
   tabContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 4,
   },
   tabLabel: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
     // Dynamic styling applied in component

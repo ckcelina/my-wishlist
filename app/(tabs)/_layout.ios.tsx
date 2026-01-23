@@ -6,15 +6,15 @@ export default function TabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger key="wishlists" name="wishlists">
-        <Icon sf="heart.fill" />
+        <Icon sf={{ default: 'heart', selected: 'heart.fill' }} />
         <Label>Wishlists</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="add" name="add">
-        <Icon sf="plus.circle.fill" />
+        <Icon sf={{ default: 'plus.app', selected: 'plus.app.fill' }} />
         <Label>Add</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="profile" name="profile">
-        <Icon sf="person.fill" />
+        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
         <Label>Profile</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
