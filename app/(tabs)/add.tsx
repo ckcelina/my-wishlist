@@ -258,6 +258,45 @@ export default function AddItemScreen() {
     }
   };
 
+  const uploadImage = async (imageUri: string): Promise<string | null> => {
+    console.log('Uploading image to backend:', imageUri);
+    try {
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      
+      // Create form data
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop() || 'image.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      formData.append('image', {
+        uri: imageUri,
+        name: filename,
+        type,
+      } as any);
+
+      const response = await fetch(`${backendUrl}/api/upload/image`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      const data = await response.json();
+      console.log('Image uploaded successfully:', data.url);
+      return data.url;
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      Alert.alert('Upload Error', 'Failed to upload image. The item will be saved without an image.');
+      return null;
+    }
+  };
+
   const handlePickExtractedImage = async () => {
     console.log('Opening image picker for extracted item');
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -271,6 +310,11 @@ export default function AddItemScreen() {
       setExtractedImageUrl(result.assets[0].uri);
       console.log('Image selected:', result.assets[0].uri);
     }
+  };
+
+  const handleRemoveExtractedImage = () => {
+    console.log('Removing extracted image');
+    setExtractedImageUrl('');
   };
 
   const handleSaveExtractedItem = async () => {
@@ -288,6 +332,18 @@ export default function AddItemScreen() {
     setSaving(true);
 
     try {
+      // Upload image if it's a local file (starts with file://)
+      let finalImageUrl = extractedImageUrl;
+      if (extractedImageUrl && extractedImageUrl.startsWith('file://')) {
+        console.log('Uploading local image to backend');
+        const uploadedUrl = await uploadImage(extractedImageUrl);
+        if (uploadedUrl) {
+          finalImageUrl = uploadedUrl;
+        } else {
+          finalImageUrl = null;
+        }
+      }
+
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       const response = await fetch(`${backendUrl}/api/items`, {
         method: 'POST',
@@ -297,7 +353,7 @@ export default function AddItemScreen() {
         body: JSON.stringify({
           wishlistId,
           title: extractedTitle.trim(),
-          imageUrl: extractedImageUrl || null,
+          imageUrl: finalImageUrl || null,
           currentPrice: extractedPrice ? parseFloat(extractedPrice) : null,
           currency: extractedCurrency,
           originalUrl: originalUrl,
@@ -343,6 +399,11 @@ export default function AddItemScreen() {
     }
   };
 
+  const handleRemoveManualImage = () => {
+    console.log('Removing manual image');
+    setManualImageUri('');
+  };
+
   const handleSaveManualItem = async () => {
     if (!manualTitle.trim()) {
       Alert.alert('Error', 'Please enter an item title');
@@ -358,6 +419,18 @@ export default function AddItemScreen() {
     setSaving(true);
 
     try {
+      // Upload image if provided
+      let finalImageUrl = manualImageUri;
+      if (manualImageUri && manualImageUri.startsWith('file://')) {
+        console.log('Uploading local image to backend');
+        const uploadedUrl = await uploadImage(manualImageUri);
+        if (uploadedUrl) {
+          finalImageUrl = uploadedUrl;
+        } else {
+          finalImageUrl = null;
+        }
+      }
+
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       const response = await fetch(`${backendUrl}/api/items`, {
         method: 'POST',
@@ -367,7 +440,7 @@ export default function AddItemScreen() {
         body: JSON.stringify({
           wishlistId,
           title: manualTitle.trim(),
-          imageUrl: manualImageUri || null,
+          imageUrl: finalImageUrl || null,
           currentPrice: manualPrice ? parseFloat(manualPrice) : null,
           currency: manualCurrency,
           notes: manualNotes.trim() || null,
@@ -463,11 +536,24 @@ export default function AddItemScreen() {
 
           <View style={styles.section}>
             <Text style={styles.label}>Image</Text>
-            <TouchableOpacity style={styles.secondaryButton} onPress={handlePickExtractedImage}>
-              <Text style={styles.secondaryButtonText}>
-                {extractedImageUrl ? 'Change Image' : 'Pick Image'}
-              </Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity 
+                style={[styles.secondaryButton, { flex: 1 }]} 
+                onPress={handlePickExtractedImage}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {extractedImageUrl ? 'Change Image' : 'Pick Image'}
+                </Text>
+              </TouchableOpacity>
+              {extractedImageUrl && (
+                <TouchableOpacity 
+                  style={[styles.secondaryButton, { paddingHorizontal: 16 }]} 
+                  onPress={handleRemoveExtractedImage}
+                >
+                  <Text style={styles.secondaryButtonText}>Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             {extractedImageUrl && (
               <Image 
                 source={resolveImageSource(extractedImageUrl)} 
@@ -586,11 +672,24 @@ export default function AddItemScreen() {
 
         <View style={styles.section}>
           <Text style={styles.label}>Image</Text>
-          <TouchableOpacity style={styles.secondaryButton} onPress={handlePickImage}>
-            <Text style={styles.secondaryButtonText}>
-              {manualImageUri ? 'Change Image' : 'Pick Image'}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity 
+              style={[styles.secondaryButton, { flex: 1 }]} 
+              onPress={handlePickImage}
+            >
+              <Text style={styles.secondaryButtonText}>
+                {manualImageUri ? 'Change Image' : 'Pick Image'}
+              </Text>
+            </TouchableOpacity>
+            {manualImageUri && (
+              <TouchableOpacity 
+                style={[styles.secondaryButton, { paddingHorizontal: 16 }]} 
+                onPress={handleRemoveManualImage}
+              >
+                <Text style={styles.secondaryButtonText}>Remove</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {manualImageUri && (
             <Image 
               source={resolveImageSource(manualImageUri)} 

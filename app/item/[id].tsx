@@ -224,6 +224,48 @@ export default function ItemDetailScreen() {
     setShowEditModal(true);
   };
 
+  const uploadImage = async (imageUri: string): Promise<string | null> => {
+    console.log('ItemDetailScreen: Uploading image to backend:', imageUri);
+    try {
+      const { authenticatedPost } = await import('@/utils/api');
+      
+      // Create form data
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop() || 'image.jpg';
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : 'image/jpeg';
+      
+      formData.append('image', {
+        uri: imageUri,
+        name: filename,
+        type,
+      } as any);
+
+      const response = await fetch(
+        `${(await import('expo-constants')).default.expoConfig?.extra?.backendUrl}/api/upload/image`,
+        {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      const data = await response.json();
+      console.log('ItemDetailScreen: Image uploaded successfully:', data.url);
+      return data.url;
+    } catch (error) {
+      console.error('ItemDetailScreen: Error uploading image:', error);
+      Alert.alert('Upload Error', 'Failed to upload image. Please try again.');
+      return null;
+    }
+  };
+
   const handlePickImage = async () => {
     console.log('ItemDetailScreen: Picking image');
     try {
@@ -245,6 +287,11 @@ export default function ItemDetailScreen() {
     }
   };
 
+  const handleRemoveImage = () => {
+    console.log('ItemDetailScreen: Removing image');
+    setEditedImageUrl('');
+  };
+
   const handleSaveEdit = async () => {
     console.log('ItemDetailScreen: Saving item changes');
     if (!editedTitle.trim()) {
@@ -260,12 +307,26 @@ export default function ItemDetailScreen() {
 
     try {
       setSaving(true);
+      
+      // Upload image if it's a local file (starts with file://)
+      let finalImageUrl = editedImageUrl;
+      if (editedImageUrl && editedImageUrl.startsWith('file://')) {
+        console.log('ItemDetailScreen: Uploading local image to backend');
+        const uploadedUrl = await uploadImage(editedImageUrl);
+        if (uploadedUrl) {
+          finalImageUrl = uploadedUrl;
+        } else {
+          // If upload failed, keep the original image
+          finalImageUrl = item?.imageUrl || null;
+        }
+      }
+      
       const { authenticatedPut } = await import('@/utils/api');
       const updatedItem = await authenticatedPut<ItemDetail>(`/api/items/${id}`, {
         title: editedTitle,
         currentPrice: newPrice !== null ? newPrice.toString() : null,
         notes: editedNotes,
-        imageUrl: editedImageUrl || null,
+        imageUrl: finalImageUrl || null,
       });
       console.log('ItemDetailScreen: Item updated successfully');
       setItem(updatedItem);
@@ -586,15 +647,28 @@ export default function ItemDetailScreen() {
                     />
                   </View>
                 )}
-                <TouchableOpacity style={styles.changeImageButton} onPress={handlePickImage}>
-                  <IconSymbol
-                    ios_icon_name="camera"
-                    android_material_icon_name="camera"
-                    size={16}
-                    color="#FFFFFF"
-                  />
-                  <Text style={styles.changeImageButtonText}>Change Image</Text>
-                </TouchableOpacity>
+                <View style={styles.imageButtonsRow}>
+                  <TouchableOpacity style={styles.changeImageButton} onPress={handlePickImage}>
+                    <IconSymbol
+                      ios_icon_name="camera"
+                      android_material_icon_name="camera"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                    <Text style={styles.changeImageButtonText}>Change Image</Text>
+                  </TouchableOpacity>
+                  {editedImageUrl && (
+                    <TouchableOpacity style={styles.removeImageButton} onPress={handleRemoveImage}>
+                      <IconSymbol
+                        ios_icon_name="trash"
+                        android_material_icon_name="delete"
+                        size={16}
+                        color={colors.error}
+                      />
+                      <Text style={styles.removeImageButtonText}>Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {/* Title Input */}
@@ -934,6 +1008,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
   },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   changeImageButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -947,6 +1025,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  removeImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundAlt,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  removeImageButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.error,
   },
   inputGroup: {
     marginBottom: 20,
