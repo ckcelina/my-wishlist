@@ -12,6 +12,7 @@ import {
   Modal,
   Pressable,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,8 +21,11 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { Button } from '@/components/design-system/Button';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
+import { PressableScale } from '@/components/design-system/PressableScale';
 import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { authenticatedGet, authenticatedPut } from '@/utils/api';
+import { useHaptics } from '@/hooks/useHaptics';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 
 const CURRENCY_OPTIONS = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -38,6 +42,7 @@ const CURRENCY_OPTIONS = [
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const haptics = useHaptics();
   
   const [priceDropAlerts, setPriceDropAlerts] = useState(false);
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
@@ -79,8 +84,10 @@ export default function ProfileScreen() {
       console.log('[ProfileScreen] Settings updated:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
       setDefaultCurrency(data.defaultCurrency || 'USD');
+      haptics.success();
     } catch (error) {
       console.error('[ProfileScreen] Error updating settings:', error);
+      haptics.error();
       Alert.alert('Error', 'Failed to update settings');
     }
   };
@@ -93,28 +100,36 @@ export default function ProfileScreen() {
 
   const handleSelectCurrency = async (currencyCode: string) => {
     console.log('[ProfileScreen] User selected currency:', currencyCode);
+    haptics.selection();
     setDefaultCurrency(currencyCode);
     setShowCurrencyModal(false);
     await updateSettings({ defaultCurrency: currencyCode });
   };
 
   const handleSignOut = async () => {
+    haptics.warning();
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Cancel', 
+          style: 'cancel',
+          onPress: () => haptics.light(),
+        },
         {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
               console.log('[ProfileScreen] User tapped Sign Out');
+              haptics.medium();
               await signOut();
               console.log('[ProfileScreen] Sign out successful, navigating to auth');
               router.replace('/auth');
             } catch (error: any) {
               console.error('[ProfileScreen] Sign out error:', error);
+              haptics.error();
               Alert.alert('Error', 'Failed to sign out');
             }
           },
@@ -125,6 +140,7 @@ export default function ProfileScreen() {
 
   const handleContactSupport = () => {
     console.log('[ProfileScreen] User tapped Contact Support');
+    haptics.light();
     const email = 'support@mywishlist.app';
     const subject = 'Support Request';
     const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
@@ -135,11 +151,13 @@ export default function ProfileScreen() {
 
   const handlePrivacyPolicy = () => {
     console.log('[ProfileScreen] User tapped Privacy Policy');
+    haptics.light();
     Alert.alert('Privacy Policy', 'Privacy policy coming soon.');
   };
 
   const handleTerms = () => {
     console.log('[ProfileScreen] User tapped Terms of Service');
+    haptics.light();
     Alert.alert('Terms of Service', 'Terms of service coming soon.');
   };
 
@@ -150,6 +168,19 @@ export default function ProfileScreen() {
   const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === defaultCurrency) || CURRENCY_OPTIONS[0];
   const currencyDisplayText = `${selectedCurrency.symbol} ${selectedCurrency.code}`;
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -158,7 +189,7 @@ export default function ProfileScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Account Section */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>ACCOUNT</Text>
           
           <Card style={styles.card}>
@@ -174,10 +205,10 @@ export default function ProfileScreen() {
 
             <Divider />
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
               onPress={handleSignOut}
-              activeOpacity={0.7}
+              hapticFeedback="medium"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -188,19 +219,22 @@ export default function ProfileScreen() {
                 />
                 <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           </Card>
-        </View>
+        </Animated.View>
 
         {/* Preferences Section */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>PREFERENCES</Text>
           
           <Card style={styles.card}>
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
-              onPress={() => setShowCurrencyModal(true)}
-              activeOpacity={0.7}
+              onPress={() => {
+                haptics.light();
+                setShowCurrencyModal(true);
+              }}
+              hapticFeedback="light"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -220,14 +254,17 @@ export default function ProfileScreen() {
                   color={colors.textTertiary}
                 />
               </View>
-            </TouchableOpacity>
+            </PressableScale>
 
             <Divider />
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
-              onPress={() => router.push('/alerts')}
-              activeOpacity={0.7}
+              onPress={() => {
+                haptics.light();
+                router.push('/alerts');
+              }}
+              hapticFeedback="light"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -249,19 +286,19 @@ export default function ProfileScreen() {
                   color={colors.textTertiary}
                 />
               </View>
-            </TouchableOpacity>
+            </PressableScale>
           </Card>
-        </View>
+        </Animated.View>
 
         {/* Help Section */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
           <Text style={styles.sectionTitle}>HELP</Text>
           
           <Card style={styles.card}>
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
               onPress={handleContactSupport}
-              activeOpacity={0.7}
+              hapticFeedback="light"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -278,14 +315,14 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.textTertiary}
               />
-            </TouchableOpacity>
+            </PressableScale>
 
             <Divider />
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
               onPress={handlePrivacyPolicy}
-              activeOpacity={0.7}
+              hapticFeedback="light"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -302,14 +339,14 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.textTertiary}
               />
-            </TouchableOpacity>
+            </PressableScale>
 
             <Divider />
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.menuItem}
               onPress={handleTerms}
-              activeOpacity={0.7}
+              hapticFeedback="light"
             >
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -326,9 +363,9 @@ export default function ProfileScreen() {
                 size={20}
                 color={colors.textTertiary}
               />
-            </TouchableOpacity>
+            </PressableScale>
           </Card>
-        </View>
+        </Animated.View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -342,13 +379,19 @@ export default function ProfileScreen() {
       >
         <Pressable
           style={styles.modalOverlay}
-          onPress={() => setShowCurrencyModal(false)}
+          onPress={() => {
+            haptics.light();
+            setShowCurrencyModal(false);
+          }}
         >
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Currency</Text>
               <TouchableOpacity
-                onPress={() => setShowCurrencyModal(false)}
+                onPress={() => {
+                  haptics.light();
+                  setShowCurrencyModal(false);
+                }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <IconSymbol
@@ -363,10 +406,10 @@ export default function ProfileScreen() {
             <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false}>
               {CURRENCY_OPTIONS.map((currency, index) => (
                 <React.Fragment key={currency.code}>
-                  <TouchableOpacity
+                  <PressableScale
                     style={styles.currencyItem}
                     onPress={() => handleSelectCurrency(currency.code)}
-                    activeOpacity={0.7}
+                    hapticFeedback="selection"
                   >
                     <View style={styles.currencyItemLeft}>
                       <Text style={styles.currencySymbol}>{currency.symbol}</Text>
@@ -383,7 +426,7 @@ export default function ProfileScreen() {
                         color={colors.primary}
                       />
                     )}
-                  </TouchableOpacity>
+                  </PressableScale>
                   {index < CURRENCY_OPTIONS.length - 1 && <Divider />}
                 </React.Fragment>
               ))}
@@ -413,6 +456,11 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   section: {
     marginBottom: spacing.lg,
