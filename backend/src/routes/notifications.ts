@@ -234,7 +234,8 @@ export function registerNotificationRoutes(app: App) {
             type: 'object',
             properties: {
               priceDropAlertsEnabled: { type: 'boolean' },
-              expoPushToken: { type: 'string' },
+              defaultCurrency: { type: 'string' },
+              expoPushToken: { type: ['string', 'null'] },
             },
           },
         },
@@ -265,6 +266,7 @@ export function registerNotificationRoutes(app: App) {
             .values({
               userId,
               priceDropAlertsEnabled: false,
+              defaultCurrency: 'USD',
             })
             .returning();
 
@@ -272,12 +274,13 @@ export function registerNotificationRoutes(app: App) {
         }
 
         app.logger.info(
-          { userId, alertsEnabled: settings.priceDropAlertsEnabled },
+          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency },
           'User settings retrieved'
         );
 
         return {
           priceDropAlertsEnabled: settings.priceDropAlertsEnabled,
+          defaultCurrency: settings.defaultCurrency,
           expoPushToken: settings.expoPushToken || null,
         };
       } catch (error) {
@@ -301,6 +304,7 @@ export function registerNotificationRoutes(app: App) {
           type: 'object',
           properties: {
             priceDropAlertsEnabled: { type: 'boolean' },
+            defaultCurrency: { type: 'string' },
             expoPushToken: { type: 'string' },
           },
         },
@@ -309,7 +313,8 @@ export function registerNotificationRoutes(app: App) {
             type: 'object',
             properties: {
               priceDropAlertsEnabled: { type: 'boolean' },
-              expoPushToken: { type: 'string' },
+              defaultCurrency: { type: 'string' },
+              expoPushToken: { type: ['string', 'null'] },
             },
           },
         },
@@ -319,6 +324,7 @@ export function registerNotificationRoutes(app: App) {
       request: FastifyRequest<{
         Body: {
           priceDropAlertsEnabled?: boolean;
+          defaultCurrency?: string;
           expoPushToken?: string;
         };
       }>,
@@ -328,10 +334,10 @@ export function registerNotificationRoutes(app: App) {
       if (!session) return;
 
       const userId = session.user.id;
-      const { priceDropAlertsEnabled, expoPushToken } = request.body;
+      const { priceDropAlertsEnabled, defaultCurrency, expoPushToken } = request.body;
 
       app.logger.info(
-        { userId, alertsEnabled: priceDropAlertsEnabled },
+        { userId, alertsEnabled: priceDropAlertsEnabled, currency: defaultCurrency },
         'Updating user settings'
       );
 
@@ -350,6 +356,7 @@ export function registerNotificationRoutes(app: App) {
                 priceDropAlertsEnabled !== undefined
                   ? priceDropAlertsEnabled
                   : false,
+              defaultCurrency: defaultCurrency || 'USD',
               expoPushToken: expoPushToken || null,
             })
             .returning();
@@ -360,6 +367,9 @@ export function registerNotificationRoutes(app: App) {
           const updateData: any = {};
           if (priceDropAlertsEnabled !== undefined) {
             updateData.priceDropAlertsEnabled = priceDropAlertsEnabled;
+          }
+          if (defaultCurrency !== undefined) {
+            updateData.defaultCurrency = defaultCurrency;
           }
           if (expoPushToken !== undefined) {
             updateData.expoPushToken = expoPushToken || null;
@@ -375,12 +385,13 @@ export function registerNotificationRoutes(app: App) {
         }
 
         app.logger.info(
-          { userId, alertsEnabled: settings.priceDropAlertsEnabled },
+          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency },
           'User settings updated'
         );
 
         return {
           priceDropAlertsEnabled: settings.priceDropAlertsEnabled,
+          defaultCurrency: settings.defaultCurrency,
           expoPushToken: settings.expoPushToken || null,
         };
       } catch (error) {
