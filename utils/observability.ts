@@ -47,7 +47,9 @@ export type AnalyticsEvent =
   | 'url_normalized'
   | 'price_refresh_job_created'
   | 'price_refresh_job_completed'
-  | 'price_refresh_job_failed';
+  | 'price_refresh_job_failed'
+  | 'store_link_opened'
+  | 'store_link_copied';
 
 interface LogEntry {
   timestamp: string;

@@ -374,7 +374,9 @@
     "linkCopied": "Link copied to clipboard",
     "priceRefreshed": "Price refreshed",
     "importStarted": "Import started",
-    "importComplete": "Import complete"
+    "importComplete": "Import complete",
+    "openingStore": "Opening store…",
+    "storeLinkCopied": "Store link copied"
   },
   "diagnostics": {
     "title": "Diagnostics",

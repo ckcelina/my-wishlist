@@ -399,12 +399,13 @@ export default function ItemDetailScreen() {
   const handleOpenUrl = async () => {
     if (item?.originalUrl) {
       console.log('[ItemDetailScreen] Opening source URL:', item.originalUrl);
-      try {
-        await Linking.openURL(item.originalUrl);
-      } catch (error) {
-        console.error('[ItemDetailScreen] Error opening URL:', error);
-        Alert.alert('Error', 'Failed to open link');
-      }
+      const { openStoreLink } = await import('@/utils/openStoreLink');
+      await openStoreLink(item.originalUrl, {
+        source: 'item_detail',
+        storeDomain: item.sourceDomain || undefined,
+        itemId: item.id,
+        itemTitle: item.title,
+      });
     }
   };
 
@@ -413,14 +414,15 @@ export default function ItemDetailScreen() {
     router.push(`/item/price-history/${id}`);
   };
 
-  const handleOpenStoreUrl = async (url: string, storeName: string) => {
+  const handleOpenStoreUrl = async (url: string, storeName: string, storeDomain: string) => {
     console.log('[ItemDetailScreen] Opening store URL:', storeName, url);
-    try {
-      await Linking.openURL(url);
-    } catch (error) {
-      console.error('[ItemDetailScreen] Error opening store URL:', error);
-      Alert.alert('Error', 'Failed to open link');
-    }
+    const { openStoreLink } = await import('@/utils/openStoreLink');
+    await openStoreLink(url, {
+      source: 'other_stores',
+      storeDomain: storeDomain,
+      itemId: item?.id,
+      itemTitle: item?.title,
+    });
   };
 
   const handleSetLocation = () => {
@@ -616,9 +618,16 @@ export default function ItemDetailScreen() {
 
             {/* View Original Product Button */}
             {item.originalUrl && (
-              <TouchableOpacity style={styles.linkButton} onPress={handleOpenUrl}>
+              <TouchableOpacity 
+                style={styles.linkButton} 
+                onPress={handleOpenUrl}
+                onLongPress={async () => {
+                  const { copyStoreLink } = await import('@/utils/openStoreLink');
+                  await copyStoreLink(item.originalUrl);
+                }}
+              >
                 <IconSymbol
-                  ios_icon_name="safari"
+                  ios_icon_name="arrow.up.forward.square"
                   android_material_icon_name="open-in-new"
                   size={20}
                   color={colors.primary}
@@ -724,7 +733,11 @@ export default function ItemDetailScreen() {
                         <TouchableOpacity
                           key={index}
                           style={styles.storeCard}
-                          onPress={() => handleOpenStoreUrl(store.url, store.storeName)}
+                          onPress={() => handleOpenStoreUrl(store.url, store.storeName, store.domain)}
+                          onLongPress={async () => {
+                            const { copyStoreLink } = await import('@/utils/openStoreLink');
+                            await copyStoreLink(store.url);
+                          }}
                           activeOpacity={0.7}
                         >
                           <View style={styles.storeCardLeft}>
@@ -734,9 +747,9 @@ export default function ItemDetailScreen() {
                           <View style={styles.storeCardRight}>
                             <Text style={styles.storePrice}>{storePriceText}</Text>
                             <IconSymbol
-                              ios_icon_name="chevron.right"
-                              android_material_icon_name="chevron-right"
-                              size={20}
+                              ios_icon_name="arrow.up.forward"
+                              android_material_icon_name="open-in-new"
+                              size={18}
                               color={colors.textSecondary}
                             />
                           </View>

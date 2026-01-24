@@ -983,6 +983,28 @@ export default function ImportPreviewScreen() {
                                     <Text style={styles.statusChipText}>May not deliver to your location</Text>
                                   </TouchableOpacity>
                                 )}
+                                <TouchableOpacity
+                                  style={styles.viewInStoreButton}
+                                  onPress={async (e) => {
+                                    e.stopPropagation();
+                                    const { openStoreLink } = await import('@/utils/openStoreLink');
+                                    await openStoreLink(item.productUrl, {
+                                      source: 'import_preview',
+                                      storeDomain: item.sourceDomain,
+                                      itemId: item.tempId,
+                                      itemTitle: item.title,
+                                    });
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={styles.viewInStoreText}>View in store</Text>
+                                  <IconSymbol
+                                    ios_icon_name="arrow.up.forward"
+                                    android_material_icon_name="open-in-new"
+                                    size={12}
+                                    color={colors.accent}
+                                  />
+                                </TouchableOpacity>
                               </View>
 
                               <IconSymbol
@@ -1064,6 +1086,28 @@ export default function ImportPreviewScreen() {
                               <Text style={styles.statusChipText}>May not deliver to your location</Text>
                             </View>
                           )}
+                          <TouchableOpacity
+                            style={styles.viewInStoreButton}
+                            onPress={async (e) => {
+                              e.stopPropagation();
+                              const { openStoreLink } = await import('@/utils/openStoreLink');
+                              await openStoreLink(item.productUrl, {
+                                source: 'import_preview',
+                                storeDomain: item.sourceDomain,
+                                itemId: item.tempId,
+                                itemTitle: item.title,
+                              });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={styles.viewInStoreText}>View in store</Text>
+                            <IconSymbol
+                              ios_icon_name="arrow.up.forward"
+                              android_material_icon_name="open-in-new"
+                              size={12}
+                              color={colors.accent}
+                            />
+                          </TouchableOpacity>
                         </View>
 
                         <IconSymbol
@@ -1194,12 +1238,22 @@ export default function ImportPreviewScreen() {
                         {selectedItemForEdit.productUrl}
                       </Text>
                       <TouchableOpacity
-                        onPress={() => {
-                          // Open URL in browser
-                          Alert.alert('Open Link', 'This would open the product URL');
+                        onPress={async () => {
+                          const { openStoreLink } = await import('@/utils/openStoreLink');
+                          await openStoreLink(selectedItemForEdit.productUrl, {
+                            source: 'import_preview',
+                            storeDomain: selectedItemForEdit.sourceDomain,
+                            itemId: selectedItemForEdit.tempId,
+                            itemTitle: selectedItemForEdit.title,
+                          });
                         }}
                       >
-                        <Text style={styles.linkButton}>Open</Text>
+                        <IconSymbol
+                          ios_icon_name="arrow.up.forward"
+                          android_material_icon_name="open-in-new"
+                          size={16}
+                          color={colors.accent}
+                        />
                       </TouchableOpacity>
                     </View>
 
@@ -1595,6 +1649,18 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontSize: 10,
     color: colors.warning,
+    fontWeight: '500',
+  },
+  viewInStoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs / 2,
+    marginTop: spacing.xs,
+  },
+  viewInStoreText: {
+    ...typography.bodySmall,
+    fontSize: 12,
+    color: colors.accent,
     fontWeight: '500',
   },
   footer: {
