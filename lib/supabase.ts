@@ -9,15 +9,29 @@ import type { Database } from './supabase-types';
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// NATIVELY ENVIRONMENT CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+// @natively-environment: supabase
+// @natively-primary-datasource: supabase
+// @natively-exclusive-provider: true
+// @natively-disable-other-providers: true
+// ═══════════════════════════════════════════════════════════════════════════
+
 // NATIVELY CONNECTION MARKER - DO NOT REMOVE
 // This marker helps Natively.dev detect the Supabase connection
 // @natively-supabase-connected: true
 // @natively-supabase-url: https://dixgmnuayzblwpqyplsi.supabase.co
 // @natively-supabase-version: 2.91.1
 // @natively-supabase-key-format: sb_publishable_*
+// @natively-supabase-exclusive: true
 
 console.log('[Supabase] ═══════════════════════════════════════════════════');
 console.log('[Supabase] 🔌 SUPABASE CONNECTION ACTIVE');
+console.log('[Supabase] ═══════════════════════════════════════════════════');
+console.log('[Supabase] Environment: SUPABASE ONLY');
+console.log('[Supabase] Primary Data Source: Supabase');
+console.log('[Supabase] Other Providers: DISABLED');
 console.log('[Supabase] ═══════════════════════════════════════════════════');
 console.log('[Supabase] Initializing with URL:', SUPABASE_URL);
 console.log('[Supabase] Anon key format:', SUPABASE_ANON_KEY ? (SUPABASE_ANON_KEY.startsWith('sb_publishable_') ? 'sb_publishable_*' : 'legacy format') : 'Not configured');
@@ -80,6 +94,8 @@ console.log('[Supabase] ✅ Auth storage configured for', Platform.OS);
 console.log('[Supabase] ✅ Auto-refresh enabled');
 console.log('[Supabase] ✅ Session persistence enabled');
 console.log('[Supabase] ═══════════════════════════════════════════════════');
+console.log('[Supabase] 🎉 SUPABASE IS THE EXCLUSIVE DATA PROVIDER');
+console.log('[Supabase] ═══════════════════════════════════════════════════');
 
 // Export connection status for Natively detection
 export const SUPABASE_CONNECTION_STATUS = {
@@ -90,6 +106,9 @@ export const SUPABASE_CONNECTION_STATUS = {
   keyFormat: SUPABASE_ANON_KEY?.startsWith('sb_publishable_') ? 'sb_publishable_*' : 'legacy',
   platform: Platform.OS,
   timestamp: new Date().toISOString(),
+  exclusive: true,
+  primaryDataSource: 'supabase',
+  nativelyEnvironment: 'supabase',
 };
 
 export { SUPABASE_URL, SUPABASE_ANON_KEY };

@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "My Wishlist",
@@ -85,9 +86,11 @@
     },
     "extra": {
       "router": {},
-      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
       "supabaseUrl": "https://dixgmnuayzblwpqyplsi.supabase.co",
-      "supabaseAnonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-"
+      "supabaseAnonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
+      "nativelyEnvironment": "supabase",
+      "nativelyPrimaryDataSource": "supabase",
+      "nativelyExclusiveProvider": true
     }
   },
   "scheme": "My Wishlist"

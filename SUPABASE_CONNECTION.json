@@ -2,6 +2,7 @@
 {
   "status": "connected",
   "provider": "supabase",
+  "primaryDataSource": "supabase",
   "url": "https://dixgmnuayzblwpqyplsi.supabase.co",
   "anonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
   "version": "2.91.1",
@@ -21,6 +22,7 @@
   "integration": {
     "natively": true,
     "verified": true,
+    "exclusive": true,
     "timestamp": "2026-01-24T21:35:00.000Z"
   },
   "tables": [
@@ -40,5 +42,10 @@
     "find-alternatives",
     "import-wishlist",
     "identify-from-image"
-  ]
+  ],
+  "nativelyEnvironment": {
+    "type": "supabase",
+    "exclusive": true,
+    "disableOtherProviders": true
+  }
 }
