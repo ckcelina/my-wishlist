@@ -3,26 +3,23 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { supabase } from '@/lib/supabase';
+import { logError, logEvent } from './observability';
 
 const API_URL = Constants.expoConfig?.extra?.backendUrl || '';
 
-// Export BACKEND_URL for use in other files
 export const BACKEND_URL = API_URL;
 
-// Log the backend URL at startup for debugging
 console.log('[API] Backend URL configured:', BACKEND_URL);
 const BEARER_TOKEN_KEY = 'wishzen_bearer_token';
 
 async function getBearerToken(): Promise<string | null> {
   try {
-    // Try Supabase session first
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
       console.log('[API] Using Supabase access token');
       return session.access_token;
     }
 
-    // Fallback to Better Auth token
     if (Platform.OS === 'web') {
       const token = localStorage.getItem(BEARER_TOKEN_KEY);
       console.log('[API] Using Better Auth token from localStorage');
@@ -34,6 +31,9 @@ async function getBearerToken(): Promise<string | null> {
     }
   } catch (error) {
     console.error('[API] Failed to get bearer token:', error);
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'getBearerToken',
+    });
     return null;
   }
 }
@@ -52,7 +52,6 @@ export async function authenticatedFetch(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Only add Content-Type for requests with a body
   if (options.body && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';
   }
@@ -60,18 +59,36 @@ export async function authenticatedFetch(
   const url = `${API_URL}${endpoint}`;
   console.log(`[API] ${options.method || 'GET'} ${url}`);
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[API] Request failed: ${response.status} ${errorText}`);
-    throw new Error(`API request failed: ${response.status} ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] Request failed: ${response.status} ${errorText}`);
+      
+      const error = new Error(`API request failed: ${response.status} ${errorText}`);
+      logError(error, {
+        context: 'authenticatedFetch',
+        endpoint,
+        method: options.method || 'GET',
+        status: response.status,
+      });
+      
+      throw error;
+    }
+
+    return response;
+  } catch (error) {
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'authenticatedFetch',
+      endpoint,
+      method: options.method || 'GET',
+    });
+    throw error;
   }
-
-  return response;
 }
 
 export async function authenticatedGet<T>(endpoint: string): Promise<T> {
@@ -111,20 +128,35 @@ export async function authenticatedDelete<T>(endpoint: string): Promise<T> {
   return response.json();
 }
 
-// Public API call (no authentication required)
 export async function apiGet<T>(endpoint: string): Promise<T> {
   const url = `${API_URL}${endpoint}`;
   console.log(`[API] GET ${url} (public)`);
 
-  const response = await fetch(url, {
-    method: 'GET',
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[API] Request failed: ${response.status} ${errorText}`);
-    throw new Error(`API request failed: ${response.status} ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] Request failed: ${response.status} ${errorText}`);
+      
+      const error = new Error(`API request failed: ${response.status} ${errorText}`);
+      logError(error, {
+        context: 'apiGet',
+        endpoint,
+        status: response.status,
+      });
+      
+      throw error;
+    }
+
+    return response.json();
+  } catch (error) {
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'apiGet',
+      endpoint,
+    });
+    throw error;
   }
-
-  return response.json();
 }

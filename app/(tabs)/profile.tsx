@@ -541,6 +541,33 @@ export default function ProfileScreen() {
                 color={theme.colors.textSecondary}
               />
             </PressableScale>
+
+            <Divider />
+
+            <PressableScale
+              style={styles.menuItem}
+              onPress={() => {
+                haptics.light();
+                router.push('/diagnostics');
+              }}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="wrench.and.screwdriver"
+                  android_material_icon_name="build"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Diagnostics</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </PressableScale>
           </Card>
         </Animated.View>
 
