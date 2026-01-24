@@ -5,6 +5,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
@@ -13,6 +14,7 @@ import { WidgetProvider } from '@/contexts/WidgetContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-connection';
 import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
+import { colors } from '@/styles/designSystem';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -41,7 +43,16 @@ function RootLayoutNav() {
       console.log('[RootLayout] User authenticated, redirecting to wishlists');
       router.replace('/(tabs)/wishlists');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, router]);
+
+  // Show loading screen while checking session
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -49,6 +60,7 @@ function RootLayoutNav() {
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
       <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+      <Stack.Screen name="auth-debug" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
@@ -113,3 +125,12 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+});

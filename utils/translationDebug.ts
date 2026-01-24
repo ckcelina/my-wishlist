@@ -68,11 +68,11 @@ export function debugTranslate(
 export interface TranslationValidationResult {
   missingKeys: string[];
   unusedKeys: string[];
-  mismatchedParams: Array<{
+  mismatchedParams: {
     key: string;
     expectedParams: string[];
     actualParams: string[];
-  }>;
+  }[];
 }
 
 export function validateTranslations(

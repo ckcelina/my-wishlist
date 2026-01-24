@@ -27,9 +27,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Custom error class for better error messages
 class AuthApiError extends Error {
-  constructor(message: string, public code?: string) {
+  public code?: string;
+  
+  constructor(message: string, code?: string) {
     super(message);
     this.name = 'AuthApiError';
+    this.code = code;
   }
 }
 
@@ -547,6 +550,8 @@ export function useAuth() {
   }
   return context;
 }
+
+
 </write file>
 
 Now let's fix the AuthScreen to remove duplicate auth calls and add inline validation:

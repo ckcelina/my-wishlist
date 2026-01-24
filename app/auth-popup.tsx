@@ -11,6 +11,7 @@ export default function AuthPopupScreen() {
   useEffect(() => {
     console.log('[AuthPopup] Initiating OAuth for provider:', provider);
     handleOAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
   const handleOAuth = async () => {

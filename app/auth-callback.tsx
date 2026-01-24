@@ -11,6 +11,7 @@ export default function AuthCallbackScreen() {
   useEffect(() => {
     console.log('[AuthCallback] Handling OAuth callback');
     handleOAuthCallback();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleOAuthCallback = async () => {

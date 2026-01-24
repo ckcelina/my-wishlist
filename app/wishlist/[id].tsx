@@ -546,12 +546,12 @@ export default function WishlistDetailScreen() {
         success: boolean;
         itemsChecked: number;
         itemsUpdated: number;
-        priceDrops: Array<{
+        priceDrops: {
           itemId: string;
           oldPrice: number;
           newPrice: number;
           percentageChange: number;
-        }>;
+        }[];
       }>(`/api/wishlists/${id}/refresh-prices`, {});
       
       console.log('WishlistDetailScreen: Price refresh complete:', response);

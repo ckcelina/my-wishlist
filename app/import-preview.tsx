@@ -129,6 +129,7 @@ export default function ImportPreviewScreen() {
   useEffect(() => {
     fetchWishlists();
     fetchUserLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchUserLocation = async () => {

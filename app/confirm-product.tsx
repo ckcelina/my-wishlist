@@ -258,6 +258,7 @@ export default function ConfirmProductScreen() {
     } else {
       identifyProduct();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageUrl, identificationResult]);
 
   const identifyProduct = async () => {
