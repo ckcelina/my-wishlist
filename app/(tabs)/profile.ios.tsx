@@ -8,8 +8,6 @@ import {
   Alert,
   TouchableOpacity,
   Switch,
-  Modal,
-  Pressable,
   Linking,
   ActivityIndicator,
 } from 'react-native';
@@ -26,18 +24,8 @@ import { colors, typography, spacing, containerStyles } from '@/styles/designSys
 import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-
-const CURRENCY_OPTIONS = [
-  { code: 'USD', symbol: '$', name: 'US Dollar' },
-  { code: 'EUR', symbol: '€', name: 'Euro' },
-  { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
-  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
-  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-  { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
-  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
-];
+import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
+import { getCurrencyByCode } from '@/constants/currencies';
 
 interface UserLocation {
   id: string;
@@ -127,12 +115,12 @@ export default function ProfileScreen() {
     await updateSettings({ priceDropAlertsEnabled: value });
   };
 
-  const handleSelectCurrency = async (currencyCode: string) => {
-    console.log('[ProfileScreen] User selected currency:', currencyCode);
+  const handleSelectCurrency = async (currency: { currencyCode: string; currencyName: string }) => {
+    console.log('[ProfileScreen] User selected currency:', currency.currencyCode, currency.currencyName);
     haptics.selection();
-    setDefaultCurrency(currencyCode);
+    setDefaultCurrency(currency.currencyCode);
     setShowCurrencyModal(false);
-    await updateSettings({ defaultCurrency: currencyCode });
+    await updateSettings({ defaultCurrency: currency.currencyCode });
   };
 
   const handleThemeChange = async (preference: 'light' | 'dark' | 'system') => {
@@ -206,8 +194,10 @@ export default function ProfileScreen() {
   const userEmailText = user?.email || '';
   const userInitial = userNameText.charAt(0).toUpperCase();
   
-  const selectedCurrency = CURRENCY_OPTIONS.find(c => c.code === defaultCurrency) || CURRENCY_OPTIONS[0];
-  const currencyDisplayText = `${selectedCurrency.symbol} ${selectedCurrency.code}`;
+  const selectedCurrency = getCurrencyByCode(defaultCurrency);
+  const currencyDisplayText = selectedCurrency 
+    ? `${selectedCurrency.symbol || selectedCurrency.code} ${selectedCurrency.code}`
+    : defaultCurrency;
 
   const locationDisplayText = userLocation 
     ? `${userLocation.countryName}${userLocation.city ? `, ${userLocation.city}` : ''}`
@@ -589,70 +579,12 @@ export default function ProfileScreen() {
           <View style={styles.bottomPadding} />
         </ScrollView>
 
-        {/* Currency Selection Modal */}
-        <Modal
+        <CurrencyPicker
           visible={showCurrencyModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowCurrencyModal(false)}
-        >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => {
-              haptics.light();
-              setShowCurrencyModal(false);
-            }}
-          >
-            <Pressable style={[styles.modalContent, { backgroundColor: theme.colors.card }]} onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
-                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Select Currency</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptics.light();
-                    setShowCurrencyModal(false);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <IconSymbol
-                    ios_icon_name="xmark.circle.fill"
-                    android_material_icon_name="close"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={styles.currencyList} showsVerticalScrollIndicator={false}>
-                {CURRENCY_OPTIONS.map((currency, index) => (
-                  <React.Fragment key={currency.code}>
-                    <PressableScale
-                      style={styles.currencyItem}
-                      onPress={() => handleSelectCurrency(currency.code)}
-                      hapticFeedback="selection"
-                    >
-                      <View style={styles.currencyItemLeft}>
-                        <Text style={[styles.currencySymbol, { color: theme.colors.textSecondary }]}>{currency.symbol}</Text>
-                        <View>
-                          <Text style={[styles.currencyCode, { color: theme.colors.text }]}>{currency.code}</Text>
-                          <Text style={[styles.currencyName, { color: theme.colors.textSecondary }]}>{currency.name}</Text>
-                        </View>
-                      </View>
-                      {defaultCurrency === currency.code && (
-                        <IconSymbol
-                          ios_icon_name="checkmark.circle.fill"
-                          android_material_icon_name="check"
-                          size={24}
-                          color={theme.colors.accent}
-                        />
-                      )}
-                    </PressableScale>
-                    {index < CURRENCY_OPTIONS.length - 1 && <Divider />}
-                  </React.Fragment>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
+          onClose={() => setShowCurrencyModal(false)}
+          onSelect={handleSelectCurrency}
+          selectedCurrencyCode={defaultCurrency}
+        />
       </View>
     </>
   );
@@ -779,48 +711,5 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 100,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '70%',
-    paddingBottom: spacing.xl,
-  },
-  modalHeader: {
-    ...containerStyles.spaceBetween,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-  },
-  modalTitle: {
-    ...typography.titleMedium,
-  },
-  currencyList: {
-    paddingHorizontal: spacing.lg,
-  },
-  currencyItem: {
-    ...containerStyles.spaceBetween,
-    paddingVertical: spacing.md,
-  },
-  currencyItemLeft: {
-    ...containerStyles.row,
-    gap: spacing.md,
-  },
-  currencySymbol: {
-    ...typography.titleMedium,
-    width: 32,
-    textAlign: 'center',
-  },
-  currencyCode: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
-  },
-  currencyName: {
-    ...typography.bodySmall,
   },
 });

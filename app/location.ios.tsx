@@ -5,7 +5,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TextInput,
+  TouchableOpacity,
   Alert,
   ActivityIndicator,
 } from 'react-native';
@@ -13,31 +13,14 @@ import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Button } from '@/components/design-system/Button';
-import { Card } from '@/components/design-system/Card';
-import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
+import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { authenticatedGet, authenticatedPost, authenticatedDelete } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
+import { useAppTheme } from '@/contexts/ThemeContext';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-
-// Common countries for quick selection
-const COMMON_COUNTRIES = [
-  { code: 'US', name: 'United States' },
-  { code: 'GB', name: 'United Kingdom' },
-  { code: 'CA', name: 'Canada' },
-  { code: 'AU', name: 'Australia' },
-  { code: 'DE', name: 'Germany' },
-  { code: 'FR', name: 'France' },
-  { code: 'IT', name: 'Italy' },
-  { code: 'ES', name: 'Spain' },
-  { code: 'JP', name: 'Japan' },
-  { code: 'CN', name: 'China' },
-  { code: 'IN', name: 'India' },
-  { code: 'BR', name: 'Brazil' },
-  { code: 'MX', name: 'Mexico' },
-  { code: 'AE', name: 'United Arab Emirates' },
-  { code: 'SA', name: 'Saudi Arabia' },
-  { code: 'JO', name: 'Jordan' },
-];
+import { CountryPicker } from '@/components/pickers/CountryPicker';
+import { CityPicker } from '@/components/pickers/CityPicker';
+import { getCountryFlag } from '@/constants/countries';
 
 interface UserLocation {
   id: string;
@@ -47,13 +30,27 @@ interface UserLocation {
   city: string | null;
   region: string | null;
   postalCode: string | null;
+  geonameId: string | null;
+  lat: number | null;
+  lng: number | null;
   updatedAt: string;
+}
+
+interface CityResult {
+  name: string;
+  region: string | null;
+  countryCode: string;
+  countryName: string;
+  lat: number | null;
+  lng: number | null;
+  geonameId: string | null;
 }
 
 export default function LocationScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const haptics = useHaptics();
+  const { theme } = useAppTheme();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -63,7 +60,12 @@ export default function LocationScreen() {
   const [countryName, setCountryName] = useState('');
   const [city, setCity] = useState('');
   const [region, setRegion] = useState('');
-  const [postalCode, setPostalCode] = useState('');
+  const [geonameId, setGeonameId] = useState<string | null>(null);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
+
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const fetchLocation = useCallback(async () => {
     console.log('[LocationScreen] Fetching user location');
@@ -77,7 +79,9 @@ export default function LocationScreen() {
         setCountryName(data.countryName);
         setCity(data.city || '');
         setRegion(data.region || '');
-        setPostalCode(data.postalCode || '');
+        setGeonameId(data.geonameId);
+        setLat(data.lat);
+        setLng(data.lng);
       } else {
         console.log('[LocationScreen] No location set');
         setHasLocation(false);
@@ -95,11 +99,26 @@ export default function LocationScreen() {
     }
   }, [user, fetchLocation]);
 
-  const handleSelectCountry = (code: string, name: string) => {
-    console.log('[LocationScreen] User selected country:', code, name);
+  const handleSelectCountry = (country: { countryName: string; countryCode: string }) => {
+    console.log('[LocationScreen] User selected country:', country.countryCode, country.countryName);
     haptics.selection();
-    setCountryCode(code);
-    setCountryName(name);
+    setCountryCode(country.countryCode);
+    setCountryName(country.countryName);
+    setCity('');
+    setRegion('');
+    setGeonameId(null);
+    setLat(null);
+    setLng(null);
+  };
+
+  const handleSelectCity = (cityResult: CityResult) => {
+    console.log('[LocationScreen] User selected city:', cityResult);
+    haptics.selection();
+    setCity(cityResult.name);
+    setRegion(cityResult.region || '');
+    setGeonameId(cityResult.geonameId);
+    setLat(cityResult.lat);
+    setLng(cityResult.lng);
   };
 
   const handleSave = async () => {
@@ -114,7 +133,9 @@ export default function LocationScreen() {
       countryName,
       city,
       region,
-      postalCode,
+      geonameId,
+      lat,
+      lng,
     });
 
     setSaving(true);
@@ -124,7 +145,9 @@ export default function LocationScreen() {
         countryName,
         city: city || undefined,
         region: region || undefined,
-        postalCode: postalCode || undefined,
+        geonameId: geonameId || undefined,
+        lat: lat || undefined,
+        lng: lng || undefined,
       });
 
       console.log('[LocationScreen] Location saved successfully');
@@ -177,131 +200,142 @@ export default function LocationScreen() {
   };
 
   const isFormValid = countryCode && countryName;
-  const selectedCountryText = countryName || 'Select Country';
+  const countryFlag = getCountryFlag(countryCode);
+  const countryDisplayText = countryName ? `${countryFlag} ${countryName}` : 'Select Country';
+  const cityDisplayText = city || 'Select City (Optional)';
 
   if (loading) {
     return (
-      <>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <Stack.Screen
           options={{
             title: 'Shopping Location',
             headerShown: true,
           }}
         />
-        <View style={styles.container}>
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.accent} />
         </View>
-      </>
+      </View>
     );
   }
 
   return (
-    <>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Stack.Screen
         options={{
           title: 'Shopping Location',
           headerShown: true,
         }}
       />
-      <View style={styles.container}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          <Animated.View entering={FadeInDown.delay(0).springify()}>
-            <Text style={styles.description}>
-              Set your location to see stores that ship to your area and get accurate delivery options.
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <Animated.View entering={FadeInDown.delay(0).springify()}>
+          <Text style={[styles.description, { color: theme.colors.textSecondary }]}>
+            Set your location to see stores that ship to your area and get accurate delivery options.
+          </Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+          <Text style={[styles.label, { color: theme.colors.text }]}>
+            Country
+            <Text style={styles.required}> *</Text>
+          </Text>
+          <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
+            Required - Select your country
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.pickerButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+            onPress={() => {
+              haptics.light();
+              setShowCountryPicker(true);
+            }}
+          >
+            <Text style={[styles.pickerButtonText, { color: countryName ? theme.colors.text : theme.colors.textSecondary }]}>
+              {countryDisplayText}
             </Text>
-          </Animated.View>
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </Animated.View>
 
-          {/* Country Selection */}
-          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
-            <Text style={styles.label}>
-              Country
-              <Text style={styles.required}> *</Text>
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <Text style={[styles.label, { color: theme.colors.text }]}>City</Text>
+          <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
+            Optional - May be required for some stores
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.pickerButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+            onPress={() => {
+              if (!countryCode) {
+                haptics.warning();
+                Alert.alert('Select Country First', 'Please select a country before choosing a city');
+                return;
+              }
+              haptics.light();
+              setShowCityPicker(true);
+            }}
+            disabled={!countryCode}
+          >
+            <Text style={[styles.pickerButtonText, { color: city ? theme.colors.text : theme.colors.textSecondary }]}>
+              {cityDisplayText}
             </Text>
-            <Text style={styles.hint}>Required - Select your country</Text>
-
-            <Card style={styles.countryGrid}>
-              {COMMON_COUNTRIES.map((country) => {
-                const isSelected = countryCode === country.code;
-                return (
-                  <Button
-                    key={country.code}
-                    title={country.name}
-                    onPress={() => handleSelectCountry(country.code, country.name)}
-                    variant={isSelected ? 'primary' : 'secondary'}
-                    style={styles.countryButton}
-                  />
-                );
-              })}
-            </Card>
-          </Animated.View>
-
-          {/* City */}
-          <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
-            <Text style={styles.label}>City</Text>
-            <Text style={styles.hint}>Optional - May be required for some stores</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter city"
-              placeholderTextColor={colors.textTertiary}
-              value={city}
-              onChangeText={setCity}
-              autoCapitalize="words"
+            <IconSymbol
+              ios_icon_name="chevron.right"
+              android_material_icon_name="arrow-forward"
+              size={20}
+              color={theme.colors.textSecondary}
             />
-          </Animated.View>
+          </TouchableOpacity>
 
-          {/* Region/State */}
-          <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
-            <Text style={styles.label}>Region / State</Text>
-            <Text style={styles.hint}>Optional</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter region or state"
-              placeholderTextColor={colors.textTertiary}
-              value={region}
-              onChangeText={setRegion}
-              autoCapitalize="words"
-            />
-          </Animated.View>
+          {city && region && (
+            <Text style={[styles.selectedDetails, { color: theme.colors.textSecondary }]}>
+              {region}
+            </Text>
+          )}
+        </Animated.View>
 
-          {/* Postal Code */}
-          <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.section}>
-            <Text style={styles.label}>Postal Code</Text>
-            <Text style={styles.hint}>Optional</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter postal code"
-              placeholderTextColor={colors.textTertiary}
-              value={postalCode}
-              onChangeText={setPostalCode}
-              autoCapitalize="characters"
-            />
-          </Animated.View>
+        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.buttonContainer}>
+          <Button
+            title={saving ? 'Saving...' : 'Save Location'}
+            onPress={handleSave}
+            disabled={!isFormValid || saving}
+            loading={saving}
+          />
 
-          {/* Save Button */}
-          <Animated.View entering={FadeInDown.delay(500).springify()} style={styles.buttonContainer}>
+          {hasLocation && (
             <Button
-              title={saving ? 'Saving...' : 'Save Location'}
-              onPress={handleSave}
-              disabled={!isFormValid || saving}
-              loading={saving}
+              title="Remove Location"
+              onPress={handleDelete}
+              variant="secondary"
+              style={styles.deleteButton}
             />
+          )}
+        </Animated.View>
 
-            {hasLocation && (
-              <Button
-                title="Remove Location"
-                onPress={handleDelete}
-                variant="secondary"
-                style={styles.deleteButton}
-              />
-            )}
-          </Animated.View>
+        <View style={styles.bottomPadding} />
+      </ScrollView>
 
-          <View style={styles.bottomPadding} />
-        </ScrollView>
-      </View>
-    </>
+      <CountryPicker
+        visible={showCountryPicker}
+        onClose={() => setShowCountryPicker(false)}
+        onSelect={handleSelectCountry}
+        selectedCountryCode={countryCode}
+      />
+
+      <CityPicker
+        visible={showCityPicker}
+        onClose={() => setShowCityPicker(false)}
+        onSelect={handleSelectCity}
+        countryCode={countryCode}
+      />
+    </View>
   );
 }
 
@@ -321,7 +355,6 @@ const styles = StyleSheet.create({
   },
   description: {
     ...typography.bodyMedium,
-    color: colors.textSecondary,
     marginBottom: spacing.lg,
     lineHeight: 22,
   },
@@ -337,21 +370,25 @@ const styles = StyleSheet.create({
   },
   hint: {
     ...typography.bodySmall,
-    color: colors.textTertiary,
     marginBottom: spacing.sm,
   },
-  input: {
-    ...inputStyles.base,
-  },
-  countryGrid: {
+  pickerButton: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    padding: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
-  countryButton: {
-    minWidth: '48%',
-    flexGrow: 1,
+  pickerButtonText: {
+    ...typography.bodyLarge,
+    flex: 1,
+  },
+  selectedDetails: {
+    ...typography.bodySmall,
+    marginTop: spacing.xs,
+    marginLeft: spacing.md,
   },
   buttonContainer: {
     gap: spacing.sm,
