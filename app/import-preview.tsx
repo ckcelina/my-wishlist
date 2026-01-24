@@ -143,6 +143,8 @@ export default function ImportPreviewScreen() {
         city: string | null;
         region: string | null;
         postalCode: string | null;
+        area: string | null;
+        addressLine: string | null;
         updatedAt: string;
       }>('/api/users/location');
 

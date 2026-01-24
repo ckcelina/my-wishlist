@@ -51,6 +51,16 @@ interface OtherStore {
   url: string;
 }
 
+interface UnavailableStore {
+  storeName: string;
+  domain: string;
+  price: number;
+  currency: string;
+  url: string;
+  reason: string;
+  reasonCode: string;
+}
+
 interface PriceDropInfo {
   priceDropped: boolean;
   originalPrice: number | null;
@@ -60,8 +70,10 @@ interface PriceDropInfo {
 
 interface FilteredStoresResponse {
   stores: OtherStore[];
+  unavailableStores?: UnavailableStore[];
   userLocation: { countryCode: string; city: string | null } | null;
   hasLocation: boolean;
+  cityRequired?: boolean;
   message?: string;
 }
 
@@ -80,11 +92,16 @@ export default function ItemDetailScreen() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [otherStores, setOtherStores] = useState<OtherStore[]>([]);
+  const [unavailableStores, setUnavailableStores] = useState<UnavailableStore[]>([]);
+  const [showUnavailableStores, setShowUnavailableStores] = useState(false);
   const [loadingStores, setLoadingStores] = useState(false);
   const [checkingPrice, setCheckingPrice] = useState(false);
   const [priceDropInfo, setPriceDropInfo] = useState<PriceDropInfo | null>(null);
   const [hasUserLocation, setHasUserLocation] = useState(true);
+  const [cityRequired, setCityRequired] = useState(false);
   const [storesMessage, setStoresMessage] = useState<string | null>(null);
+  const [userDefaultCurrency, setUserDefaultCurrency] = useState<string>('USD');
+  const [convertedPrice, setConvertedPrice] = useState<string | null>(null);
 
   // Edit form state
   const [editedTitle, setEditedTitle] = useState('');
@@ -106,16 +123,59 @@ export default function ItemDetailScreen() {
       
       console.log('[ItemDetailScreen] Filtered stores response:', data);
       setOtherStores(data.stores || []);
+      setUnavailableStores(data.unavailableStores || []);
       setHasUserLocation(data.hasLocation);
+      setCityRequired(data.cityRequired || false);
       setStoresMessage(data.message || null);
     } catch (error) {
       console.error('[ItemDetailScreen] Error fetching filtered stores:', error);
       setOtherStores([]);
+      setUnavailableStores([]);
       setStoresMessage('Failed to load stores');
     } finally {
       setLoadingStores(false);
     }
   }, [id]);
+
+  const fetchUserSettings = useCallback(async () => {
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const settings = await authenticatedGet<{ defaultCurrency: string }>('/api/users/settings');
+      setUserDefaultCurrency(settings.defaultCurrency || 'USD');
+      console.log('[ItemDetailScreen] User default currency:', settings.defaultCurrency);
+    } catch (error) {
+      console.error('[ItemDetailScreen] Error fetching user settings:', error);
+    }
+  }, []);
+
+  const fetchConvertedPrice = useCallback(async (itemPrice: string, itemCurrency: string) => {
+    if (itemCurrency === userDefaultCurrency) {
+      setConvertedPrice(null);
+      return;
+    }
+
+    try {
+      const { convertCurrency } = await import('@/utils/formatMoney');
+      const amount = parseFloat(itemPrice);
+      if (isNaN(amount)) {
+        setConvertedPrice(null);
+        return;
+      }
+
+      const converted = await convertCurrency(amount, itemCurrency, userDefaultCurrency);
+      if (converted !== null) {
+        const { formatMoney } = await import('@/utils/formatMoney');
+        const formatted = formatMoney(converted, userDefaultCurrency);
+        setConvertedPrice(formatted);
+        console.log('[ItemDetailScreen] Converted price:', formatted);
+      } else {
+        setConvertedPrice(null);
+      }
+    } catch (error) {
+      console.error('[ItemDetailScreen] Error converting price:', error);
+      setConvertedPrice(null);
+    }
+  }, [userDefaultCurrency]);
 
   const fetchItem = useCallback(async () => {
     console.log('[ItemDetailScreen] Fetching item details');
@@ -126,6 +186,11 @@ export default function ItemDetailScreen() {
       console.log('[ItemDetailScreen] Fetched item:', data.title);
       setItem(data);
       
+      // Fetch currency conversion if needed
+      if (data.currentPrice && data.currency) {
+        fetchConvertedPrice(data.currentPrice, data.currency);
+      }
+      
       // Fetch filtered alternatives after item is loaded
       fetchOtherStores();
     } catch (error) {
@@ -134,7 +199,7 @@ export default function ItemDetailScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, fetchOtherStores]);
+  }, [id, fetchOtherStores, fetchConvertedPrice]);
 
   const fetchPriceDropInfo = useCallback(async () => {
     console.log('[ItemDetailScreen] Fetching price drop info');
@@ -151,10 +216,11 @@ export default function ItemDetailScreen() {
   useEffect(() => {
     console.log('[ItemDetailScreen] Component mounted, item ID:', id);
     if (id) {
+      fetchUserSettings();
       fetchItem();
       fetchPriceDropInfo();
     }
-  }, [id, fetchItem, fetchPriceDropInfo]);
+  }, [id, fetchUserSettings, fetchItem, fetchPriceDropInfo]);
 
   const handleCheckPrice = async () => {
     console.log('[ItemDetailScreen] Manually checking price');
@@ -462,6 +528,11 @@ export default function ItemDetailScreen() {
               </View>
               <Text style={styles.currentPrice}>{priceText}</Text>
               
+              {/* Converted Price (if available) */}
+              {convertedPrice && (
+                <Text style={styles.convertedPrice}>≈ {convertedPrice}</Text>
+              )}
+              
               {/* Last Checked Timestamp */}
               {item.originalUrl && (
                 <View style={styles.lastCheckedRow}>
@@ -594,6 +665,26 @@ export default function ItemDetailScreen() {
                 </TouchableOpacity>
               )}
               
+              {/* City Required Banner */}
+              {hasUserLocation && cityRequired && (
+                <TouchableOpacity style={styles.cityRequiredBanner} onPress={handleSetLocation}>
+                  <View style={styles.locationBannerLeft}>
+                    <IconSymbol
+                      ios_icon_name="location"
+                      android_material_icon_name="location-on"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.locationBannerText}>
+                      Add your city to see stores that deliver to you
+                    </Text>
+                  </View>
+                  <View style={styles.setCityButton}>
+                    <Text style={styles.setCityButtonText}>Set city</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              
               {loadingStores ? (
                 <View style={styles.storesLoadingContainer}>
                   <ActivityIndicator size="small" color={colors.primary} />
@@ -624,34 +715,84 @@ export default function ItemDetailScreen() {
                   </Text>
                 </View>
               ) : (
-                <View style={styles.storesList}>
-                  {otherStores.map((store, index) => {
-                    const storePriceText = `${store.currency} ${store.price.toFixed(2)}`;
-                    
-                    return (
+                <>
+                  <View style={styles.storesList}>
+                    {otherStores.map((store, index) => {
+                      const storePriceText = `${store.currency} ${store.price.toFixed(2)}`;
+                      
+                      return (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.storeCard}
+                          onPress={() => handleOpenStoreUrl(store.url, store.storeName)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.storeCardLeft}>
+                            <Text style={styles.storeName}>{store.storeName}</Text>
+                            <Text style={styles.storeDomain}>{store.domain}</Text>
+                          </View>
+                          <View style={styles.storeCardRight}>
+                            <Text style={styles.storePrice}>{storePriceText}</Text>
+                            <IconSymbol
+                              ios_icon_name="chevron.right"
+                              android_material_icon_name="chevron-right"
+                              size={20}
+                              color={colors.textSecondary}
+                            />
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  
+                  {/* Unavailable Stores Section */}
+                  {unavailableStores.length > 0 && (
+                    <View style={styles.unavailableSection}>
                       <TouchableOpacity
-                        key={index}
-                        style={styles.storeCard}
-                        onPress={() => handleOpenStoreUrl(store.url, store.storeName)}
+                        style={styles.unavailableHeader}
+                        onPress={() => setShowUnavailableStores(!showUnavailableStores)}
                         activeOpacity={0.7}
                       >
-                        <View style={styles.storeCardLeft}>
-                          <Text style={styles.storeName}>{store.storeName}</Text>
-                          <Text style={styles.storeDomain}>{store.domain}</Text>
-                        </View>
-                        <View style={styles.storeCardRight}>
-                          <Text style={styles.storePrice}>{storePriceText}</Text>
-                          <IconSymbol
-                            ios_icon_name="chevron.right"
-                            android_material_icon_name="chevron-right"
-                            size={20}
-                            color={colors.textSecondary}
-                          />
-                        </View>
+                        <Text style={styles.unavailableTitle}>
+                          Unavailable in your location ({unavailableStores.length})
+                        </Text>
+                        <IconSymbol
+                          ios_icon_name={showUnavailableStores ? 'chevron.up' : 'chevron.down'}
+                          android_material_icon_name={showUnavailableStores ? 'expand-less' : 'expand-more'}
+                          size={20}
+                          color={colors.textSecondary}
+                        />
                       </TouchableOpacity>
-                    );
-                  })}
-                </View>
+                      
+                      {showUnavailableStores && (
+                        <View style={styles.unavailableList}>
+                          {unavailableStores.map((store, index) => {
+                            const storePriceText = `${store.currency} ${store.price.toFixed(2)}`;
+                            
+                            return (
+                              <View key={index} style={styles.unavailableStoreCard}>
+                                <View style={styles.storeCardLeft}>
+                                  <Text style={styles.unavailableStoreName}>{store.storeName}</Text>
+                                  <Text style={styles.storeDomain}>{store.domain}</Text>
+                                  <View style={styles.reasonBadge}>
+                                    <IconSymbol
+                                      ios_icon_name="info.circle"
+                                      android_material_icon_name="info"
+                                      size={12}
+                                      color={colors.textSecondary}
+                                    />
+                                    <Text style={styles.reasonText}>{store.reason}</Text>
+                                  </View>
+                                </View>
+                                <Text style={styles.unavailableStorePrice}>{storePriceText}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </>
               )}
             </View>
           </View>
@@ -859,6 +1000,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
     color: colors.text,
+    marginBottom: 4,
+  },
+  convertedPrice: {
+    fontSize: 16,
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   lastCheckedRow: {
@@ -1166,6 +1312,28 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 20,
   },
+  cityRequiredBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.highlight,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
+  },
+  setCityButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  setCityButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   storesLoadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1235,5 +1403,57 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.primary,
+  },
+  unavailableSection: {
+    marginTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 16,
+  },
+  unavailableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  unavailableTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  unavailableList: {
+    marginTop: 12,
+    gap: 12,
+  },
+  unavailableStoreCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    backgroundColor: colors.backgroundAlt,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    opacity: 0.7,
+  },
+  unavailableStoreName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  unavailableStorePrice: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  reasonBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  reasonText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });

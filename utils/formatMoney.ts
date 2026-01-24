@@ -1,5 +1,6 @@
 
 import { getCurrencyByCode } from '@/constants/currencies';
+import { authenticatedPost } from './api';
 
 /**
  * Format a monetary amount with currency code
@@ -65,4 +66,77 @@ export function parseMoney(moneyString: string): number | null {
   const parsed = parseFloat(cleaned);
   
   return isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Convert currency amount from one currency to another
+ * @param amount - Amount to convert
+ * @param fromCurrency - Source currency code
+ * @param toCurrency - Target currency code
+ * @returns Converted amount or null if conversion unavailable
+ */
+export async function convertCurrency(
+  amount: number,
+  fromCurrency: string,
+  toCurrency: string
+): Promise<number | null> {
+  if (fromCurrency === toCurrency) {
+    return amount;
+  }
+
+  try {
+    console.log(`[convertCurrency] Converting ${amount} from ${fromCurrency} to ${toCurrency}`);
+    const response = await authenticatedPost<{
+      convertedAmount: number | null;
+      rate: number | null;
+      error?: string;
+    }>('/api/convert-currency', {
+      fromCurrency,
+      toCurrency,
+      amount,
+    });
+
+    if (response.convertedAmount !== null) {
+      console.log(`[convertCurrency] Converted: ${response.convertedAmount} ${toCurrency}`);
+      return response.convertedAmount;
+    }
+
+    console.warn(`[convertCurrency] Conversion unavailable:`, response.error);
+    return null;
+  } catch (error) {
+    console.error('[convertCurrency] Error converting currency:', error);
+    return null;
+  }
+}
+
+/**
+ * Format money with optional currency conversion
+ * Shows primary price in original currency and secondary price in user's currency
+ * @param amount - Amount to format
+ * @param itemCurrency - Item's currency code
+ * @param userCurrency - User's preferred currency code
+ * @returns Object with primary and secondary formatted strings
+ */
+export async function formatMoneyWithConversion(
+  amount: number | null | undefined,
+  itemCurrency: string,
+  userCurrency: string
+): Promise<{
+  primary: string;
+  secondary: string | null;
+}> {
+  const primary = formatMoney(amount, itemCurrency);
+
+  if (amount === null || amount === undefined || itemCurrency === userCurrency) {
+    return { primary, secondary: null };
+  }
+
+  const converted = await convertCurrency(amount, itemCurrency, userCurrency);
+  
+  if (converted === null) {
+    return { primary, secondary: null };
+  }
+
+  const secondary = formatMoney(converted, userCurrency);
+  return { primary, secondary };
 }

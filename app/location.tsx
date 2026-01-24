@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Alert,
   ActivityIndicator,
   Platform,
@@ -36,8 +37,29 @@ interface UserLocation {
   geonameId: string | null;
   lat: number | null;
   lng: number | null;
+  area: string | null;
+  addressLine: string | null;
   updatedAt: string;
 }
+
+// Countries that support area/address fields
+const COUNTRIES_WITH_AREA_SUPPORT = [
+  'AE', // UAE
+  'SA', // Saudi Arabia
+  'KW', // Kuwait
+  'QA', // Qatar
+  'BH', // Bahrain
+  'OM', // Oman
+  'IN', // India
+  'PK', // Pakistan
+  'BD', // Bangladesh
+  'PH', // Philippines
+  'ID', // Indonesia
+  'MY', // Malaysia
+  'SG', // Singapore
+  'TH', // Thailand
+  'VN', // Vietnam
+];
 
 interface CityResult {
   name: string;
@@ -66,9 +88,13 @@ export default function LocationScreen() {
   const [geonameId, setGeonameId] = useState<string | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
+  const [area, setArea] = useState('');
+  const [addressLine, setAddressLine] = useState('');
 
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
+  
+  const showAreaFields = COUNTRIES_WITH_AREA_SUPPORT.includes(countryCode);
 
   const fetchLocation = useCallback(async () => {
     console.log('[LocationScreen] Fetching user location');
@@ -85,6 +111,8 @@ export default function LocationScreen() {
         setGeonameId(data.geonameId);
         setLat(data.lat);
         setLng(data.lng);
+        setArea(data.area || '');
+        setAddressLine(data.addressLine || '');
       } else {
         console.log('[LocationScreen] No location set');
         setHasLocation(false);
@@ -112,6 +140,8 @@ export default function LocationScreen() {
     setGeonameId(null);
     setLat(null);
     setLng(null);
+    setArea('');
+    setAddressLine('');
   };
 
   const handleSelectCity = (cityResult: CityResult) => {
@@ -139,6 +169,8 @@ export default function LocationScreen() {
       geonameId,
       lat,
       lng,
+      area,
+      addressLine,
     });
 
     setSaving(true);
@@ -151,6 +183,8 @@ export default function LocationScreen() {
         geonameId: geonameId || undefined,
         lat: lat || undefined,
         lng: lng || undefined,
+        area: area || undefined,
+        addressLine: addressLine || undefined,
       });
 
       console.log('[LocationScreen] Location saved successfully');
@@ -304,7 +338,43 @@ export default function LocationScreen() {
           )}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.buttonContainer}>
+        {showAreaFields && (
+          <>
+            <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
+              <Text style={[styles.label, { color: theme.colors.text }]}>Area / District</Text>
+              <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
+                Optional - Neighborhood or district for more accurate delivery
+              </Text>
+
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
+                value={area}
+                onChangeText={setArea}
+                placeholder="e.g., Downtown, Marina District"
+                placeholderTextColor={theme.colors.textSecondary}
+              />
+            </Animated.View>
+
+            <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.section}>
+              <Text style={[styles.label, { color: theme.colors.text }]}>Address Line</Text>
+              <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
+                Optional - Street address or building details
+              </Text>
+
+              <TextInput
+                style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
+                value={addressLine}
+                onChangeText={setAddressLine}
+                placeholder="e.g., 123 Main Street, Building A"
+                placeholderTextColor={theme.colors.textSecondary}
+                multiline
+                numberOfLines={2}
+              />
+            </Animated.View>
+          </>
+        )}
+
+        <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.buttonContainer}>
           <Button
             title={saving ? 'Saving...' : 'Save Location'}
             onPress={handleSave}
@@ -393,6 +463,13 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     marginTop: spacing.xs,
     marginLeft: spacing.md,
+  },
+  textInput: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    ...typography.bodyLarge,
   },
   buttonContainer: {
     gap: spacing.sm,

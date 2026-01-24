@@ -160,3 +160,16 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
     throw error;
   }
 }
+
+/**
+ * Normalize city name for consistent comparisons
+ * Matches backend normalization logic
+ */
+export function normalizeCityName(city: string | null | undefined): string {
+  if (!city) return '';
+  
+  return city
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' '); // Replace multiple spaces with single space
+}
