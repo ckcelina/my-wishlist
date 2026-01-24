@@ -38,7 +38,16 @@ export type AnalyticsEvent =
   | 'price_refresh_manual'
   | 'price_refresh_completed'
   | 'price_drop_detected'
-  | 'report_submitted';
+  | 'report_submitted'
+  | 'premium_modal_shown'
+  | 'premium_upgrade_clicked'
+  | 'premium_dismissed'
+  | 'premium_restore_clicked'
+  | 'premium_learn_more_clicked'
+  | 'url_normalized'
+  | 'price_refresh_job_created'
+  | 'price_refresh_job_completed'
+  | 'price_refresh_job_failed';
 
 interface LogEntry {
   timestamp: string;

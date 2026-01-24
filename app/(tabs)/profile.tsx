@@ -23,6 +23,7 @@ import { Button } from '@/components/design-system/Button';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
 import { PressableScale } from '@/components/design-system/PressableScale';
+import { PremiumCard } from '@/components/PremiumCard';
 import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
@@ -269,6 +270,12 @@ export default function ProfileScreen() {
               </View>
             </PressableScale>
           </Card>
+        </Animated.View>
+
+        {/* Premium Section */}
+        <Animated.View entering={FadeInDown.delay(25).springify()} style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>PREMIUM</Text>
+          <PremiumCard />
         </Animated.View>
 
         {/* Appearance Section */}
