@@ -7,241 +7,211 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { colors, typography, spacing, inputStyles } from '@/styles/designSystem';
+import { useAuth } from '@/contexts/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
-import Constants from 'expo-constants';
+import { importWishlist } from '@/utils/supabase-edge-functions';
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    padding: spacing.lg,
+  },
+  title: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  description: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xl,
+  },
+  label: {
+    ...typography.label,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    ...inputStyles.base,
+    marginBottom: spacing.lg,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  buttonDisabled: {
+    backgroundColor: colors.border,
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  exampleContainer: {
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: 8,
+    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  exampleTitle: {
+    ...typography.label,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  exampleText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  loadingContainer: {
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+});
 
 export default function ImportWishlistScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [wishlistUrl, setWishlistUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  const handlePreviewItems = async () => {
+  const handleImport = async () => {
     if (!wishlistUrl.trim()) {
       Alert.alert('Error', 'Please enter a wishlist URL');
       return;
     }
 
-    console.log('[ImportWishlist] User tapped Preview Items with URL:', wishlistUrl);
-    setLoading(true);
+    try {
+      new URL(wishlistUrl);
+    } catch {
+      Alert.alert('Error', 'Please enter a valid URL');
+      return;
+    }
+
+    console.log('Importing wishlist from URL:', wishlistUrl);
+    setImporting(true);
 
     try {
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      const response = await fetch(`${backendUrl}/api/import-wishlist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishlistUrl: wishlistUrl.trim(),
-        }),
-      });
+      const result = await importWishlist(wishlistUrl);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to import wishlist');
+      if (result.error && result.items.length === 0) {
+        Alert.alert('Error', result.error || 'Failed to import wishlist');
+        setImporting(false);
+        return;
       }
 
-      const data = await response.json();
-      console.log('[ImportWishlist] Successfully fetched items:', data.items.length);
+      if (result.items.length === 0) {
+        Alert.alert('No Items Found', 'Could not find any items in this wishlist. Please check the URL and try again.');
+        setImporting(false);
+        return;
+      }
 
+      console.log('Wishlist imported successfully:', result.items.length, 'items');
+
+      // Navigate to import preview screen
       router.push({
         pathname: '/import-preview',
         params: {
-          storeName: data.storeName,
-          items: JSON.stringify(data.items),
+          items: JSON.stringify(result.items),
+          storeName: result.storeName || 'Unknown Store',
         },
       });
     } catch (error: any) {
-      console.error('[ImportWishlist] Error importing wishlist:', error);
-      Alert.alert(
-        'Import Failed',
-        error.message || 'Failed to import wishlist. Please check the URL and try again.'
-      );
+      console.error('Failed to import wishlist:', error);
+      Alert.alert('Error', 'Failed to import wishlist. Please try again.');
     } finally {
-      setLoading(false);
+      setImporting(false);
     }
   };
+
+  const canImport = wishlistUrl.trim().length > 0 && !importing;
 
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Import Wishlist',
-          headerBackTitle: 'Back',
+          headerShown: true,
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.iconContainer}>
-            <View style={styles.iconCircle}>
-              <IconSymbol
-                ios_icon_name="download"
-                android_material_icon_name="download"
-                size={32}
-                color={colors.accent}
-              />
-            </View>
-          </View>
+        <ScrollView style={styles.container}>
+          <View style={styles.content}>
+            <Text style={styles.title}>Import from Another Store</Text>
+            <Text style={styles.description}>
+              Paste a link to your wishlist from Amazon, Etsy, Target, or any other online store. We'll extract all the items for you.
+            </Text>
 
-          <Text style={styles.title}>Import Wishlist</Text>
-          
-          <Text style={styles.description}>
-            Paste a link to a wishlist from any store. We&apos;ll bring everything into My Wishlist.
-          </Text>
-
-          <View style={styles.inputSection}>
             <Text style={styles.label}>Wishlist URL</Text>
             <TextInput
               style={styles.input}
               placeholder="https://www.amazon.com/hz/wishlist/ls/..."
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={colors.textSecondary}
               value={wishlistUrl}
               onChangeText={setWishlistUrl}
               autoCapitalize="none"
-              keyboardType="url"
               autoCorrect={false}
-              editable={!loading}
-              multiline
-              numberOfLines={3}
+              keyboardType="url"
+              editable={!importing}
             />
-            <Text style={styles.hint}>
-              Supported stores: Amazon, Etsy, Target, and more
-            </Text>
-          </View>
 
-          <TouchableOpacity
-            style={[styles.button, (!wishlistUrl.trim() || loading) && styles.buttonDisabled]}
-            onPress={handlePreviewItems}
-            disabled={!wishlistUrl.trim() || loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator size="small" color={colors.textInverse} />
-                <Text style={styles.buttonText}>Analyzing...</Text>
+            <TouchableOpacity
+              style={[styles.button, !canImport && styles.buttonDisabled]}
+              onPress={handleImport}
+              disabled={!canImport}
+            >
+              {importing ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Import Wishlist</Text>
+              )}
+            </TouchableOpacity>
+
+            {importing && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>Importing your wishlist...</Text>
+                <Text style={styles.loadingText}>This may take a moment</Text>
               </View>
-            ) : (
-              <Text style={styles.buttonText}>Preview Items</Text>
             )}
-          </TouchableOpacity>
 
-          {loading && (
-            <View style={styles.loadingInfo}>
-              <Text style={styles.loadingText}>
-                Analyzing the wishlist and extracting items...
-              </Text>
-              <Text style={styles.loadingSubtext}>
-                This may take a few moments
+            <View style={styles.exampleContainer}>
+              <Text style={styles.exampleTitle}>Supported Stores</Text>
+              <Text style={styles.exampleText}>
+                Amazon, Etsy, Target, Walmart, Best Buy, eBay, Pinterest, and many more
               </Text>
             </View>
-          )}
+
+            <View style={styles.exampleContainer}>
+              <Text style={styles.exampleTitle}>Example URLs</Text>
+              <Text style={styles.exampleText}>
+                • Amazon: https://www.amazon.com/hz/wishlist/ls/...{'\n'}
+                • Etsy: https://www.etsy.com/people/.../favorites{'\n'}
+                • Target: https://www.target.com/gift-registry/...
+              </Text>
+            </View>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    ...containerStyles.screen,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
-  },
-  iconContainer: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.accentLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    ...typography.displayMedium,
-    textAlign: 'center',
-    marginBottom: spacing.md,
-  },
-  description: {
-    ...typography.bodyLarge,
-    textAlign: 'center',
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-    lineHeight: 24,
-  },
-  inputSection: {
-    marginBottom: spacing.lg,
-  },
-  label: {
-    ...typography.labelLarge,
-    marginBottom: spacing.sm,
-  },
-  input: {
-    ...inputStyles.base,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    paddingTop: spacing.md,
-  },
-  hint: {
-    ...typography.bodySmall,
-    color: colors.textTertiary,
-    marginTop: spacing.xs,
-  },
-  button: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadowMedium,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  buttonText: {
-    ...typography.buttonLarge,
-    color: colors.textInverse,
-  },
-  loadingInfo: {
-    marginTop: spacing.xl,
-    alignItems: 'center',
-    paddingVertical: spacing.lg,
-  },
-  loadingText: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.xs,
-  },
-  loadingSubtext: {
-    ...typography.bodySmall,
-    color: colors.textTertiary,
-    textAlign: 'center',
-  },
-});

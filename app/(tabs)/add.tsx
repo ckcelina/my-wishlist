@@ -1,12 +1,10 @@
 
-import { useAuth } from '@/contexts/AuthContext';
-import React, { useState, useEffect } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
-import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import React, { useState, useEffect } from 'react';
+import { colors } from '@/styles/commonStyles';
 import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
 import {
   View,
   Text,
@@ -20,8 +18,12 @@ import {
   ImageSourcePropType,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import { useAuth } from '@/contexts/AuthContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
+import { extractItem, identifyFromImage } from '@/utils/supabase-edge-functions';
+import { createWishlistItem } from '@/lib/supabase-helpers';
 
 type TabType = 'url' | 'manual' | 'image';
 
@@ -39,65 +41,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  tabContainer: {
+  tabBar: {
     flexDirection: 'row',
-    marginBottom: 24,
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   tab: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 16,
     alignItems: 'center',
-    borderRadius: 8,
   },
-  activeTab: {
-    backgroundColor: colors.primary,
+  tabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   tabText: {
     fontSize: 14,
-    fontWeight: '600',
     color: colors.textSecondary,
+    fontWeight: '500',
   },
-  activeTabText: {
-    color: '#FFFFFF',
+  tabTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
   },
-  section: {
-    marginBottom: 24,
+  content: {
+    flex: 1,
+    padding: 20,
   },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    color: colors.text,
     borderWidth: 1,
     borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    marginBottom: 16,
   },
   textArea: {
-    minHeight: 100,
+    height: 100,
     textAlignVertical: 'top',
   },
   button: {
     backgroundColor: colors.primary,
-    borderRadius: 12,
     padding: 16,
+    borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
   },
   buttonDisabled: {
-    opacity: 0.5,
+    backgroundColor: colors.border,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -105,104 +105,88 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   secondaryButton: {
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
   },
   secondaryButtonText: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
-  imagePreview: {
+  previewCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  previewImage: {
     width: '100%',
     height: 200,
-    borderRadius: 12,
-    marginTop: 12,
-    backgroundColor: colors.cardBackground,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  previewTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  previewPrice: {
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  previewUrl: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  imagePickerButton: {
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 40,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  imagePickerText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 8,
+  },
+  selectedImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingContainer: {
     padding: 40,
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  errorText: {
-    color: colors.error,
-    fontSize: 14,
-    marginTop: 8,
-  },
-  infoText: {
+    marginTop: 12,
     fontSize: 14,
     color: colors.textSecondary,
-    marginBottom: 16,
-  },
-  sourceInfo: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-  },
-  sourceLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  sourceValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  importButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    gap: 8,
-  },
-  importButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-  imageButtonsContainer: {
-    gap: 12,
-  },
-  imageButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.cardBackground,
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  imageButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  identifyButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 16,
   },
 });
 
@@ -214,360 +198,184 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 
 function isValidUrl(urlString: string): boolean {
   try {
-    const url = new URL(urlString);
-    return url.protocol === 'http:' || url.protocol === 'https:';
+    new URL(urlString);
+    return true;
   } catch {
     return false;
   }
 }
 
 function extractUrlFromText(text: string): string | null {
-  const urlRegex = /(https?:\/\/[^\s]+)/gi;
-  const matches = text.match(urlRegex);
-  return matches ? matches[0] : null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const match = text.match(urlRegex);
+  return match ? match[0] : null;
 }
 
 export default function AddItemScreen() {
+  const { wishlistId, sharedUrl } = useLocalSearchParams<{ wishlistId?: string; sharedUrl?: string }>();
   const router = useRouter();
-  const { wishlistId, sharedUrl } = useLocalSearchParams();
   const { user } = useAuth();
-
   const [activeTab, setActiveTab] = useState<TabType>('url');
-  
-  // URL extraction state
-  const [url, setUrl] = useState('');
-  const [extracting, setExtracting] = useState(false);
-  const [extractError, setExtractError] = useState('');
-  
-  // Editable extracted fields
-  const [extractedTitle, setExtractedTitle] = useState('');
-  const [extractedImageUrl, setExtractedImageUrl] = useState('');
-  const [extractedPrice, setExtractedPrice] = useState('');
-  const [extractedCurrency, setExtractedCurrency] = useState('USD');
-  const [extractedNotes, setExtractedNotes] = useState('');
-  const [originalUrl, setOriginalUrl] = useState('');
-  const [sourceDomain, setSourceDomain] = useState('');
-  const [showExtractedForm, setShowExtractedForm] = useState(false);
 
-  // Manual entry state
+  // URL tab state
+  const [urlInput, setUrlInput] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractedItem, setExtractedItem] = useState<ExtractedItem | null>(null);
+
+  // Manual tab state
   const [manualTitle, setManualTitle] = useState('');
   const [manualPrice, setManualPrice] = useState('');
-  const [manualCurrency, setManualCurrency] = useState('USD');
-  const [manualImageUri, setManualImageUri] = useState('');
+  const [manualImageUrl, setManualImageUrl] = useState('');
   const [manualNotes, setManualNotes] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [savingManual, setSavingManual] = useState(false);
 
-  // Image identification state
-  const [imageForIdentification, setImageForIdentification] = useState('');
-  const [imageUrlInput, setImageUrlInput] = useState('');
-  const [identifying, setIdentifying] = useState(false);
+  // Image tab state
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+  const [identifyingImage, setIdentifyingImage] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
-    console.log('AddItemScreen mounted with wishlistId:', wishlistId);
-    console.log('Shared URL from params:', sharedUrl);
-
-    if (sharedUrl && typeof sharedUrl === 'string') {
-      const decodedUrl = decodeURIComponent(sharedUrl);
-      console.log('Processing shared URL:', decodedUrl);
-      setUrl(decodedUrl);
+    if (sharedUrl) {
+      console.log('Received shared URL:', sharedUrl);
+      setUrlInput(sharedUrl);
       setActiveTab('url');
-      handleExtractItemWithUrl(decodedUrl);
     }
-  }, [wishlistId, sharedUrl]);
+  }, [sharedUrl]);
 
   useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      console.log('Deep link received:', event.url);
-      const parsedUrl = Linking.parse(event.url);
-      console.log('Parsed deep link:', parsedUrl);
-
-      if (parsedUrl.queryParams?.url) {
-        const sharedUrlParam = parsedUrl.queryParams.url as string;
-        console.log('URL from deep link query params:', sharedUrlParam);
-        setUrl(sharedUrlParam);
-        setActiveTab('url');
-        handleExtractItemWithUrl(sharedUrlParam);
-      } else if (parsedUrl.queryParams?.text) {
-        const sharedText = parsedUrl.queryParams.text as string;
-        console.log('Text from deep link:', sharedText);
-        const extractedUrl = extractUrlFromText(sharedText);
-        if (extractedUrl) {
-          console.log('Extracted URL from text:', extractedUrl);
-          setUrl(extractedUrl);
-          setActiveTab('url');
-          handleExtractItemWithUrl(extractedUrl);
+    const checkClipboard = async () => {
+      if (Platform.OS !== 'web') {
+        const clipboardText = await Clipboard.getStringAsync();
+        const extractedUrl = extractUrlFromText(clipboardText);
+        if (extractedUrl && isValidUrl(extractedUrl)) {
+          console.log('Found URL in clipboard:', extractedUrl);
+          Alert.alert(
+            'URL Found',
+            'We found a URL in your clipboard. Would you like to use it?',
+            [
+              { text: 'No', style: 'cancel' },
+              {
+                text: 'Yes',
+                onPress: () => {
+                  setUrlInput(extractedUrl);
+                  setActiveTab('url');
+                },
+              },
+            ]
+          );
         }
       }
     };
 
-    const subscription = Linking.addEventListener('url', handleDeepLink);
-
-    Linking.getInitialURL().then((initialUrl) => {
-      if (initialUrl) {
-        console.log('Initial URL:', initialUrl);
-        handleDeepLink({ url: initialUrl });
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
+    checkClipboard();
   }, []);
 
   const handleExtractItemWithUrl = async (urlToExtract: string) => {
-    if (!urlToExtract || !urlToExtract.trim()) {
-      console.log('No URL to extract');
+    if (!urlToExtract.trim()) {
+      Alert.alert('Error', 'Please enter a URL');
       return;
     }
 
-    let processedUrl = urlToExtract.trim();
-
-    if (!isValidUrl(processedUrl)) {
-      console.log('Invalid URL format, attempting to extract URL from text');
-      const extracted = extractUrlFromText(processedUrl);
-      if (extracted) {
-        processedUrl = extracted;
-      } else {
-        console.log('Could not extract valid URL from text');
-        Alert.alert('Invalid URL', 'The shared content does not contain a valid URL.');
-        return;
-      }
+    if (!isValidUrl(urlToExtract)) {
+      Alert.alert('Error', 'Please enter a valid URL');
+      return;
     }
 
-    console.log('Auto-extracting item from URL:', processedUrl);
+    console.log('Extracting item from URL:', urlToExtract);
     setExtracting(true);
-    setExtractError('');
-    setShowExtractedForm(false);
 
     try {
-      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
-      const supabaseAnonKey = Constants.expoConfig?.extra?.supabaseAnonKey;
+      const result = await extractItem(urlToExtract);
 
-      if (!supabaseUrl || !supabaseAnonKey) {
-        throw new Error('Supabase configuration missing');
+      if (result.error && !result.title) {
+        Alert.alert('Error', result.error || 'Failed to extract item details');
+        setExtracting(false);
+        return;
       }
 
-      const edgeFunctionUrl = `${supabaseUrl}/functions/v1/extract-item`;
-      console.log('Calling Edge Function:', edgeFunctionUrl);
+      const urlObj = new URL(urlToExtract);
+      const sourceDomain = urlObj.hostname.replace('www.', '');
 
-      const response = await fetch(edgeFunctionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseAnonKey}`,
-        },
-        body: JSON.stringify({ url: processedUrl }),
+      setExtractedItem({
+        title: result.title || 'Unknown Item',
+        imageUrl: result.imageUrl,
+        price: result.price !== null ? result.price.toString() : null,
+        currency: result.currency || 'USD',
+        originalUrl: urlToExtract,
+        sourceDomain,
       });
 
-      const data = await response.json();
-      console.log('Edge Function response:', data);
-
-      if (data.error) {
-        setExtractError(data.error);
-      }
-
-      setExtractedTitle(data.title || '');
-      setExtractedImageUrl(data.imageUrl || '');
-      setExtractedPrice(data.price ? String(data.price) : '');
-      setExtractedCurrency(data.currency || 'USD');
-      setExtractedNotes('');
-      setOriginalUrl(processedUrl);
-      setSourceDomain(data.sourceDomain || '');
-      setShowExtractedForm(true);
-
+      console.log('Item extracted successfully:', result.title);
     } catch (error: any) {
       console.error('Failed to extract item:', error);
-      setExtractError(error.message || 'Failed to extract item details');
-      Alert.alert('Error', 'Failed to extract item details. You can edit the information manually or try again.');
+      Alert.alert('Error', 'Failed to extract item details. Please try again.');
     } finally {
       setExtracting(false);
     }
   };
 
-  const handleExtractItem = async () => {
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please enter a URL');
-      return;
-    }
-
-    await handleExtractItemWithUrl(url);
+  const handleExtractItem = () => {
+    handleExtractItemWithUrl(urlInput);
   };
 
   const uploadImage = async (imageUri: string): Promise<string | null> => {
-    console.log('Uploading image to backend:', imageUri);
-    try {
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      
-      const formData = new FormData();
-      const filename = imageUri.split('/').pop() || 'image.jpg';
-      const match = /\.(\w+)$/.exec(filename);
-      const type = match ? `image/${match[1]}` : 'image/jpeg';
-      
-      formData.append('image', {
-        uri: imageUri,
-        name: filename,
-        type,
-      } as any);
-
-      const response = await fetch(`${backendUrl}/api/upload/image`, {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to upload image');
-      }
-
-      const data = await response.json();
-      console.log('Image uploaded successfully:', data.url);
-      return data.url;
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      Alert.alert('Upload Error', 'Failed to upload image. The item will be saved without an image.');
-      return null;
-    }
+    console.log('Uploading image to Supabase Storage...');
+    // TODO: Implement Supabase Storage upload
+    // For now, return the local URI
+    return imageUri;
   };
 
   const handlePickExtractedImage = async () => {
-    console.log('Opening image picker for extracted item');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 3],
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setExtractedImageUrl(result.assets[0].uri);
-      console.log('Image selected:', result.assets[0].uri);
+      console.log('User picked new image for extracted item');
+      const uploadedUrl = await uploadImage(result.assets[0].uri);
+      if (uploadedUrl && extractedItem) {
+        setExtractedItem({
+          ...extractedItem,
+          imageUrl: uploadedUrl,
+        });
+      }
     }
   };
 
   const handleRemoveExtractedImage = () => {
-    console.log('Removing extracted image');
-    setExtractedImageUrl('');
+    if (extractedItem) {
+      console.log('User removed extracted item image');
+      setExtractedItem({
+        ...extractedItem,
+        imageUrl: null,
+      });
+    }
   };
 
   const handleSaveExtractedItem = async () => {
-    if (!extractedTitle.trim()) {
-      Alert.alert('Error', 'Please enter an item title');
-      return;
-    }
-
-    if (!wishlistId) {
-      Alert.alert('Error', 'No wishlist selected');
+    if (!extractedItem || !wishlistId) {
+      Alert.alert('Error', 'Missing item or wishlist information');
       return;
     }
 
     console.log('Saving extracted item to wishlist:', wishlistId);
-    setSaving(true);
+    setSavingManual(true);
 
     try {
-      // Check for duplicates before saving
-      console.log('[AddItemScreen] Checking for duplicates');
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishlistId,
-          title: extractedTitle.trim(),
-          originalUrl: originalUrl || undefined,
-          imageUrl: extractedImageUrl || undefined,
-        }),
+      await createWishlistItem({
+        wishlist_id: wishlistId,
+        title: extractedItem.title,
+        image_url: extractedItem.imageUrl,
+        current_price: extractedItem.price,
+        currency: extractedItem.currency,
+        original_url: extractedItem.originalUrl,
+        source_domain: extractedItem.sourceDomain,
       });
 
-      if (!duplicateCheckResponse.ok) {
-        console.error('[AddItemScreen] Duplicate check failed, proceeding anyway');
-      } else {
-        const duplicateData = await duplicateCheckResponse.json();
-        console.log('[AddItemScreen] Duplicate check result:', duplicateData);
-
-        if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
-          console.log('[AddItemScreen] Found duplicates:', duplicateData.duplicates.length);
-          
-          // Show duplicate detection modal
-          const DuplicateDetectionModal = (await import('@/components/DuplicateDetectionModal')).DuplicateDetectionModal;
-          
-          // For now, show an alert (we'll implement the modal properly later)
-          const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
-          Alert.alert(
-            'Possible Duplicate',
-            `This item looks similar to:\n\n${duplicateTitles}\n\nDo you want to add it anyway?`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => {
-                  setSaving(false);
-                },
-              },
-              {
-                text: 'Add Anyway',
-                onPress: async () => {
-                  await saveItemToBackend();
-                },
-              },
-            ]
-          );
-          return;
-        }
-      }
-
-      // No duplicates found, proceed with saving
-      await saveItemToBackend();
-    } catch (error: any) {
-      console.error('Failed to save item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-      setSaving(false);
-    }
-  };
-
-  const saveItemToBackend = async () => {
-    try {
-      let finalImageUrl = extractedImageUrl;
-      if (extractedImageUrl && extractedImageUrl.startsWith('file://')) {
-        console.log('Uploading local image to backend');
-        const uploadedUrl = await uploadImage(extractedImageUrl);
-        if (uploadedUrl) {
-          finalImageUrl = uploadedUrl;
-        } else {
-          finalImageUrl = null;
-        }
-      }
-
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      const response = await fetch(`${backendUrl}/api/items`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishlistId,
-          title: extractedTitle.trim(),
-          imageUrl: finalImageUrl || null,
-          currentPrice: extractedPrice ? parseFloat(extractedPrice) : null,
-          currency: extractedCurrency,
-          originalUrl: originalUrl,
-          sourceDomain: sourceDomain,
-          notes: extractedNotes.trim() || null,
-          userId: user?.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save item');
-      }
-
-      const savedItem = await response.json();
-      console.log('Item saved successfully:', savedItem);
-
-      Alert.alert('Success', 'Item added to wishlist!', [
+      console.log('Item saved successfully');
+      Alert.alert('Success', 'Item added to your wishlist!', [
         {
           text: 'OK',
           onPress: () => router.back(),
@@ -577,28 +385,26 @@ export default function AddItemScreen() {
       console.error('Failed to save item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
     } finally {
-      setSaving(false);
+      setSavingManual(false);
     }
   };
 
   const handlePickImage = async () => {
-    console.log('Opening image picker');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 3],
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setManualImageUri(result.assets[0].uri);
-      console.log('Image selected:', result.assets[0].uri);
+      console.log('User picked image for manual entry');
+      setManualImageUrl(result.assets[0].uri);
     }
   };
 
   const handleRemoveManualImage = () => {
-    console.log('Removing manual image');
-    setManualImageUri('');
+    console.log('User removed manual image');
+    setManualImageUrl('');
   };
 
   const handleSaveManualItem = async () => {
@@ -613,104 +419,25 @@ export default function AddItemScreen() {
     }
 
     console.log('Saving manual item to wishlist:', wishlistId);
-    setSaving(true);
+    setSavingManual(true);
 
     try {
-      // Check for duplicates before saving
-      console.log('[AddItemScreen] Checking for duplicates (manual)');
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishlistId,
-          title: manualTitle.trim(),
-          imageUrl: manualImageUri || undefined,
-        }),
+      let uploadedImageUrl = manualImageUrl;
+      if (manualImageUrl && !manualImageUrl.startsWith('http')) {
+        uploadedImageUrl = await uploadImage(manualImageUrl) || manualImageUrl;
+      }
+
+      await createWishlistItem({
+        wishlist_id: wishlistId,
+        title: manualTitle,
+        image_url: uploadedImageUrl || null,
+        current_price: manualPrice || null,
+        currency: 'USD',
+        notes: manualNotes || null,
       });
 
-      if (!duplicateCheckResponse.ok) {
-        console.error('[AddItemScreen] Duplicate check failed, proceeding anyway');
-      } else {
-        const duplicateData = await duplicateCheckResponse.json();
-        console.log('[AddItemScreen] Duplicate check result:', duplicateData);
-
-        if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
-          console.log('[AddItemScreen] Found duplicates:', duplicateData.duplicates.length);
-          
-          const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
-          Alert.alert(
-            'Possible Duplicate',
-            `This item looks similar to:\n\n${duplicateTitles}\n\nDo you want to add it anyway?`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => {
-                  setSaving(false);
-                },
-              },
-              {
-                text: 'Add Anyway',
-                onPress: async () => {
-                  await saveManualItemToBackend();
-                },
-              },
-            ]
-          );
-          return;
-        }
-      }
-
-      // No duplicates found, proceed with saving
-      await saveManualItemToBackend();
-    } catch (error: any) {
-      console.error('Failed to save manual item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-      setSaving(false);
-    }
-  };
-
-  const saveManualItemToBackend = async () => {
-    try {
-      let finalImageUrl = manualImageUri;
-      if (manualImageUri && manualImageUri.startsWith('file://')) {
-        console.log('Uploading local image to backend');
-        const uploadedUrl = await uploadImage(manualImageUri);
-        if (uploadedUrl) {
-          finalImageUrl = uploadedUrl;
-        } else {
-          finalImageUrl = null;
-        }
-      }
-
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      const response = await fetch(`${backendUrl}/api/items`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wishlistId,
-          title: manualTitle.trim(),
-          imageUrl: finalImageUrl || null,
-          currentPrice: manualPrice ? parseFloat(manualPrice) : null,
-          currency: manualCurrency,
-          notes: manualNotes.trim() || null,
-          userId: user?.id,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to save item');
-      }
-
-      const savedItem = await response.json();
-      console.log('Manual item saved successfully:', savedItem);
-
-      Alert.alert('Success', 'Item added to wishlist!', [
+      console.log('Manual item saved successfully');
+      Alert.alert('Success', 'Item added to your wishlist!', [
         {
           text: 'OK',
           onPress: () => router.back(),
@@ -720,433 +447,320 @@ export default function AddItemScreen() {
       console.error('Failed to save manual item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
     } finally {
-      setSaving(false);
+      setSavingManual(false);
     }
   };
 
   const handleUploadImageForIdentification = async () => {
-    console.log('Opening image picker for identification');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 3],
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setImageForIdentification(result.assets[0].uri);
-      console.log('Image selected for identification:', result.assets[0].uri);
+      console.log('User picked image for identification');
+      setSelectedImageUri(result.assets[0].uri);
     }
   };
 
   const handlePasteImageUrl = async () => {
-    console.log('User tapped Paste Image URL');
-    const clipboardContent = await Clipboard.getStringAsync();
-    
-    if (clipboardContent && isValidUrl(clipboardContent)) {
-      setImageUrlInput(clipboardContent);
-      setImageForIdentification(clipboardContent);
-      console.log('Pasted image URL from clipboard:', clipboardContent);
+    const clipboardText = await Clipboard.getStringAsync();
+    if (isValidUrl(clipboardText)) {
+      console.log('Pasted image URL from clipboard');
+      setSelectedImageUri(clipboardText);
     } else {
-      Alert.alert('Paste Image URL', 'Please enter an image URL', [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'OK',
-          onPress: () => {
-            if (imageUrlInput && isValidUrl(imageUrlInput)) {
-              setImageForIdentification(imageUrlInput);
-            } else {
-              Alert.alert('Error', 'Please enter a valid image URL');
-            }
-          },
-        },
-      ]);
+      Alert.alert('Error', 'Clipboard does not contain a valid URL');
     }
   };
 
   const handleIdentifyProduct = async () => {
-    if (!imageForIdentification) {
-      Alert.alert('Error', 'Please select or paste an image first');
+    if (!selectedImageUri) {
+      Alert.alert('Error', 'Please select an image first');
       return;
     }
 
-    console.log('Identifying product from image:', imageForIdentification);
-    setIdentifying(true);
+    console.log('Identifying product from image');
+    setIdentifyingImage(true);
 
     try {
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      
-      // Prepare request body
-      const requestBody: { imageUrl?: string; imageBase64?: string } = {};
-      
-      if (imageForIdentification.startsWith('http://') || imageForIdentification.startsWith('https://')) {
-        // It's a URL
-        requestBody.imageUrl = imageForIdentification;
-      } else if (imageForIdentification.startsWith('file://')) {
-        // It's a local file, we need to convert to base64
-        // For now, upload it first and use the URL
-        const uploadedUrl = await uploadImage(imageForIdentification);
-        if (uploadedUrl) {
-          requestBody.imageUrl = uploadedUrl;
-        } else {
-          throw new Error('Failed to upload image');
-        }
+      const result = await identifyFromImage(selectedImageUri);
+
+      if (result.error && !result.bestGuessTitle) {
+        Alert.alert('Error', result.error || 'Failed to identify product');
+        setIdentifyingImage(false);
+        return;
+      }
+
+      if (result.bestGuessTitle) {
+        router.push({
+          pathname: '/confirm-product',
+          params: {
+            imageUrl: selectedImageUri,
+            identificationResult: JSON.stringify(result),
+            wishlistId: wishlistId || '',
+          },
+        });
       } else {
-        // Assume it's already base64
-        requestBody.imageBase64 = imageForIdentification;
+        Alert.alert('No Product Found', 'Could not identify a product in this image. Please try a different image or add the item manually.');
       }
-
-      console.log('[AddItemScreen] Calling identify-from-image API');
-      const response = await fetch(`${backendUrl}/api/items/identify-from-image`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[AddItemScreen] Image identification failed:', errorText);
-        throw new Error('Failed to identify product');
-      }
-
-      const data = await response.json();
-      console.log('[AddItemScreen] Image identification result:', data);
-      
-      // Navigate to confirmation screen with results
-      router.push({
-        pathname: '/confirm-product',
-        params: {
-          imageUrl: imageForIdentification,
-          wishlistId: wishlistId as string,
-          identificationResult: JSON.stringify(data),
-        },
-      });
     } catch (error: any) {
       console.error('Failed to identify product:', error);
       Alert.alert('Error', 'Failed to identify product. Please try again.');
     } finally {
-      setIdentifying(false);
+      setIdentifyingImage(false);
     }
   };
 
   const renderUrlTab = () => {
-    if (extracting) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Extracting item details...</Text>
-        </View>
-      );
-    }
-
-    if (showExtractedForm) {
-      const sourceDisplayText = sourceDomain || 'Unknown source';
-      const urlDisplayText = originalUrl;
-
-      return (
-        <View>
-          <Text style={styles.infoText}>
-            Review and edit the extracted details before saving
-          </Text>
-
-          {extractError && (
-            <Text style={styles.errorText}>Note: {extractError}</Text>
-          )}
-
-          <View style={styles.sourceInfo}>
-            <Text style={styles.sourceLabel}>Source</Text>
-            <Text style={styles.sourceValue}>{sourceDisplayText}</Text>
-            <Text style={styles.sourceLabel}>URL</Text>
-            <Text style={styles.sourceValue} numberOfLines={2}>{urlDisplayText}</Text>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.label}>Item Title *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter item name"
-              placeholderTextColor={colors.textSecondary}
-              value={extractedTitle}
-              onChangeText={setExtractedTitle}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.label}>Price</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="0.00"
-                placeholderTextColor={colors.textSecondary}
-                value={extractedPrice}
-                onChangeText={setExtractedPrice}
-                keyboardType="decimal-pad"
-              />
-              <TextInput
-                style={[styles.input, { width: 80 }]}
-                placeholder="USD"
-                placeholderTextColor={colors.textSecondary}
-                value={extractedCurrency}
-                onChangeText={setExtractedCurrency}
-                autoCapitalize="characters"
-                maxLength={3}
-              />
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.label}>Image</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity 
-                style={[styles.secondaryButton, { flex: 1 }]} 
-                onPress={handlePickExtractedImage}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  {extractedImageUrl ? 'Change Image' : 'Pick Image'}
-                </Text>
-              </TouchableOpacity>
-              {extractedImageUrl && (
-                <TouchableOpacity 
-                  style={[styles.secondaryButton, { paddingHorizontal: 16 }]} 
-                  onPress={handleRemoveExtractedImage}
-                >
-                  <Text style={styles.secondaryButtonText}>Remove</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {extractedImageUrl && (
-              <Image 
-                source={resolveImageSource(extractedImageUrl)} 
-                style={styles.imagePreview}
-                resizeMode="cover"
-              />
-            )}
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.label}>Notes</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              placeholder="Add any notes about this item..."
-              placeholderTextColor={colors.textSecondary}
-              value={extractedNotes}
-              onChangeText={setExtractedNotes}
-              multiline
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, (!extractedTitle.trim() || saving) && styles.buttonDisabled]}
-            onPress={handleSaveExtractedItem}
-            disabled={!extractedTitle.trim() || saving}
-          >
-            <Text style={styles.buttonText}>
-              {saving ? 'Saving...' : 'Save to Wishlist'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => {
-              setShowExtractedForm(false);
-              setUrl('');
-              setExtractError('');
-              setExtractedTitle('');
-              setExtractedImageUrl('');
-              setExtractedPrice('');
-              setExtractedCurrency('USD');
-              setExtractedNotes('');
-              setOriginalUrl('');
-              setSourceDomain('');
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>Try Another URL</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
+    const canExtract = urlInput.trim().length > 0 && !extracting;
+    const canSave = extractedItem !== null && !savingManual;
 
     return (
-      <View>
-        <View style={styles.section}>
-          <Text style={styles.label}>Item URL</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="https://example.com/product"
-            placeholderTextColor={colors.textSecondary}
-            value={url}
-            onChangeText={setUrl}
-            autoCapitalize="none"
-            keyboardType="url"
-            autoCorrect={false}
-          />
-        </View>
+      <View style={styles.content}>
+        <Text style={styles.label}>Product URL</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="https://example.com/product"
+          placeholderTextColor={colors.textSecondary}
+          value={urlInput}
+          onChangeText={setUrlInput}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          editable={!extracting}
+        />
 
         <TouchableOpacity
-          style={[styles.button, (!url.trim() || extracting) && styles.buttonDisabled]}
+          style={[styles.button, !canExtract && styles.buttonDisabled]}
           onPress={handleExtractItem}
-          disabled={!url.trim() || extracting}
+          disabled={!canExtract}
         >
-          <Text style={styles.buttonText}>Fetch Item</Text>
+          {extracting ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>Extract Item Details</Text>
+          )}
         </TouchableOpacity>
+
+        {extractedItem && (
+          <>
+            <View style={styles.previewCard}>
+              {extractedItem.imageUrl && (
+                <View>
+                  <Image
+                    source={resolveImageSource(extractedItem.imageUrl)}
+                    style={styles.previewImage}
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={handleRemoveExtractedImage}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark"
+                      android_material_icon_name="close"
+                      size={16}
+                      color="#FFFFFF"
+                    />
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <Text style={styles.label}>Title</Text>
+              <TextInput
+                style={styles.input}
+                value={extractedItem.title}
+                onChangeText={(text) =>
+                  setExtractedItem({ ...extractedItem, title: text })
+                }
+                placeholder="Item title"
+                placeholderTextColor={colors.textSecondary}
+              />
+
+              <Text style={styles.label}>Price</Text>
+              <TextInput
+                style={styles.input}
+                value={extractedItem.price || ''}
+                onChangeText={(text) =>
+                  setExtractedItem({ ...extractedItem, price: text })
+                }
+                placeholder="0.00"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={styles.previewUrl}>{extractedItem.originalUrl}</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={handlePickExtractedImage}
+            >
+              <Text style={styles.secondaryButtonText}>Change Image</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, !canSave && styles.buttonDisabled]}
+              onPress={handleSaveExtractedItem}
+              disabled={!canSave}
+            >
+              {savingManual ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Add to Wishlist</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     );
   };
 
   const renderManualTab = () => {
+    const canSave = manualTitle.trim().length > 0 && !savingManual;
+
     return (
-      <View>
-        <View style={styles.section}>
-          <Text style={styles.label}>Item Title *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter item name"
-            placeholderTextColor={colors.textSecondary}
-            value={manualTitle}
-            onChangeText={setManualTitle}
-          />
-        </View>
+      <View style={styles.content}>
+        <Text style={styles.label}>Title *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Item name"
+          placeholderTextColor={colors.textSecondary}
+          value={manualTitle}
+          onChangeText={setManualTitle}
+        />
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Price</Text>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              placeholder="0.00"
-              placeholderTextColor={colors.textSecondary}
-              value={manualPrice}
-              onChangeText={setManualPrice}
-              keyboardType="decimal-pad"
-            />
-            <TextInput
-              style={[styles.input, { width: 80 }]}
-              placeholder="USD"
-              placeholderTextColor={colors.textSecondary}
-              value={manualCurrency}
-              onChangeText={setManualCurrency}
-              autoCapitalize="characters"
-              maxLength={3}
-            />
-          </View>
-        </View>
+        <Text style={styles.label}>Price (optional)</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="0.00"
+          placeholderTextColor={colors.textSecondary}
+          value={manualPrice}
+          onChangeText={setManualPrice}
+          keyboardType="decimal-pad"
+        />
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Image</Text>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity 
-              style={[styles.secondaryButton, { flex: 1 }]} 
-              onPress={handlePickImage}
-            >
-              <Text style={styles.secondaryButtonText}>
-                {manualImageUri ? 'Change Image' : 'Pick Image'}
-              </Text>
-            </TouchableOpacity>
-            {manualImageUri && (
-              <TouchableOpacity 
-                style={[styles.secondaryButton, { paddingHorizontal: 16 }]} 
-                onPress={handleRemoveManualImage}
-              >
-                <Text style={styles.secondaryButtonText}>Remove</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {manualImageUri && (
-            <Image 
-              source={resolveImageSource(manualImageUri)} 
-              style={styles.imagePreview}
+        <Text style={styles.label}>Image (optional)</Text>
+        {manualImageUrl ? (
+          <View>
+            <Image
+              source={resolveImageSource(manualImageUrl)}
+              style={styles.selectedImage}
               resizeMode="cover"
             />
-          )}
-        </View>
+            <TouchableOpacity
+              style={styles.removeImageButton}
+              onPress={handleRemoveManualImage}
+            >
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={16}
+                color="#FFFFFF"
+              />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="image"
+              size={32}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.imagePickerText}>Tap to add image</Text>
+          </TouchableOpacity>
+        )}
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Notes</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Add any notes about this item..."
-            placeholderTextColor={colors.textSecondary}
-            value={manualNotes}
-            onChangeText={setManualNotes}
-            multiline
-          />
-        </View>
+        <Text style={styles.label}>Notes (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Add any notes about this item"
+          placeholderTextColor={colors.textSecondary}
+          value={manualNotes}
+          onChangeText={setManualNotes}
+          multiline
+        />
 
         <TouchableOpacity
-          style={[styles.button, (!manualTitle.trim() || saving) && styles.buttonDisabled]}
+          style={[styles.button, !canSave && styles.buttonDisabled]}
           onPress={handleSaveManualItem}
-          disabled={!manualTitle.trim() || saving}
+          disabled={!canSave}
         >
-          <Text style={styles.buttonText}>
-            {saving ? 'Saving...' : 'Add to Wishlist'}
-          </Text>
+          {savingManual ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonText}>Add to Wishlist</Text>
+          )}
         </TouchableOpacity>
       </View>
     );
   };
 
   const renderImageTab = () => {
-    if (identifying) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Identifying product...</Text>
-        </View>
-      );
-    }
-
     return (
-      <View>
-        <Text style={styles.infoText}>
-          Upload an image or paste an image URL to identify the product
-        </Text>
+      <View style={styles.content}>
+        <Text style={styles.label}>Upload or Paste Image</Text>
 
-        <View style={styles.imageButtonsContainer}>
-          <TouchableOpacity
-            style={styles.imageButton}
-            onPress={handleUploadImageForIdentification}
-          >
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="photo"
-              size={24}
-              color={colors.text}
-            />
-            <Text style={styles.imageButtonText}>Upload Image</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.imageButton}
-            onPress={handlePasteImageUrl}
-          >
-            <IconSymbol
-              ios_icon_name="link"
-              android_material_icon_name="link"
-              size={24}
-              color={colors.text}
-            />
-            <Text style={styles.imageButtonText}>Paste Image URL</Text>
-          </TouchableOpacity>
-        </View>
-
-        {imageForIdentification && (
-          <View style={styles.section}>
-            <Text style={styles.label}>Image Preview</Text>
+        {selectedImageUri ? (
+          <View>
             <Image
-              source={resolveImageSource(imageForIdentification)}
-              style={styles.imagePreview}
+              source={resolveImageSource(selectedImageUri)}
+              style={styles.selectedImage}
               resizeMode="cover"
             />
             <TouchableOpacity
-              style={styles.identifyButton}
-              onPress={handleIdentifyProduct}
+              style={styles.removeImageButton}
+              onPress={() => setSelectedImageUri(null)}
             >
-              <Text style={styles.buttonText}>Identify Product</Text>
+              <IconSymbol
+                ios_icon_name="xmark"
+                android_material_icon_name="close"
+                size={16}
+                color="#FFFFFF"
+              />
             </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.imagePickerButton}
+            onPress={handleUploadImageForIdentification}
+          >
+            <IconSymbol
+              ios_icon_name="camera"
+              android_material_icon_name="camera"
+              size={32}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.imagePickerText}>Tap to select image</Text>
+          </TouchableOpacity>
+        )}
+
+        {!selectedImageUri && (
+          <TouchableOpacity style={styles.secondaryButton} onPress={handlePasteImageUrl}>
+            <Text style={styles.secondaryButtonText}>Paste Image URL</Text>
+          </TouchableOpacity>
+        )}
+
+        {selectedImageUri && (
+          <TouchableOpacity
+            style={[styles.button, identifyingImage && styles.buttonDisabled]}
+            onPress={handleIdentifyProduct}
+            disabled={identifyingImage}
+          >
+            {identifyingImage ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.buttonText}>Identify Product</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {identifyingImage && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Analyzing image...</Text>
           </View>
         )}
       </View>
@@ -1155,51 +769,34 @@ export default function AddItemScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <View style={styles.tabBar}>
         <TouchableOpacity
-          style={styles.importButton}
-          onPress={() => {
-            console.log('[AddItemScreen] User tapped Import from Store button');
-            router.push('/import-wishlist');
-          }}
-          activeOpacity={0.7}
+          style={[styles.tab, activeTab === 'url' && styles.tabActive]}
+          onPress={() => setActiveTab('url')}
         >
-          <IconSymbol
-            ios_icon_name="download"
-            android_material_icon_name="download"
-            size={20}
-            color={colors.accent}
-          />
-          <Text style={styles.importButtonText}>Import from Store</Text>
+          <Text style={[styles.tabText, activeTab === 'url' && styles.tabTextActive]}>
+            From URL
+          </Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'manual' && styles.tabActive]}
+          onPress={() => setActiveTab('manual')}
+        >
+          <Text style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}>
+            Manual
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'image' && styles.tabActive]}
+          onPress={() => setActiveTab('image')}
+        >
+          <Text style={[styles.tabText, activeTab === 'image' && styles.tabTextActive]}>
+            From Image
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'url' && styles.activeTab]}
-            onPress={() => setActiveTab('url')}
-          >
-            <Text style={[styles.tabText, activeTab === 'url' && styles.activeTabText]}>
-              Paste Link
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'manual' && styles.activeTab]}
-            onPress={() => setActiveTab('manual')}
-          >
-            <Text style={[styles.tabText, activeTab === 'manual' && styles.activeTabText]}>
-              Manual
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'image' && styles.activeTab]}
-            onPress={() => setActiveTab('image')}
-          >
-            <Text style={[styles.tabText, activeTab === 'image' && styles.activeTabText]}>
-              Image
-            </Text>
-          </TouchableOpacity>
-        </View>
-
+      <ScrollView style={styles.container}>
         {activeTab === 'url' && renderUrlTab()}
         {activeTab === 'manual' && renderManualTab()}
         {activeTab === 'image' && renderImageTab()}
