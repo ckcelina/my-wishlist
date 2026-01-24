@@ -227,9 +227,9 @@ function RootLayoutContent() {
 
   return (
     <ThemeProvider>
-      <I18nProvider>
-        <ThemedNavigationProvider>
-          <AuthProvider>
+      <AuthProvider>
+        <I18nProvider>
+          <ThemedNavigationProvider>
             <AuthGate>
               <WidgetProvider>
                 <GestureHandlerRootView>
@@ -280,9 +280,9 @@ function RootLayoutContent() {
                 </GestureHandlerRootView>
               </WidgetProvider>
             </AuthGate>
-          </AuthProvider>
-        </ThemedNavigationProvider>
-      </I18nProvider>
+          </ThemedNavigationProvider>
+        </I18nProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }
