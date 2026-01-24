@@ -30,12 +30,17 @@ export default function AuthScreen() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
 
   const handleEmailAuth = async () => {
-    if (!email || !password) {
+    // Validate inputs
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedName = name.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    if (mode === 'signup' && !name) {
+    if (mode === 'signup' && !trimmedName) {
       Alert.alert('Error', 'Please enter your name');
       return;
     }
@@ -43,36 +48,56 @@ export default function AuthScreen() {
     setLoading(true);
     try {
       if (mode === 'signin') {
-        console.log('[AuthScreen] User tapped Sign In button');
-        await signInWithEmail(email, password);
+        console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
+        await signInWithEmail(trimmedEmail, trimmedPassword);
         console.log('[AuthScreen] Sign in successful, navigating to wishlists');
         router.replace('/(tabs)/wishlists');
       } else {
-        console.log('[AuthScreen] User tapped Sign Up button');
-        await signUpWithEmail(email, password, name);
+        console.log('[AuthScreen] User tapped Sign Up button with email:', trimmedEmail);
+        await signUpWithEmail(trimmedEmail, trimmedPassword, trimmedName);
         console.log('[AuthScreen] Sign up successful');
         // Navigation is handled in AuthContext after creating default wishlist
       }
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
-      Alert.alert('Error', error.message || 'Authentication failed');
+      
+      // Parse Supabase error messages
+      let errorMessage = 'Authentication failed';
+      if (error.message) {
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'Invalid email or password';
+        } else if (error.message.includes('User already registered')) {
+          errorMessage = 'An account with this email already exists';
+        } else if (error.message.includes('Password should be at least')) {
+          errorMessage = 'Password must be at least 6 characters';
+        } else if (error.message.includes('Invalid email')) {
+          errorMessage = 'Please enter a valid email address';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleForgotPassword = async () => {
-    if (!email) {
+    const trimmedEmail = email.trim();
+    
+    if (!trimmedEmail) {
       Alert.alert('Error', 'Please enter your email address');
       return;
     }
 
     setLoading(true);
     try {
-      console.log('[AuthScreen] User tapped Reset Password button');
-      await resetPassword(email);
+      console.log('[AuthScreen] User tapped Reset Password button for:', trimmedEmail);
+      await resetPassword(trimmedEmail);
       setResetEmailSent(true);
       console.log('[AuthScreen] Password reset email sent');
+      Alert.alert('Success', 'Password reset email sent! Check your inbox.');
     } catch (error: any) {
       console.error('[AuthScreen] Password reset error:', error);
       Alert.alert('Error', error.message || 'Failed to send reset email');
@@ -132,6 +157,8 @@ export default function AuthScreen() {
           autoCapitalize="none"
           keyboardType="email-address"
           editable={!loading}
+          returnKeyType="done"
+          onSubmitEditing={handleForgotPassword}
         />
 
         <Button
@@ -149,6 +176,7 @@ export default function AuthScreen() {
             setMode('signin');
             setResetEmailSent(false);
           }}
+          disabled={loading}
         >
           <Text style={styles.backButtonText}>{backButtonText}</Text>
         </TouchableOpacity>
@@ -186,6 +214,7 @@ export default function AuthScreen() {
             onChangeText={setName}
             autoCapitalize="words"
             editable={!loading}
+            returnKeyType="next"
           />
         )}
 
@@ -198,6 +227,7 @@ export default function AuthScreen() {
           autoCapitalize="none"
           keyboardType="email-address"
           editable={!loading}
+          returnKeyType="next"
         />
 
         <TextInput
@@ -208,12 +238,15 @@ export default function AuthScreen() {
           onChangeText={setPassword}
           secureTextEntry
           editable={!loading}
+          returnKeyType="done"
+          onSubmitEditing={handleEmailAuth}
         />
 
         {isSignIn && (
           <TouchableOpacity
             style={styles.forgotPasswordButton}
             onPress={() => setMode('forgot-password')}
+            disabled={loading}
           >
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
           </TouchableOpacity>
@@ -254,7 +287,10 @@ export default function AuthScreen() {
 
         <View style={styles.switchModeContainer}>
           <Text style={styles.switchModeText}>{switchText}</Text>
-          <TouchableOpacity onPress={() => setMode(isSignIn ? 'signup' : 'signin')}>
+          <TouchableOpacity 
+            onPress={() => setMode(isSignIn ? 'signup' : 'signin')}
+            disabled={loading}
+          >
             <Text style={styles.switchModeButton}>{switchButtonText}</Text>
           </TouchableOpacity>
         </View>

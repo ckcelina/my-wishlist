@@ -1,12 +1,12 @@
 
 import "react-native-reanimated";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useFonts } from "expo-font";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { SystemBars } from "react-native-edge-to-edge";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert, Platform } from "react-native";
+import { useColorScheme, Alert, Platform, View, ActivityIndicator } from "react-native";
 import { useNetworkState } from "expo-network";
 import * as Notifications from "expo-notifications";
 import {
@@ -17,9 +17,10 @@ import {
 } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { BACKEND_URL } from "@/utils/api";
+import { colors } from "@/styles/designSystem";
 import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_700Bold,
@@ -38,7 +39,56 @@ export const unstable_settings = {
   initialRouteName: "(tabs)",
 };
 
-export default function RootLayout() {
+// AuthGate component that handles routing based on auth state
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
+
+  useEffect(() => {
+    if (loading) {
+      console.log('[AuthGate] Auth loading, waiting...');
+      return;
+    }
+
+    const inAuthGroup = segments[0] === 'auth' || segments[0] === 'auth-popup' || segments[0] === 'auth-callback';
+    
+    console.log('[AuthGate] Auth state:', { 
+      user: user?.id, 
+      loading, 
+      inAuthGroup, 
+      segments: segments.join('/') 
+    });
+
+    if (!isNavigationReady) {
+      setIsNavigationReady(true);
+    }
+
+    if (!user && !inAuthGroup) {
+      // User is not signed in and not on auth screen, redirect to auth
+      console.log('[AuthGate] No user, redirecting to /auth');
+      router.replace('/auth');
+    } else if (user && inAuthGroup) {
+      // User is signed in but on auth screen, redirect to main app
+      console.log('[AuthGate] User authenticated, redirecting to /(tabs)/wishlists');
+      router.replace('/(tabs)/wishlists');
+    }
+  }, [user, loading, segments, isNavigationReady, router]);
+
+  // Show loading screen while checking auth
+  if (loading || !isNavigationReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+function RootLayoutContent() {
   const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const router = useRouter();
@@ -156,57 +206,63 @@ export default function RootLayout() {
       >
         <ThemeProvider>
           <AuthProvider>
-            <WidgetProvider>
-              <GestureHandlerRootView>
-                <Stack>
-                  <Stack.Screen name="auth" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                  
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  
-                  <Stack.Screen 
-                    name="wishlist/[id]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Wishlist',
-                      headerBackTitle: 'Back'
-                    }} 
-                  />
-                  
-                  <Stack.Screen 
-                    name="item/[id]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Item Details',
-                      headerBackTitle: 'Back'
-                    }} 
-                  />
-                  
-                  <Stack.Screen 
-                    name="shared/[shareSlug]" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Shared Wishlist',
-                      headerBackTitle: 'Back'
-                    }} 
-                  />
-                  
-                  <Stack.Screen 
-                    name="alerts" 
-                    options={{ 
-                      headerShown: true,
-                      title: 'Alert Settings',
-                      headerBackTitle: 'Back'
-                    }} 
-                  />
-                </Stack>
-                <SystemBars style={"auto"} />
-              </GestureHandlerRootView>
-            </WidgetProvider>
+            <AuthGate>
+              <WidgetProvider>
+                <GestureHandlerRootView>
+                  <Stack>
+                    <Stack.Screen name="auth" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                    
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    
+                    <Stack.Screen 
+                      name="wishlist/[id]" 
+                      options={{ 
+                        headerShown: true,
+                        title: 'Wishlist',
+                        headerBackTitle: 'Back'
+                      }} 
+                    />
+                    
+                    <Stack.Screen 
+                      name="item/[id]" 
+                      options={{ 
+                        headerShown: true,
+                        title: 'Item Details',
+                        headerBackTitle: 'Back'
+                      }} 
+                    />
+                    
+                    <Stack.Screen 
+                      name="shared/[shareSlug]" 
+                      options={{ 
+                        headerShown: true,
+                        title: 'Shared Wishlist',
+                        headerBackTitle: 'Back'
+                      }} 
+                    />
+                    
+                    <Stack.Screen 
+                      name="alerts" 
+                      options={{ 
+                        headerShown: true,
+                        title: 'Alert Settings',
+                        headerBackTitle: 'Back'
+                      }} 
+                    />
+                  </Stack>
+                  <SystemBars style={"auto"} />
+                </GestureHandlerRootView>
+              </WidgetProvider>
+            </AuthGate>
           </AuthProvider>
         </ThemeProvider>
       </NavigationThemeProvider>
     </>
   );
+}
+
+export default function RootLayout() {
+  return <RootLayoutContent />;
 }

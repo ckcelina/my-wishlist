@@ -4,6 +4,7 @@ import { Platform } from "react-native";
 import { authClient, storeWebBearerToken } from "@/lib/auth";
 import { supabase, supabaseAuth } from "@/lib/supabase";
 import { supabaseWishlists } from "@/lib/supabase-helpers";
+import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
 
 interface User {
   id: string;
@@ -73,13 +74,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Initialize auth state on mount
   useEffect(() => {
-    fetchUser();
+    console.log('[AuthContext] Initializing auth state');
+    initializeAuth();
+  }, []);
+
+  // Set up auth state listener
+  useEffect(() => {
+    console.log('[AuthContext] Setting up auth state listener');
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[AuthContext] Supabase auth state changed:', event);
+      console.log('[AuthContext] Auth state changed:', event, 'Session:', session?.user?.id);
       
       if (event === 'SIGNED_IN' && session?.user) {
+        const supabaseUser = session.user;
+        const newUser = {
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
+          image: supabaseUser.user_metadata?.avatar_url,
+        };
+        console.log('[AuthContext] User signed in:', newUser.id);
+        setUser(newUser);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('[AuthContext] User signed out');
+        setUser(null);
+      } else if (event === 'TOKEN_REFRESHED') {
+        console.log('[AuthContext] Token refreshed');
+        // Session is still valid, user remains logged in
+      } else if (event === 'USER_UPDATED' && session?.user) {
+        console.log('[AuthContext] User updated');
+        const supabaseUser = session.user;
+        const updatedUser = {
+          id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
+          image: supabaseUser.user_metadata?.avatar_url,
+        };
+        setUser(updatedUser);
+      }
+    });
+
+    return () => {
+      console.log('[AuthContext] Cleaning up auth state listener');
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const initializeAuth = async () => {
+    try {
+      console.log('[AuthContext] Checking for existing session');
+      setLoading(true);
+      
+      // Check Supabase session first
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error('[AuthContext] Error getting session:', error);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      if (session?.user) {
+        console.log('[AuthContext] Found existing Supabase session:', session.user.id);
         const supabaseUser = session.user;
         setUser({
           id: supabaseUser.id,
@@ -87,19 +146,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
           image: supabaseUser.user_metadata?.avatar_url,
         });
-      } else if (event === 'SIGNED_OUT') {
+      } else {
+        console.log('[AuthContext] No existing session found');
         setUser(null);
       }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+    } catch (error) {
+      console.error('[AuthContext] Failed to initialize auth:', error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+      console.log('[AuthContext] Auth initialization complete');
+    }
+  };
 
   const fetchUser = async () => {
     try {
-      setLoading(true);
+      console.log('[AuthContext] Fetching current user');
       
       const supabaseUser = await supabaseAuth.getCurrentUser();
       if (supabaseUser) {
@@ -118,29 +180,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[AuthContext] Better Auth user found');
         setUser(session.data.user as User);
       } else {
+        console.log('[AuthContext] No user found');
         setUser(null);
       }
     } catch (error) {
-      console.error("Failed to fetch user:", error);
+      console.error('[AuthContext] Failed to fetch user:', error);
       setUser(null);
-    } finally {
-      setLoading(false);
     }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
     try {
-      console.log('[AuthContext] Signing in with email via Supabase');
-      await supabaseAuth.signIn(email, password);
-      await fetchUser();
+      console.log('[AuthContext] Signing in with email:', email);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('[AuthContext] Sign in error:', error);
+        throw error;
+      }
+      
+      if (data.user) {
+        console.log('[AuthContext] Sign in successful:', data.user.id);
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
+          image: data.user.user_metadata?.avatar_url,
+        });
+      }
     } catch (error) {
-      console.error("Email sign in failed:", error);
+      console.error('[AuthContext] Email sign in failed:', error);
       throw error;
     }
   };
 
   const initializeDefaultWishlist = async (): Promise<string | null> => {
-    console.log('[AuthContext] Initializing default wishlist in Supabase');
+    console.log('[AuthContext] Initializing default wishlist');
     try {
       const currentUser = await supabaseAuth.getCurrentUser();
       if (!currentUser) {
@@ -172,25 +250,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, name?: string) => {
     try {
-      console.log('[AuthContext] Starting signup process via Supabase');
-      await supabaseAuth.signUp(email, password, name);
-      await fetchUser();
+      console.log('[AuthContext] Starting signup process:', email);
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name: name || '',
+          },
+        },
+      });
       
-      console.log('[AuthContext] User signed up successfully, creating default wishlist');
+      if (error) {
+        console.error('[AuthContext] Sign up error:', error);
+        throw error;
+      }
       
-      const wishlistId = await initializeDefaultWishlist();
-      
-      if (wishlistId) {
-        console.log('[AuthContext] Navigating to default wishlist:', wishlistId);
-        const { router } = await import('expo-router');
-        router.replace(`/wishlist/${wishlistId}`);
-      } else {
-        console.log('[AuthContext] No wishlist created, navigating to wishlists list');
-        const { router } = await import('expo-router');
-        router.replace('/(tabs)/wishlists');
+      if (data.user) {
+        console.log('[AuthContext] Sign up successful:', data.user.id);
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
+          image: data.user.user_metadata?.avatar_url,
+        });
+        
+        // Create default wishlist
+        console.log('[AuthContext] Creating default wishlist for new user');
+        const wishlistId = await initializeDefaultWishlist();
+        
+        if (wishlistId) {
+          console.log('[AuthContext] Navigating to default wishlist:', wishlistId);
+          const { router } = await import('expo-router');
+          router.replace(`/wishlist/${wishlistId}`);
+        } else {
+          console.log('[AuthContext] No wishlist created, navigating to wishlists list');
+          const { router } = await import('expo-router');
+          router.replace('/(tabs)/wishlists');
+        }
       }
     } catch (error) {
-      console.error("Email sign up failed:", error);
+      console.error('[AuthContext] Email sign up failed:', error);
       throw error;
     }
   };
@@ -214,7 +314,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log(`[AuthContext] ${provider} OAuth successful, checking for default wishlist`);
       await initializeDefaultWishlist();
     } catch (error) {
-      console.error(`${provider} sign in failed:`, error);
+      console.error(`[AuthContext] ${provider} sign in failed:`, error);
       throw error;
     }
   };
@@ -224,14 +324,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log('[AuthContext] Signing out');
+      console.log('[AuthContext] Signing out user');
       
-      await supabaseAuth.signOut();
-      await authClient.signOut();
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('[AuthContext] Supabase sign out error:', error);
+      }
       
+      // Sign out from Better Auth
+      try {
+        await authClient.signOut();
+      } catch (error) {
+        console.error('[AuthContext] Better Auth sign out error:', error);
+      }
+      
+      // Clear user state
       setUser(null);
+      console.log('[AuthContext] Sign out complete');
+      
+      // Navigate to auth screen
+      const { router } = await import('expo-router');
+      router.replace('/auth');
     } catch (error) {
-      console.error("Sign out failed:", error);
+      console.error('[AuthContext] Sign out failed:', error);
       throw error;
     }
   };
@@ -241,7 +357,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] Resetting password for:', email);
       await supabaseAuth.resetPassword(email);
     } catch (error) {
-      console.error("Password reset failed:", error);
+      console.error('[AuthContext] Password reset failed:', error);
       throw error;
     }
   };

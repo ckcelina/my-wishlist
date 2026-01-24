@@ -41,7 +41,7 @@ interface Wishlist {
 
 export default function WishlistsScreen() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { isOnline } = useNetworkStatus();
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,15 +92,9 @@ export default function WishlistsScreen() {
   }, [user]);
 
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        console.log('[WishlistsScreen] No user, redirecting to auth');
-        router.replace('/auth');
-      } else {
-        fetchWishlists();
-      }
-    }
-  }, [user, authLoading, fetchWishlists, router]);
+    console.log('[WishlistsScreen] Component mounted, user:', user?.id);
+    fetchWishlists();
+  }, [fetchWishlists]);
 
   const handleRefresh = useCallback(() => {
     if (!isOnline) {

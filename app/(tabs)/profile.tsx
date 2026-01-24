@@ -148,8 +148,8 @@ export default function ProfileScreen() {
               console.log('[ProfileScreen] User tapped Sign Out');
               haptics.medium();
               await signOut();
-              console.log('[ProfileScreen] Sign out successful, navigating to auth');
-              router.replace('/auth');
+              console.log('[ProfileScreen] Sign out successful');
+              // Navigation is handled by AuthGate in _layout.tsx
             } catch (error: any) {
               console.error('[ProfileScreen] Sign out error:', error);
               haptics.error();
