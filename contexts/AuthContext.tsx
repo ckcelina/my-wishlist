@@ -373,10 +373,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (data.user) {
         console.log('[AuthContext] Sign up successful:', data.user.id);
+        console.log('[AuthContext] User email confirmed status:', data.user.email_confirmed_at ? 'Confirmed' : 'Not confirmed');
+        console.log('[AuthContext] Session exists:', !!data.session);
         
         // Check if session exists (user can sign in immediately)
         if (data.session) {
-          console.log('[AuthContext] Session exists, user is logged in');
+          console.log('[AuthContext] Session exists, user is logged in immediately (email confirmation disabled)');
           const newUser = {
             id: data.user.id,
             email: data.user.email || '',
@@ -400,8 +402,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           // No session - email confirmation required
           console.log('[AuthContext] No session, email confirmation required');
-          setError('Check your email to confirm your account');
-          throw new AuthApiError('Check your email to confirm your account', 'email_confirmation_required');
+          const confirmationMessage = 'Account created! Please check your email and click the confirmation link to sign in.';
+          setError(confirmationMessage);
+          throw new AuthApiError(confirmationMessage, 'email_confirmation_required');
         }
       }
     } catch (err) {

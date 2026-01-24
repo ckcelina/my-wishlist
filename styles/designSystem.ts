@@ -25,6 +25,8 @@ export function createColors(theme: Theme) {
     background: theme.colors.background,
     backgroundAlt: theme.colors.backgroundSecondary,
     surface: theme.colors.card,
+    white: '#FFFFFF',
+    black: '#000000',
     
     // Text hierarchy
     text: theme.colors.text,

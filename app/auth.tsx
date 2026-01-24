@@ -26,6 +26,7 @@ export default function AuthScreen() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [confirmationEmailSent, setConfirmationEmailSent] = useState(false);
 
   const handleEmailAuth = async () => {
     // Validate inputs
@@ -57,6 +58,7 @@ export default function AuthScreen() {
     }
 
     setLoading(true);
+    setConfirmationEmailSent(false);
     try {
       if (mode === 'signin') {
         console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
@@ -70,9 +72,15 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
       
-      // Use the error message from the formatted error
-      const errorMessage = error.message || 'Authentication failed';
-      Alert.alert('Error', errorMessage);
+      // Check if this is an email confirmation required error
+      if (error.code === 'email_confirmation_required') {
+        setConfirmationEmailSent(true);
+        // Don't show alert, show inline message instead
+      } else {
+        // Use the error message from the formatted error
+        const errorMessage = error.message || 'Authentication failed';
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -207,6 +215,24 @@ export default function AuthScreen() {
         
         <Text style={styles.title}>{titleText}</Text>
         <Text style={styles.subtitle}>{subtitleText}</Text>
+
+        {confirmationEmailSent && (
+          <View style={styles.infoMessage}>
+            <Text style={styles.infoMessageTitle}>Check Your Email</Text>
+            <Text style={styles.infoMessageText}>
+              We sent a confirmation link to {email}. Please click the link to verify your account, then return here to sign in.
+            </Text>
+            <TouchableOpacity
+              style={styles.dismissButton}
+              onPress={() => {
+                setConfirmationEmailSent(false);
+                setMode('signin');
+              }}
+            >
+              <Text style={styles.dismissButtonText}>Got it, take me to sign in</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {!isSignIn && (
           <TextInput
@@ -407,5 +433,36 @@ const styles = StyleSheet.create({
     ...typography.bodyMedium,
     color: colors.success,
     textAlign: 'center',
+  },
+  infoMessage: {
+    backgroundColor: colors.primaryLight,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  infoMessageTitle: {
+    ...typography.titleMedium,
+    color: colors.primary,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  infoMessageText: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  dismissButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    alignSelf: 'center',
+  },
+  dismissButtonText: {
+    ...typography.bodyMedium,
+    color: colors.white,
+    fontWeight: '600',
   },
 });
