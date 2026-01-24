@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "لوڈ ہو رہا ہے..." },
+  "auth": { "signIn": "سائن ان", "signUp": "سائن اپ" },
+  "wishlists": { "title": "خواہش کی فہرست", "itemCount": "{{count}} آئٹم", "itemCount_plural": "{{count}} آئٹمز" },
+  "profile": { "title": "پروفائل", "language": "زبان", "languageMode": "زبان موڈ", "systemAuto": "سسٹم (آٹو)", "selectLanguage": "زبان منتخب کریں" },
+  "toast": { "languageUpdated": "زبان اپ ڈیٹ ہو گئی" }
+}

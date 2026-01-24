@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Laden...", "save": "Opslaan", "cancel": "Annuleren" },
+  "auth": { "signIn": "Inloggen", "signUp": "Registreren" },
+  "wishlists": { "title": "Verlanglijstjes", "itemCount": "{{count}} item", "itemCount_plural": "{{count}} items" },
+  "profile": { "title": "Profiel", "language": "Taal", "languageMode": "Taalmodus", "systemAuto": "Systeem (Auto)", "selectLanguage": "Selecteer taal" },
+  "toast": { "languageUpdated": "Taal bijgewerkt" }
+}

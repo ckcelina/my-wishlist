@@ -19,6 +19,7 @@ import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
+import { I18nProvider } from "@/contexts/I18nContext";
 import { BACKEND_URL, authenticatedGet, authenticatedPost } from "@/utils/api";
 import { OnboardingModal } from "@/components/OnboardingModal";
 import {
@@ -226,12 +227,13 @@ function RootLayoutContent() {
 
   return (
     <ThemeProvider>
-      <ThemedNavigationProvider>
-        <AuthProvider>
-          <AuthGate>
-            <WidgetProvider>
-              <GestureHandlerRootView>
-                <Stack>
+      <I18nProvider>
+        <ThemedNavigationProvider>
+          <AuthProvider>
+            <AuthGate>
+              <WidgetProvider>
+                <GestureHandlerRootView>
+                  <Stack>
                   <Stack.Screen name="auth" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
                   <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
@@ -274,12 +276,13 @@ function RootLayoutContent() {
                     }} 
                   />
                 </Stack>
-                <ThemedSystemBars />
-              </GestureHandlerRootView>
-            </WidgetProvider>
-          </AuthGate>
-        </AuthProvider>
-      </ThemedNavigationProvider>
+                  <ThemedSystemBars />
+                </GestureHandlerRootView>
+              </WidgetProvider>
+            </AuthGate>
+          </AuthProvider>
+        </ThemedNavigationProvider>
+      </I18nProvider>
     </ThemeProvider>
   );
 }

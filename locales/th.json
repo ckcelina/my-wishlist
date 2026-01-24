@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "กำลังโหลด...", "save": "บันทึก", "cancel": "ยกเลิก" },
+  "auth": { "signIn": "เข้าสู่ระบบ", "signUp": "สมัครสมาชิก" },
+  "wishlists": { "title": "รายการที่ต้องการ", "itemCount": "{{count}} รายการ", "itemCount_plural": "{{count}} รายการ" },
+  "profile": { "title": "โปรไฟล์", "language": "ภาษา", "languageMode": "โหมดภาษา", "systemAuto": "ระบบ (อัตโนมัติ)", "selectLanguage": "เลือกภาษา" },
+  "toast": { "languageUpdated": "อัปเดตภาษาแล้ว" }
+}

@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Đang tải...", "save": "Lưu", "cancel": "Hủy" },
+  "auth": { "signIn": "Đăng nhập", "signUp": "Đăng ký" },
+  "wishlists": { "title": "Danh sách mong muốn", "itemCount": "{{count}} mục", "itemCount_plural": "{{count}} mục" },
+  "profile": { "title": "Hồ sơ", "language": "Ngôn ngữ", "languageMode": "Chế độ ngôn ngữ", "systemAuto": "Hệ thống (Tự động)", "selectLanguage": "Chọn ngôn ngữ" },
+  "toast": { "languageUpdated": "Đã cập nhật ngôn ngữ" }
+}

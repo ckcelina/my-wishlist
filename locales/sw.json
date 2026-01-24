@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Inapakia...", "save": "Hifadhi", "cancel": "Ghairi" },
+  "auth": { "signIn": "Ingia", "signUp": "Jisajili" },
+  "wishlists": { "title": "Orodha za Matakwa", "itemCount": "Kipengee {{count}}", "itemCount_plural": "Vipengee {{count}}" },
+  "profile": { "title": "Wasifu", "language": "Lugha", "languageMode": "Hali ya Lugha", "systemAuto": "Mfumo (Kiotomatiki)", "selectLanguage": "Chagua Lugha" },
+  "toast": { "languageUpdated": "Lugha imesasishwa" }
+}

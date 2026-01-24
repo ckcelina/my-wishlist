@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Laden...", "save": "Speichern", "cancel": "Abbrechen" },
+  "auth": { "signIn": "Anmelden", "signUp": "Registrieren" },
+  "wishlists": { "title": "Wunschlisten", "itemCount": "{{count}} Artikel", "itemCount_plural": "{{count}} Artikel" },
+  "profile": { "title": "Profil", "language": "Sprache", "languageMode": "Sprachmodus", "systemAuto": "System (Auto)", "selectLanguage": "Sprache wählen" },
+  "toast": { "languageUpdated": "Sprache aktualisiert" }
+}

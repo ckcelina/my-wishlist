@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Yükleniyor...", "save": "Kaydet", "cancel": "İptal" },
+  "auth": { "signIn": "Giriş Yap", "signUp": "Kayıt Ol" },
+  "wishlists": { "title": "Dilek Listeleri", "itemCount": "{{count}} öğe", "itemCount_plural": "{{count}} öğe" },
+  "profile": { "title": "Profil", "language": "Dil", "languageMode": "Dil Modu", "systemAuto": "Sistem (Otomatik)", "selectLanguage": "Dil Seç" },
+  "toast": { "languageUpdated": "Dil güncellendi" }
+}

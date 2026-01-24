@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "लोड हो रहा है..." },
+  "auth": { "signIn": "साइन इन करें", "signUp": "साइन अप करें" },
+  "wishlists": { "title": "इच्छा सूची", "itemCount": "{{count}} आइटम", "itemCount_plural": "{{count}} आइटम" },
+  "profile": { "title": "प्रोफ़ाइल", "language": "भाषा", "languageMode": "भाषा मोड", "systemAuto": "सिस्टम (ऑटो)", "selectLanguage": "भाषा चुनें" },
+  "toast": { "languageUpdated": "भाषा अपडेट की गई" }
+}

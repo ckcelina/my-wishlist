@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "טוען..." },
+  "auth": { "signIn": "התחבר", "signUp": "הירשם" },
+  "wishlists": { "title": "רשימות משאלות", "itemCount": "{{count}} פריט", "itemCount_plural": "{{count}} פריטים" },
+  "profile": { "title": "פרופיל", "language": "שפה", "languageMode": "מצב שפה", "systemAuto": "מערכת (אוטומטי)", "selectLanguage": "בחר שפה" },
+  "toast": { "languageUpdated": "השפה עודכנה" }
+}

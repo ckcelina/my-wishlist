@@ -28,6 +28,9 @@ import { useHaptics } from '@/hooks/useHaptics';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
 import { getCurrencyByCode } from '@/constants/currencies';
+import { useI18n } from '@/contexts/I18nContext';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
+import { useTranslation } from 'react-i18next';
 
 interface UserLocation {
   id: string;
@@ -45,6 +48,8 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { theme, isDark, themePreference, setThemePreference } = useAppTheme();
   const haptics = useHaptics();
+  const { t } = useTranslation();
+  const { currentLanguage, languageMode } = useI18n();
   
   const [priceDropAlerts, setPriceDropAlerts] = useState(false);
   const [weeklyDigest, setWeeklyDigest] = useState(false);
@@ -206,6 +211,11 @@ export default function ProfileScreen() {
     : 'Not set';
 
   const themeDisplayText = themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark';
+  
+  const currentLangInfo = SUPPORTED_LANGUAGES.find(l => l.code === currentLanguage);
+  const languageDisplayText = languageMode === 'system' 
+    ? t('profile.systemAuto')
+    : currentLangInfo?.nativeName || currentLanguage;
 
   if (loading) {
     return (
@@ -426,6 +436,36 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.menuItemRight}>
                 <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>{currencyDisplayText}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
+              </View>
+            </PressableScale>
+
+            <Divider />
+
+            <PressableScale
+              style={styles.menuItem}
+              onPress={() => {
+                haptics.light();
+                router.push('/language-selector');
+              }}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="globe"
+                  android_material_icon_name="language"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('profile.language')}</Text>
+              </View>
+              <View style={styles.menuItemRight}>
+                <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>{languageDisplayText}</Text>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="chevron-right"

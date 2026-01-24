@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Загрузка...", "save": "Сохранить", "cancel": "Отмена" },
+  "auth": { "signIn": "Войти", "signUp": "Регистрация" },
+  "wishlists": { "title": "Списки желаний", "itemCount": "{{count}} элемент", "itemCount_plural": "{{count}} элементов" },
+  "profile": { "title": "Профиль", "language": "Язык", "languageMode": "Режим языка", "systemAuto": "Система (Авто)", "selectLanguage": "Выбрать язык" },
+  "toast": { "languageUpdated": "Язык обновлен" }
+}

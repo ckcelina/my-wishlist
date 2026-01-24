@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "読み込み中...", "save": "保存", "cancel": "キャンセル" },
+  "auth": { "signIn": "サインイン", "signUp": "サインアップ" },
+  "wishlists": { "title": "ウィッシュリスト", "itemCount": "{{count}} アイテム", "itemCount_plural": "{{count}} アイテム" },
+  "profile": { "title": "プロフィール", "language": "言語", "languageMode": "言語モード", "systemAuto": "システム（自動）", "selectLanguage": "言語を選択" },
+  "toast": { "languageUpdated": "言語が更新されました" }
+}

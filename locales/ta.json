@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "ஏற்றுகிறது..." },
+  "auth": { "signIn": "உள்நுழைக", "signUp": "பதிவு செய்க" },
+  "wishlists": { "title": "விருப்ப பட்டியல்கள்", "itemCount": "{{count}} உருப்படி", "itemCount_plural": "{{count}} உருப்படிகள்" },
+  "profile": { "title": "சுயவிவரம்", "language": "மொழி", "languageMode": "மொழி பயன்முறை", "systemAuto": "அமைப்பு (தானியங்கி)", "selectLanguage": "மொழியைத் தேர்ந்தெடுக்கவும்" },
+  "toast": { "languageUpdated": "மொழி புதுப்பிக்கப்பட்டது" }
+}

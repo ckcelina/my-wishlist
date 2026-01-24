@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "లోడ్ అవుతోంది..." },
+  "auth": { "signIn": "సైన్ ఇన్", "signUp": "సైన్ అప్" },
+  "wishlists": { "title": "కోరికల జాబితాలు", "itemCount": "{{count}} అంశం", "itemCount_plural": "{{count}} అంశాలు" },
+  "profile": { "title": "ప్రొఫైల్", "language": "భాష", "languageMode": "భాష మోడ్", "systemAuto": "సిస్టమ్ (ఆటో)", "selectLanguage": "భాషను ఎంచుకోండి" },
+  "toast": { "languageUpdated": "భాష నవీకరించబడింది" }
+}

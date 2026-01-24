@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "로딩 중...", "save": "저장", "cancel": "취소" },
+  "auth": { "signIn": "로그인", "signUp": "회원가입" },
+  "wishlists": { "title": "위시리스트", "itemCount": "{{count}}개 항목", "itemCount_plural": "{{count}}개 항목" },
+  "profile": { "title": "프로필", "language": "언어", "languageMode": "언어 모드", "systemAuto": "시스템 (자동)", "selectLanguage": "언어 선택" },
+  "toast": { "languageUpdated": "언어가 업데이트되었습니다" }
+}

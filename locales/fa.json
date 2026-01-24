@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "در حال بارگذاری..." },
+  "auth": { "signIn": "ورود", "signUp": "ثبت نام" },
+  "wishlists": { "title": "لیست آرزوها", "itemCount": "{{count}} مورد", "itemCount_plural": "{{count}} مورد" },
+  "profile": { "title": "پروفایل", "language": "زبان", "languageMode": "حالت زبان", "systemAuto": "سیستم (خودکار)", "selectLanguage": "انتخاب زبان" },
+  "toast": { "languageUpdated": "زبان به‌روزرسانی شد" }
+}

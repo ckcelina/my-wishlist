@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Memuat...", "save": "Simpan", "cancel": "Batal" },
+  "auth": { "signIn": "Masuk", "signUp": "Daftar" },
+  "wishlists": { "title": "Daftar Keinginan", "itemCount": "{{count}} item", "itemCount_plural": "{{count}} item" },
+  "profile": { "title": "Profil", "language": "Bahasa", "languageMode": "Mode Bahasa", "systemAuto": "Sistem (Otomatis)", "selectLanguage": "Pilih Bahasa" },
+  "toast": { "languageUpdated": "Bahasa diperbarui" }
+}

@@ -1,0 +1,8 @@
+
+{
+  "common": { "loading": "Ładowanie...", "save": "Zapisz", "cancel": "Anuluj" },
+  "auth": { "signIn": "Zaloguj się", "signUp": "Zarejestruj się" },
+  "wishlists": { "title": "Listy życzeń", "itemCount": "{{count}} przedmiot", "itemCount_plural": "{{count}} przedmiotów" },
+  "profile": { "title": "Profil", "language": "Język", "languageMode": "Tryb języka", "systemAuto": "System (Auto)", "selectLanguage": "Wybierz język" },
+  "toast": { "languageUpdated": "Język zaktualizowany" }
+}
