@@ -190,6 +190,9 @@ export const userLocation = pgTable(
     city: text('city'),
     region: text('region'),
     postalCode: text('postal_code'),
+    geonameId: text('geoname_id'),
+    lat: decimal('lat', { precision: 10, scale: 6 }),
+    lng: decimal('lng', { precision: 10, scale: 6 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -488,3 +491,20 @@ export const importTemplatesRelations = relations(importTemplates, ({ one }) => 
     references: [wishlists.id],
   }),
 }));
+
+// City Search Cache table
+export const citySearchCache = pgTable(
+  'city_search_cache',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    query: text('query').notNull(),
+    countryCode: text('country_code'),
+    resultsJson: text('results_json').notNull(),
+    cachedAt: timestamp('cached_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('city_search_cache_query_idx').on(table.query),
+    index('city_search_cache_country_code_idx').on(table.countryCode),
+  ]
+);

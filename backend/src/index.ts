@@ -24,6 +24,7 @@ import { registerReservationRoutes } from './routes/reservations.js';
 import { registerImportTemplateRoutes } from './routes/import-templates.js';
 import { registerOnboardingRoutes } from './routes/onboarding.js';
 import { registerSearchExportRoutes } from './routes/search-export.js';
+import { registerLocationDataRoutes } from './routes/location-data.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -64,6 +65,7 @@ registerReservationRoutes(app);
 registerImportTemplateRoutes(app);
 registerOnboardingRoutes(app);
 registerSearchExportRoutes(app);
+registerLocationDataRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
