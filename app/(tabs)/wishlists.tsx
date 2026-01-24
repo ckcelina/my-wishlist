@@ -4,7 +4,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   TextInput,
   Alert,
@@ -29,6 +29,7 @@ import { OfflineNotice } from '@/components/design-system/OfflineNotice';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
 import { supabase } from '@/lib/supabase';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { getCachedData, setCachedData } from '@/utils/cache';
 
 interface Wishlist {
   id: string;
@@ -39,6 +40,8 @@ interface Wishlist {
   updatedAt: string;
 }
 
+const PAGE_SIZE = 20;
+
 export default function WishlistsScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -47,54 +50,105 @@ export default function WishlistsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [newWishlistName, setNewWishlistName] = useState('');
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
+  const [creatingWishlist, setCreatingWishlist] = useState(false);
 
-  const fetchWishlists = useCallback(async () => {
+  const fetchWishlists = useCallback(async (pageNum: number = 0, append: boolean = false) => {
     if (!user) {
       console.log('[WishlistsScreen] No user, skipping fetch');
       return;
     }
 
     try {
-      console.log('[WishlistsScreen] Fetching wishlists for user:', user.id);
-      setError(null);
+      console.log('[WishlistsScreen] Fetching wishlists page:', pageNum);
       
-      const response = await supabase
-        .from('wishlists')
-        .select('*, wishlist_items(count)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (response.error) throw response.error;
-
-      const wishlistsData = response.data.map((w: any) => ({
-        id: w.id,
-        name: w.name,
-        isDefault: w.is_default,
-        itemCount: w.wishlist_items?.[0]?.count || 0,
-        createdAt: w.created_at,
-        updatedAt: w.updated_at,
-      }));
-
-      console.log('[WishlistsScreen] Fetched wishlists:', wishlistsData.length);
-      setWishlists(wishlistsData);
+      // Try to load from cache first
+      if (pageNum === 0 && !append) {
+        const cached = await getCachedData<Wishlist[]>('wishlists');
+        if (cached) {
+          console.log('[WishlistsScreen] Loaded from cache:', cached.length);
+          setWishlists(cached);
+          setLoading(false);
+          
+          // Fetch fresh data in background
+          if (isOnline) {
+            fetchWishlistsFromNetwork(pageNum, append);
+          }
+          return;
+        }
+      }
+      
+      if (!isOnline && pageNum === 0) {
+        setError('You are offline. Showing cached data.');
+        setLoading(false);
+        return;
+      }
+      
+      await fetchWishlistsFromNetwork(pageNum, append);
     } catch (error: any) {
       console.error('[WishlistsScreen] Error fetching wishlists:', error);
       setError('Failed to load wishlists. Please check your connection and try again.');
-    } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
-  }, [user]);
+  }, [user, isOnline]);
+
+  const fetchWishlistsFromNetwork = async (pageNum: number, append: boolean) => {
+    if (!user) return;
+    
+    setError(null);
+    
+    const from = pageNum * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    
+    const response = await supabase
+      .from('wishlists')
+      .select('*, wishlist_items(count)')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (response.error) throw response.error;
+
+    const wishlistsData = response.data.map((w: any) => ({
+      id: w.id,
+      name: w.name,
+      isDefault: w.is_default,
+      itemCount: w.wishlist_items?.[0]?.count || 0,
+      createdAt: w.created_at,
+      updatedAt: w.updated_at,
+    }));
+
+    console.log('[WishlistsScreen] Fetched wishlists:', wishlistsData.length);
+    
+    if (append) {
+      setWishlists(prev => [...prev, ...wishlistsData]);
+    } else {
+      setWishlists(wishlistsData);
+      // Cache first page
+      if (pageNum === 0) {
+        await setCachedData('wishlists', wishlistsData);
+      }
+    }
+    
+    setHasMore(wishlistsData.length === PAGE_SIZE);
+    setLoading(false);
+    setRefreshing(false);
+    setLoadingMore(false);
+  };
 
   useEffect(() => {
     console.log('[WishlistsScreen] Component mounted, user:', user?.id);
-    fetchWishlists();
-  }, [fetchWishlists]);
+    fetchWishlists(0, false);
+  }, [user]);
 
   const handleRefresh = useCallback(() => {
     if (!isOnline) {
@@ -103,8 +157,20 @@ export default function WishlistsScreen() {
     }
     console.log('[WishlistsScreen] User pulled to refresh');
     setRefreshing(true);
-    fetchWishlists();
+    setPage(0);
+    setHasMore(true);
+    fetchWishlists(0, false);
   }, [fetchWishlists, isOnline]);
+
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !isOnline) return;
+    
+    console.log('[WishlistsScreen] Loading more wishlists');
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchWishlists(nextPage, true);
+  }, [loadingMore, hasMore, page, fetchWishlists, isOnline]);
 
   const handleCreateWishlist = async () => {
     if (!newWishlistName.trim()) {
@@ -117,8 +183,12 @@ export default function WishlistsScreen() {
       return;
     }
 
+    if (creatingWishlist) return;
+
     try {
       console.log('[WishlistsScreen] Creating wishlist:', newWishlistName);
+      setCreatingWishlist(true);
+      
       const response = await supabase
         .from('wishlists')
         .insert({
@@ -139,6 +209,8 @@ export default function WishlistsScreen() {
     } catch (error: any) {
       console.error('[WishlistsScreen] Error creating wishlist:', error);
       Alert.alert('Error', 'Failed to create wishlist. Please try again.');
+    } finally {
+      setCreatingWishlist(false);
     }
   };
 
@@ -166,7 +238,7 @@ export default function WishlistsScreen() {
       setRenameModalVisible(false);
       setNewWishlistName('');
       setSelectedWishlist(null);
-      fetchWishlists();
+      handleRefresh();
     } catch (error: any) {
       console.error('[WishlistsScreen] Error renaming wishlist:', error);
       Alert.alert('Error', 'Failed to rename wishlist. Please try again.');
@@ -194,7 +266,7 @@ export default function WishlistsScreen() {
       console.log('[WishlistsScreen] Wishlist deleted successfully');
       setDeleteConfirmVisible(false);
       setSelectedWishlist(null);
-      fetchWishlists();
+      handleRefresh();
     } catch (error: any) {
       console.error('[WishlistsScreen] Error deleting wishlist:', error);
       Alert.alert('Error', 'Failed to delete wishlist. Please try again.');
@@ -283,7 +355,79 @@ export default function WishlistsScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  if (loading) {
+  const renderWishlistItem = ({ item, index }: { item: Wishlist; index: number }) => {
+    const itemCountText = `${item.itemCount} ${item.itemCount === 1 ? 'item' : 'items'}`;
+    const lastUpdatedText = formatLastUpdated(item.updatedAt);
+    
+    return (
+      <Card
+        interactive
+        onPress={() => handleWishlistPress(item)}
+        style={styles.wishlistCard}
+      >
+        <View style={styles.cardContent}>
+          <View style={styles.wishlistInfo}>
+            <View style={styles.wishlistHeader}>
+              <Text style={styles.wishlistName}>{item.name}</Text>
+              {item.isDefault && (
+                <Badge label="Default" variant="info" />
+              )}
+            </View>
+            
+            <View style={styles.wishlistMeta}>
+              <Text style={styles.itemCount}>{itemCountText}</Text>
+              <Text style={styles.metaDivider}>•</Text>
+              <Text style={styles.lastUpdated}>{lastUpdatedText}</Text>
+            </View>
+          </View>
+          
+          <TouchableOpacity
+            onPress={() => openOverflowMenu(item)}
+            style={styles.overflowButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <IconSymbol
+              ios_icon_name="more-vert"
+              android_material_icon_name="more-vert"
+              size={24}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
+        </View>
+      </Card>
+    );
+  };
+
+  const renderHeader = () => (
+    <TouchableOpacity
+      style={styles.importButton}
+      onPress={() => {
+        console.log('[WishlistsScreen] User tapped Import Wishlist button');
+        router.push('/import-wishlist');
+      }}
+      activeOpacity={0.7}
+    >
+      <IconSymbol
+        ios_icon_name="download"
+        android_material_icon_name="download"
+        size={20}
+        color={colors.accent}
+      />
+      <Text style={styles.importButtonText}>Import Wishlist</Text>
+    </TouchableOpacity>
+  );
+
+  const renderFooter = () => {
+    if (!loadingMore) return <View style={styles.bottomSpacer} />;
+    
+    return (
+      <View style={styles.loadingMore}>
+        <ListItemSkeleton />
+      </View>
+    );
+  };
+
+  if (loading && wishlists.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <OfflineNotice />
@@ -291,16 +435,16 @@ export default function WishlistsScreen() {
           <Logo size="small" style={styles.logo} />
           <Text style={styles.headerTitle}>Your Wishlists</Text>
         </View>
-        <ScrollView style={styles.content}>
+        <View style={styles.content}>
           <ListItemSkeleton />
           <ListItemSkeleton />
           <ListItemSkeleton />
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
 
-  if (error) {
+  if (error && wishlists.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <OfflineNotice />
@@ -311,7 +455,7 @@ export default function WishlistsScreen() {
         <ErrorState
           title="Failed to load wishlists"
           message={error}
-          onRetry={fetchWishlists}
+          onRetry={() => handleRefresh()}
         />
       </SafeAreaView>
     );
@@ -332,13 +476,8 @@ export default function WishlistsScreen() {
         <Text style={styles.headerTitle}>Your Wishlists</Text>
       </View>
 
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-        }
-      >
-        {wishlists.length === 0 ? (
+      {wishlists.length === 0 ? (
+        <View style={styles.content}>
           <EmptyState
             icon="favorite-border"
             title="Start your first wishlist"
@@ -351,74 +490,22 @@ export default function WishlistsScreen() {
               router.push('/import-wishlist');
             }}
           />
-        ) : (
-          <View style={styles.listContainer}>
-            <TouchableOpacity
-              style={styles.importButton}
-              onPress={() => {
-                console.log('[WishlistsScreen] User tapped Import Wishlist button');
-                router.push('/import-wishlist');
-              }}
-              activeOpacity={0.7}
-            >
-              <IconSymbol
-                ios_icon_name="download"
-                android_material_icon_name="download"
-                size={20}
-                color={colors.accent}
-              />
-              <Text style={styles.importButtonText}>Import Wishlist</Text>
-            </TouchableOpacity>
-
-            {wishlists.map((wishlist, index) => {
-              const itemCountText = `${wishlist.itemCount} ${wishlist.itemCount === 1 ? 'item' : 'items'}`;
-              const lastUpdatedText = formatLastUpdated(wishlist.updatedAt);
-              
-              return (
-                <React.Fragment key={index}>
-                  <Card
-                    interactive
-                    onPress={() => handleWishlistPress(wishlist)}
-                    style={styles.wishlistCard}
-                  >
-                    <View style={styles.cardContent}>
-                      <View style={styles.wishlistInfo}>
-                        <View style={styles.wishlistHeader}>
-                          <Text style={styles.wishlistName}>{wishlist.name}</Text>
-                          {wishlist.isDefault && (
-                            <Badge label="Default" variant="info" />
-                          )}
-                        </View>
-                        
-                        <View style={styles.wishlistMeta}>
-                          <Text style={styles.itemCount}>{itemCountText}</Text>
-                          <Text style={styles.metaDivider}>•</Text>
-                          <Text style={styles.lastUpdated}>{lastUpdatedText}</Text>
-                        </View>
-                      </View>
-                      
-                      <TouchableOpacity
-                        onPress={() => openOverflowMenu(wishlist)}
-                        style={styles.overflowButton}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <IconSymbol
-                          ios_icon_name="more-vert"
-                          android_material_icon_name="more-vert"
-                          size={24}
-                          color={colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </Card>
-                </React.Fragment>
-              );
-            })}
-          </View>
-        )}
-        
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
+        </View>
+      ) : (
+        <FlatList
+          data={wishlists}
+          renderItem={renderWishlistItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderFooter}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+        />
+      )}
 
       <TouchableOpacity
         style={styles.fab}
@@ -451,6 +538,7 @@ export default function WishlistsScreen() {
               autoFocus
               returnKeyType="done"
               onSubmitEditing={handleCreateWishlist}
+              editable={!creatingWishlist}
             />
             <View style={styles.modalButtons}>
               <Button
@@ -458,12 +546,14 @@ export default function WishlistsScreen() {
                 onPress={() => setCreateModalVisible(false)}
                 variant="secondary"
                 style={styles.modalButton}
+                disabled={creatingWishlist}
               />
               <Button
-                title="Create"
+                title={creatingWishlist ? 'Creating...' : 'Create'}
                 onPress={handleCreateWishlist}
                 variant="primary"
                 style={styles.modalButton}
+                disabled={creatingWishlist}
               />
             </View>
           </Pressable>
@@ -550,8 +640,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
   },
-  listContainer: {
-    paddingBottom: spacing.md,
+  listContent: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
   },
   wishlistCard: {
     marginBottom: spacing.md,
@@ -595,6 +686,9 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100,
+  },
+  loadingMore: {
+    paddingVertical: spacing.md,
   },
   fab: {
     position: 'absolute',
