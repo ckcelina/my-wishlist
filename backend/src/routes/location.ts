@@ -2,6 +2,7 @@ import type { FastifyRequest, FastifyReply } from 'fastify';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import { convertCurrency } from '../utils/exchange-rates.js';
 
 export function registerLocationRoutes(app: App) {
   const requireAuth = app.requireAuth();
@@ -24,6 +25,8 @@ export function registerLocationRoutes(app: App) {
               city: { type: ['string', 'null'] },
               region: { type: ['string', 'null'] },
               postalCode: { type: ['string', 'null'] },
+              area: { type: ['string', 'null'] },
+              addressLine: { type: ['string', 'null'] },
               updatedAt: { type: 'string' },
             },
           },
@@ -61,6 +64,8 @@ export function registerLocationRoutes(app: App) {
           city: location.city || null,
           region: location.region || null,
           postalCode: location.postalCode || null,
+          area: location.area || null,
+          addressLine: location.addressLine || null,
           updatedAt: location.updatedAt.toISOString(),
         };
       } catch (error) {
@@ -88,6 +93,8 @@ export function registerLocationRoutes(app: App) {
             city: { type: 'string' },
             region: { type: 'string' },
             postalCode: { type: 'string' },
+            area: { type: 'string' },
+            addressLine: { type: 'string' },
           },
           required: ['countryCode', 'countryName'],
         },
@@ -102,6 +109,8 @@ export function registerLocationRoutes(app: App) {
               city: { type: ['string', 'null'] },
               region: { type: ['string', 'null'] },
               postalCode: { type: ['string', 'null'] },
+              area: { type: ['string', 'null'] },
+              addressLine: { type: ['string', 'null'] },
               updatedAt: { type: 'string' },
             },
           },
@@ -116,6 +125,8 @@ export function registerLocationRoutes(app: App) {
           city?: string;
           region?: string;
           postalCode?: string;
+          area?: string;
+          addressLine?: string;
         };
       }>,
       reply: FastifyReply
@@ -124,7 +135,7 @@ export function registerLocationRoutes(app: App) {
       if (!session) return;
 
       const userId = session.user.id;
-      const { countryCode, countryName, city, region, postalCode } =
+      const { countryCode, countryName, city, region, postalCode, area, addressLine } =
         request.body;
 
       app.logger.info(
@@ -150,6 +161,8 @@ export function registerLocationRoutes(app: App) {
               city: city || null,
               region: region || null,
               postalCode: postalCode || null,
+              area: area || null,
+              addressLine: addressLine || null,
             })
             .where(eq(schema.userLocation.userId, userId))
             .returning();
@@ -171,6 +184,8 @@ export function registerLocationRoutes(app: App) {
               city: city || null,
               region: region || null,
               postalCode: postalCode || null,
+              area: area || null,
+              addressLine: addressLine || null,
             })
             .returning();
 
@@ -190,6 +205,8 @@ export function registerLocationRoutes(app: App) {
           city: location.city || null,
           region: location.region || null,
           postalCode: location.postalCode || null,
+          area: location.area || null,
+          addressLine: location.addressLine || null,
           updatedAt: location.updatedAt.toISOString(),
         };
       } catch (error) {
@@ -241,6 +258,90 @@ export function registerLocationRoutes(app: App) {
           'Failed to delete user location'
         );
         return reply.status(500).send({ error: 'Failed to delete location' });
+      }
+    }
+  );
+
+  // POST /api/convert-currency - Convert amount between currencies
+  app.fastify.post(
+    '/api/convert-currency',
+    {
+      schema: {
+        description: 'Convert amount from one currency to another',
+        tags: ['utils', 'currency'],
+        body: {
+          type: 'object',
+          properties: {
+            fromCurrency: { type: 'string' },
+            toCurrency: { type: 'string' },
+            amount: { type: 'number' },
+          },
+          required: ['fromCurrency', 'toCurrency', 'amount'],
+        },
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              convertedAmount: { type: ['number', 'null'] },
+              rate: { type: ['number', 'null'] },
+              error: { type: ['string', 'null'] },
+            },
+          },
+        },
+      },
+    },
+    async (
+      request: FastifyRequest<{
+        Body: {
+          fromCurrency: string;
+          toCurrency: string;
+          amount: number;
+        };
+      }>,
+      reply: FastifyReply
+    ) => {
+      const { fromCurrency, toCurrency, amount } = request.body;
+
+      app.logger.info(
+        { fromCurrency, toCurrency, amount },
+        'Converting currency'
+      );
+
+      try {
+        const rate = await convertCurrency(fromCurrency, toCurrency, amount);
+
+        if (!rate) {
+          app.logger.warn(
+            { fromCurrency, toCurrency },
+            'Currency conversion not available'
+          );
+          return {
+            convertedAmount: null,
+            rate: null,
+            error: 'Conversion not available for this currency pair',
+          };
+        }
+
+        app.logger.info(
+          { fromCurrency, toCurrency, amount, convertedAmount: rate.convertedAmount, rate: rate.rate },
+          'Currency conversion successful'
+        );
+
+        return {
+          convertedAmount: rate.convertedAmount,
+          rate: rate.rate,
+          error: null,
+        };
+      } catch (error) {
+        app.logger.error(
+          { err: error, fromCurrency, toCurrency, amount },
+          'Failed to convert currency'
+        );
+        return {
+          convertedAmount: null,
+          rate: null,
+          error: 'Currency conversion failed',
+        };
       }
     }
   );

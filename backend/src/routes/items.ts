@@ -5,6 +5,12 @@ import { generateText } from 'ai';
 import { z } from 'zod';
 import * as schema from '../db/schema.js';
 import type { App } from '../index.js';
+import {
+  normalizeCityName,
+  citiesMatch,
+  StoreUnavailableReasonCode,
+  getUnavailabilityMessage,
+} from '../utils/location.js';
 
 const extractSchema = z.object({
   url: z.string().url(),
@@ -983,6 +989,18 @@ Do not include any markdown, explanations, or extra text.`,
                   },
                 },
               },
+              unavailableStores: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    storeName: { type: 'string' },
+                    domain: { type: 'string' },
+                    reasonCode: { type: 'string' },
+                    reasonMessage: { type: 'string' },
+                  },
+                },
+              },
               userLocation: {
                 type: ['object', 'null'],
                 properties: {
@@ -990,8 +1008,9 @@ Do not include any markdown, explanations, or extra text.`,
                   city: { type: ['string', 'null'] },
                 },
               },
+              cityRequired: { type: 'boolean' },
               hasLocation: { type: 'boolean' },
-              message: { type: 'string' },
+              message: { type: ['string', 'null'] },
             },
           },
         },
@@ -1110,6 +1129,13 @@ Do not include any markdown, explanations, or extra text.`,
 
         // Apply location-based filtering
         const filteredStores: typeof validatedStores = [];
+        const unavailableStores: Array<{
+          storeName: string;
+          domain: string;
+          reasonCode: StoreUnavailableReasonCode;
+          reasonMessage: string;
+        }> = [];
+        let anyStoreRequiresCity = false;
 
         for (const aiStore of validatedStores) {
           // Check if store exists in database
@@ -1126,6 +1152,11 @@ Do not include any markdown, explanations, or extra text.`,
             continue;
           }
 
+          // Check if this store requires city
+          if (dbStore.requiresCity) {
+            anyStoreRequiresCity = true;
+          }
+
           // Parse countriesSupported if it's a string
           const supportedCountries = typeof dbStore.countriesSupported === 'string'
             ? JSON.parse(dbStore.countriesSupported)
@@ -1137,6 +1168,14 @@ Do not include any markdown, explanations, or extra text.`,
               { domain: dbStore.domain, countryCode: userLocation.countryCode },
               'Store does not support country'
             );
+            unavailableStores.push({
+              storeName: aiStore.storeName,
+              domain: aiStore.domain,
+              reasonCode: StoreUnavailableReasonCode.NO_COUNTRY_MATCH,
+              reasonMessage: getUnavailabilityMessage(
+                StoreUnavailableReasonCode.NO_COUNTRY_MATCH
+              ),
+            });
             continue;
           }
 
@@ -1150,12 +1189,36 @@ Do not include any markdown, explanations, or extra text.`,
               { domain: dbStore.domain, countryCode: userLocation.countryCode },
               'Store does not ship to country'
             );
+            unavailableStores.push({
+              storeName: aiStore.storeName,
+              domain: aiStore.domain,
+              reasonCode: StoreUnavailableReasonCode.NO_COUNTRY_MATCH,
+              reasonMessage: getUnavailabilityMessage(
+                StoreUnavailableReasonCode.NO_COUNTRY_MATCH
+              ),
+            });
             continue;
           }
 
           // If store requires city, check city filtering
-          if (dbStore.requiresCity && userLocation.city && shippingRule) {
-            const city = userLocation.city;
+          if (dbStore.requiresCity && shippingRule) {
+            if (!userLocation.city) {
+              app.logger.debug(
+                { domain: dbStore.domain },
+                'Store requires city but user has not set city'
+              );
+              unavailableStores.push({
+                storeName: aiStore.storeName,
+                domain: aiStore.domain,
+                reasonCode: StoreUnavailableReasonCode.CITY_REQUIRED,
+                reasonMessage: getUnavailabilityMessage(
+                  StoreUnavailableReasonCode.CITY_REQUIRED
+                ),
+              });
+              continue;
+            }
+
+            const userCity = userLocation.city;
 
             // Parse city blacklist if it's a string
             const blacklist = shippingRule.cityBlacklist
@@ -1164,12 +1227,25 @@ Do not include any markdown, explanations, or extra text.`,
                   : shippingRule.cityBlacklist)
               : null;
 
-            // Check city blacklist
-            if (blacklist && blacklist.includes(city)) {
+            // Check city blacklist - use normalized comparison
+            if (
+              blacklist &&
+              blacklist.some((blacklistedCity: string) =>
+                citiesMatch(userCity, blacklistedCity)
+              )
+            ) {
               app.logger.debug(
-                { domain: dbStore.domain, city },
+                { domain: dbStore.domain, city: userCity },
                 'City is blacklisted'
               );
+              unavailableStores.push({
+                storeName: aiStore.storeName,
+                domain: aiStore.domain,
+                reasonCode: StoreUnavailableReasonCode.NO_CITY_MATCH,
+                reasonMessage: getUnavailabilityMessage(
+                  StoreUnavailableReasonCode.NO_CITY_MATCH
+                ),
+              });
               continue;
             }
 
@@ -1180,24 +1256,42 @@ Do not include any markdown, explanations, or extra text.`,
                   : shippingRule.cityWhitelist)
               : null;
 
-            // Check city whitelist
+            // Check city whitelist - use normalized comparison
             if (
               whitelist &&
               whitelist.length > 0 &&
-              !whitelist.includes(city)
+              !whitelist.some((whitelistedCity: string) =>
+                citiesMatch(userCity, whitelistedCity)
+              )
             ) {
               app.logger.debug(
-                { domain: dbStore.domain, city },
+                { domain: dbStore.domain, city: userCity },
                 'City is not in whitelist'
               );
+              unavailableStores.push({
+                storeName: aiStore.storeName,
+                domain: aiStore.domain,
+                reasonCode: StoreUnavailableReasonCode.NO_CITY_MATCH,
+                reasonMessage: getUnavailabilityMessage(
+                  StoreUnavailableReasonCode.NO_CITY_MATCH
+                ),
+              });
               continue;
             }
 
             if (!shippingRule.shipsToCity) {
               app.logger.debug(
-                { domain: dbStore.domain, city },
+                { domain: dbStore.domain, city: userCity },
                 'Store does not ship to city'
               );
+              unavailableStores.push({
+                storeName: aiStore.storeName,
+                domain: aiStore.domain,
+                reasonCode: StoreUnavailableReasonCode.NO_CITY_MATCH,
+                reasonMessage: getUnavailabilityMessage(
+                  StoreUnavailableReasonCode.NO_CITY_MATCH
+                ),
+              });
               continue;
             }
           }
@@ -1207,29 +1301,42 @@ Do not include any markdown, explanations, or extra text.`,
         }
 
         app.logger.info(
-          { itemId, storeCount: filteredStores.length, countryCode: userLocation.countryCode },
+          {
+            itemId,
+            storeCount: filteredStores.length,
+            unavailableCount: unavailableStores.length,
+            countryCode: userLocation.countryCode,
+          },
           'Alternative stores found'
         );
 
         if (filteredStores.length === 0) {
           return {
             stores: [],
+            unavailableStores,
             userLocation: {
               countryCode: userLocation.countryCode,
               city: userLocation.city || null,
             },
+            cityRequired: anyStoreRequiresCity && !userLocation.city,
             hasLocation: true,
-            message: 'No available stores found for your location',
+            message:
+              anyStoreRequiresCity && !userLocation.city
+                ? 'Add your city to see available stores'
+                : 'No available stores found for your location',
           };
         }
 
         return {
           stores: filteredStores,
+          unavailableStores,
           userLocation: {
             countryCode: userLocation.countryCode,
             city: userLocation.city || null,
           },
+          cityRequired: anyStoreRequiresCity && !userLocation.city,
           hasLocation: true,
+          message: null,
         };
       } catch (error) {
         app.logger.error(

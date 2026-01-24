@@ -190,6 +190,8 @@ export const userLocation = pgTable(
     city: text('city'),
     region: text('region'),
     postalCode: text('postal_code'),
+    area: text('area'),
+    addressLine: text('address_line'),
     geonameId: text('geoname_id'),
     lat: decimal('lat', { precision: 10, scale: 6 }),
     lng: decimal('lng', { precision: 10, scale: 6 }),
