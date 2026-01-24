@@ -1,5 +1,22 @@
 
+import { Button } from '@/components/design-system/Button';
+import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
+import { getCachedData, setCachedData } from '@/utils/cache';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { Badge } from '@/components/design-system/Badge';
+import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
+import { supabase } from '@/lib/supabase';
+import { getWishlistWithItemCount, createWishlist, updateWishlist, deleteWishlist } from '@/lib/supabase-helpers';
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'expo-router';
+import { OfflineNotice } from '@/components/design-system/OfflineNotice';
+import { ErrorState } from '@/components/design-system/ErrorState';
+import { Logo } from '@/components/Logo';
+import { IconSymbol } from '@/components/IconSymbol';
+import { Card } from '@/components/design-system/Card';
 import {
   View,
   Text,
@@ -13,23 +30,7 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { Logo } from '@/components/Logo';
-import { Button } from '@/components/design-system/Button';
-import { Card } from '@/components/design-system/Card';
 import { EmptyState } from '@/components/design-system/EmptyState';
-import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
-import { Badge } from '@/components/design-system/Badge';
-import { ErrorState } from '@/components/design-system/ErrorState';
-import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
-import { OfflineNotice } from '@/components/design-system/OfflineNotice';
-import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
-import { supabase } from '@/lib/supabase';
-import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { getCachedData, setCachedData } from '@/utils/cache';
 
 interface Wishlist {
   id: string;
@@ -42,135 +43,248 @@ interface Wishlist {
 
 const PAGE_SIZE = 20;
 
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  logo: {
+    width: 120,
+    height: 40,
+  },
+  title: {
+    ...typography.h1,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  list: {
+    paddingHorizontal: spacing.lg,
+  },
+  listContent: {
+    paddingBottom: spacing.xl,
+  },
+  wishlistCard: {
+    marginBottom: spacing.md,
+  },
+  wishlistContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  wishlistLeft: {
+    flex: 1,
+  },
+  wishlistName: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  wishlistMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  wishlistMetaText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  wishlistRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  moreButton: {
+    padding: spacing.sm,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  modalInput: {
+    ...inputStyles.input,
+    marginBottom: spacing.md,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  modalButton: {
+    flex: 1,
+  },
+  menuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  menuContent: {
+    position: 'absolute',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.xs,
+    minWidth: 200,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: 8,
+    gap: spacing.sm,
+  },
+  menuItemText: {
+    ...typography.body,
+    color: colors.text,
+  },
+  menuItemDanger: {
+    color: colors.error,
+  },
+  loadingFooter: {
+    paddingVertical: spacing.lg,
+    alignItems: 'center',
+  },
+});
+
 export default function WishlistsScreen() {
-  const router = useRouter();
-  const { user } = useAuth();
-  const { isOnline } = useNetworkStatus();
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [page, setPage] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
-  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [newWishlistName, setNewWishlistName] = useState('');
+  const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
-  const [creatingWishlist, setCreatingWishlist] = useState(false);
+  const [newWishlistName, setNewWishlistName] = useState('');
+  const [renameWishlistName, setRenameWishlistName] = useState('');
 
-  const fetchWishlists = useCallback(async (pageNum: number = 0, append: boolean = false) => {
-    if (!user) {
-      console.log('[WishlistsScreen] No user, skipping fetch');
+  const { user } = useAuth();
+  const router = useRouter();
+  const { isConnected } = useNetworkStatus();
+
+  useEffect(() => {
+    if (user) {
+      console.log('[WishlistsScreen] User authenticated, fetching wishlists');
+      fetchWishlistsFromNetwork(1, false);
+    }
+  }, [user]);
+
+  const fetchWishlistsFromNetwork = useCallback(async (pageNum: number, append: boolean) => {
+    if (!user?.id) {
+      console.log('[WishlistsScreen] No user ID, skipping fetch');
       return;
     }
 
     try {
-      console.log('[WishlistsScreen] Fetching wishlists page:', pageNum);
-      
-      // Try to load from cache first
-      if (pageNum === 0 && !append) {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+
+      console.log('[WishlistsScreen] Fetching wishlists from Supabase');
+      const data = await getWishlistWithItemCount(user.id);
+
+      const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
+        id: w.id,
+        name: w.name,
+        isDefault: index === 0,
+        itemCount: w.itemCount,
+        createdAt: w.createdAt,
+        updatedAt: w.updatedAt,
+      }));
+
+      if (append) {
+        setWishlists((prev) => [...prev, ...formattedWishlists]);
+      } else {
+        setWishlists(formattedWishlists);
+        await setCachedData('wishlists', formattedWishlists);
+      }
+
+      setHasMore(formattedWishlists.length === PAGE_SIZE);
+      console.log('[WishlistsScreen] Fetched wishlists:', formattedWishlists.length);
+    } catch (err) {
+      console.error('[WishlistsScreen] Error fetching wishlists:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load wishlists');
+
+      if (!append) {
         const cached = await getCachedData<Wishlist[]>('wishlists');
         if (cached) {
-          console.log('[WishlistsScreen] Loaded from cache:', cached.length);
+          console.log('[WishlistsScreen] Using cached wishlists');
           setWishlists(cached);
-          setLoading(false);
-          
-          // Fetch fresh data in background
-          if (isOnline) {
-            fetchWishlistsFromNetwork(pageNum, append);
-          }
-          return;
         }
       }
-      
-      if (!isOnline && pageNum === 0) {
-        setError('You are offline. Showing cached data.');
-        setLoading(false);
-        return;
-      }
-      
-      await fetchWishlistsFromNetwork(pageNum, append);
-    } catch (error: any) {
-      console.error('[WishlistsScreen] Error fetching wishlists:', error);
-      setError('Failed to load wishlists. Please check your connection and try again.');
+    } finally {
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [user, isOnline]);
-
-  const fetchWishlistsFromNetwork = async (pageNum: number, append: boolean) => {
-    if (!user) return;
-    
-    setError(null);
-    
-    const from = pageNum * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    
-    const response = await supabase
-      .from('wishlists')
-      .select('*, wishlist_items(count)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(from, to);
-
-    if (response.error) throw response.error;
-
-    const wishlistsData = response.data.map((w: any) => ({
-      id: w.id,
-      name: w.name,
-      isDefault: w.is_default,
-      itemCount: w.wishlist_items?.[0]?.count || 0,
-      createdAt: w.created_at,
-      updatedAt: w.updated_at,
-    }));
-
-    console.log('[WishlistsScreen] Fetched wishlists:', wishlistsData.length);
-    
-    if (append) {
-      setWishlists(prev => [...prev, ...wishlistsData]);
-    } else {
-      setWishlists(wishlistsData);
-      // Cache first page
-      if (pageNum === 0) {
-        await setCachedData('wishlists', wishlistsData);
-      }
-    }
-    
-    setHasMore(wishlistsData.length === PAGE_SIZE);
-    setLoading(false);
-    setRefreshing(false);
-    setLoadingMore(false);
-  };
-
-  useEffect(() => {
-    console.log('[WishlistsScreen] Component mounted, user:', user?.id);
-    fetchWishlists(0, false);
   }, [user]);
 
   const handleRefresh = useCallback(() => {
-    if (!isOnline) {
-      Alert.alert('Offline', 'You are currently offline. Please check your internet connection and try again.');
-      return;
-    }
-    console.log('[WishlistsScreen] User pulled to refresh');
+    console.log('[WishlistsScreen] User triggered refresh');
     setRefreshing(true);
-    setPage(0);
-    setHasMore(true);
-    fetchWishlists(0, false);
-  }, [fetchWishlists, isOnline]);
+    setPage(1);
+    fetchWishlistsFromNetwork(1, false);
+  }, [fetchWishlistsFromNetwork]);
 
   const handleLoadMore = useCallback(() => {
-    if (loadingMore || !hasMore || !isOnline) return;
-    
-    console.log('[WishlistsScreen] Loading more wishlists');
-    setLoadingMore(true);
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchWishlists(nextPage, true);
-  }, [loadingMore, hasMore, page, fetchWishlists, isOnline]);
+    if (!loadingMore && hasMore && !loading) {
+      console.log('[WishlistsScreen] Loading more wishlists');
+      const nextPage = page + 1;
+      setPage(nextPage);
+      fetchWishlistsFromNetwork(nextPage, true);
+    }
+  }, [loadingMore, hasMore, loading, page, fetchWishlistsFromNetwork]);
 
   const handleCreateWishlist = async () => {
     if (!newWishlistName.trim()) {
@@ -178,98 +292,65 @@ export default function WishlistsScreen() {
       return;
     }
 
-    if (!isOnline) {
-      Alert.alert('Offline', 'You need an internet connection to create a wishlist.');
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be logged in to create a wishlist');
       return;
     }
 
-    if (creatingWishlist) return;
-
     try {
       console.log('[WishlistsScreen] Creating wishlist:', newWishlistName);
-      setCreatingWishlist(true);
-      
-      const response = await supabase
-        .from('wishlists')
-        .insert({
-          user_id: user?.id,
-          name: newWishlistName.trim(),
-          is_default: false,
-        })
-        .select()
-        .single();
+      await createWishlist({
+        user_id: user.id,
+        name: newWishlistName.trim(),
+      });
 
-      if (response.error) throw response.error;
-
-      console.log('[WishlistsScreen] Wishlist created successfully, opening it');
       setCreateModalVisible(false);
       setNewWishlistName('');
-      
-      router.push(`/wishlist/${response.data.id}`);
-    } catch (error: any) {
-      console.error('[WishlistsScreen] Error creating wishlist:', error);
-      Alert.alert('Error', 'Failed to create wishlist. Please try again.');
-    } finally {
-      setCreatingWishlist(false);
+      handleRefresh();
+      Alert.alert('Success', 'Wishlist created successfully');
+    } catch (err) {
+      console.error('[WishlistsScreen] Error creating wishlist:', err);
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create wishlist');
     }
   };
 
   const handleRenameWishlist = async () => {
-    if (!selectedWishlist || !newWishlistName.trim()) {
+    if (!renameWishlistName.trim() || !selectedWishlist) {
       Alert.alert('Error', 'Please enter a wishlist name');
-      return;
-    }
-
-    if (!isOnline) {
-      Alert.alert('Offline', 'You need an internet connection to rename a wishlist.');
       return;
     }
 
     try {
       console.log('[WishlistsScreen] Renaming wishlist:', selectedWishlist.id);
-      const response = await supabase
-        .from('wishlists')
-        .update({ name: newWishlistName.trim() })
-        .eq('id', selectedWishlist.id);
+      await updateWishlist(selectedWishlist.id, {
+        name: renameWishlistName.trim(),
+      });
 
-      if (response.error) throw response.error;
-
-      console.log('[WishlistsScreen] Wishlist renamed successfully');
       setRenameModalVisible(false);
-      setNewWishlistName('');
+      setRenameWishlistName('');
       setSelectedWishlist(null);
       handleRefresh();
-    } catch (error: any) {
-      console.error('[WishlistsScreen] Error renaming wishlist:', error);
-      Alert.alert('Error', 'Failed to rename wishlist. Please try again.');
+      Alert.alert('Success', 'Wishlist renamed successfully');
+    } catch (err) {
+      console.error('[WishlistsScreen] Error renaming wishlist:', err);
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to rename wishlist');
     }
   };
 
   const handleDeleteWishlist = async () => {
     if (!selectedWishlist) return;
 
-    if (!isOnline) {
-      Alert.alert('Offline', 'You need an internet connection to delete a wishlist.');
-      setDeleteConfirmVisible(false);
-      return;
-    }
-
     try {
       console.log('[WishlistsScreen] Deleting wishlist:', selectedWishlist.id);
-      const response = await supabase
-        .from('wishlists')
-        .delete()
-        .eq('id', selectedWishlist.id);
+      await deleteWishlist(selectedWishlist.id);
 
-      if (response.error) throw response.error;
-
-      console.log('[WishlistsScreen] Wishlist deleted successfully');
-      setDeleteConfirmVisible(false);
+      setDeleteDialogVisible(false);
       setSelectedWishlist(null);
       handleRefresh();
-    } catch (error: any) {
-      console.error('[WishlistsScreen] Error deleting wishlist:', error);
-      Alert.alert('Error', 'Failed to delete wishlist. Please try again.');
+      Alert.alert('Success', 'Wishlist deleted successfully');
+    } catch (err) {
+      console.error('[WishlistsScreen] Error deleting wishlist:', err);
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to delete wishlist');
     }
   };
 
@@ -278,52 +359,25 @@ export default function WishlistsScreen() {
     router.push(`/wishlist/${wishlist.id}`);
   };
 
-  const openOverflowMenu = (wishlist: Wishlist) => {
-    console.log('[WishlistsScreen] User tapped overflow menu for:', wishlist.name);
+  const openOverflowMenu = (wishlist: Wishlist, event: any) => {
+    console.log('[WishlistsScreen] Opening overflow menu for:', wishlist.name);
+    setSelectedWishlist(wishlist);
     
-    if (wishlist.isDefault) {
-      Alert.alert(
-        wishlist.name,
-        'Choose an action',
-        [
-          {
-            text: 'Rename',
-            onPress: () => openRenameModal(wishlist),
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    } else {
-      Alert.alert(
-        wishlist.name,
-        'Choose an action',
-        [
-          {
-            text: 'Rename',
-            onPress: () => openRenameModal(wishlist),
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              setSelectedWishlist(wishlist);
-              setDeleteConfirmVisible(true);
-            },
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    }
+    const { pageY, pageX } = event.nativeEvent;
+    setMenuPosition({ top: pageY, right: 20 });
+    setMenuVisible(true);
   };
 
   const openRenameModal = (wishlist: Wishlist) => {
+    console.log('[WishlistsScreen] Opening rename modal for:', wishlist.name);
     setSelectedWishlist(wishlist);
-    setNewWishlistName(wishlist.name);
+    setRenameWishlistName(wishlist.name);
+    setMenuVisible(false);
     setRenameModalVisible(true);
   };
 
   const openCreateModal = () => {
-    console.log('[WishlistsScreen] User tapped New Wishlist button');
+    console.log('[WishlistsScreen] Opening create wishlist modal');
     setNewWishlistName('');
     setCreateModalVisible(true);
   };
@@ -340,88 +394,78 @@ export default function WishlistsScreen() {
       return 'Just now';
     }
     if (diffMins < 60) {
-      const minsText = `${diffMins}m ago`;
-      return minsText;
+      const minsText = diffMins === 1 ? 'min' : 'mins';
+      return `${diffMins} ${minsText} ago`;
     }
     if (diffHours < 24) {
-      const hoursText = `${diffHours}h ago`;
-      return hoursText;
+      const hoursText = diffHours === 1 ? 'hour' : 'hours';
+      return `${diffHours} ${hoursText} ago`;
     }
     if (diffDays < 7) {
-      const daysText = `${diffDays}d ago`;
-      return daysText;
+      const daysText = diffDays === 1 ? 'day' : 'days';
+      return `${diffDays} ${daysText} ago`;
     }
-    
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString();
   };
 
   const renderWishlistItem = ({ item, index }: { item: Wishlist; index: number }) => {
-    const itemCountText = `${item.itemCount} ${item.itemCount === 1 ? 'item' : 'items'}`;
+    const itemCountText = item.itemCount === 1 ? 'item' : 'items';
     const lastUpdatedText = formatLastUpdated(item.updatedAt);
-    
+
     return (
-      <Card
-        interactive
+      <TouchableOpacity
+        key={item.id}
         onPress={() => handleWishlistPress(item)}
-        style={styles.wishlistCard}
+        activeOpacity={0.7}
       >
-        <View style={styles.cardContent}>
-          <View style={styles.wishlistInfo}>
-            <View style={styles.wishlistHeader}>
+        <Card style={styles.wishlistCard}>
+          <View style={styles.wishlistContent}>
+            <View style={styles.wishlistLeft}>
               <Text style={styles.wishlistName}>{item.name}</Text>
-              {item.isDefault && (
-                <Badge label="Default" variant="info" />
-              )}
+              <View style={styles.wishlistMeta}>
+                <Text style={styles.wishlistMetaText}>
+                  {item.itemCount} {itemCountText}
+                </Text>
+                <Text style={styles.wishlistMetaText}>•</Text>
+                <Text style={styles.wishlistMetaText}>{lastUpdatedText}</Text>
+              </View>
             </View>
-            
-            <View style={styles.wishlistMeta}>
-              <Text style={styles.itemCount}>{itemCountText}</Text>
-              <Text style={styles.metaDivider}>•</Text>
-              <Text style={styles.lastUpdated}>{lastUpdatedText}</Text>
+            <View style={styles.wishlistRight}>
+              {item.isDefault && <Badge variant="primary" text="Default" />}
+              <TouchableOpacity
+                style={styles.moreButton}
+                onPress={(e) => openOverflowMenu(item, e)}
+              >
+                <IconSymbol
+                  ios_icon_name="ellipsis"
+                  android_material_icon_name="more-vert"
+                  size={24}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
             </View>
           </View>
-          
-          <TouchableOpacity
-            onPress={() => openOverflowMenu(item)}
-            style={styles.overflowButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol
-              ios_icon_name="more-vert"
-              android_material_icon_name="more-vert"
-              size={24}
-              color={colors.textTertiary}
-            />
-          </TouchableOpacity>
-        </View>
-      </Card>
+        </Card>
+      </TouchableOpacity>
     );
   };
 
   const renderHeader = () => (
-    <TouchableOpacity
-      style={styles.importButton}
-      onPress={() => {
-        console.log('[WishlistsScreen] User tapped Import Wishlist button');
-        router.push('/import-wishlist');
-      }}
-      activeOpacity={0.7}
-    >
-      <IconSymbol
-        ios_icon_name="download"
-        android_material_icon_name="download"
-        size={20}
-        color={colors.accent}
-      />
-      <Text style={styles.importButtonText}>Import Wishlist</Text>
-    </TouchableOpacity>
+    <View style={styles.header}>
+      <View style={styles.headerTop}>
+        <Logo style={styles.logo} />
+      </View>
+      <Text style={styles.title}>My Wishlists</Text>
+      <Text style={styles.subtitle}>
+        Organize your items into different wishlists
+      </Text>
+    </View>
   );
 
   const renderFooter = () => {
-    if (!loadingMore) return <View style={styles.bottomSpacer} />;
-    
+    if (!loadingMore) return null;
     return (
-      <View style={styles.loadingMore}>
+      <View style={styles.loadingFooter}>
         <ListItemSkeleton />
       </View>
     );
@@ -430,12 +474,8 @@ export default function WishlistsScreen() {
   if (loading && wishlists.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <OfflineNotice />
-        <View style={styles.header}>
-          <Logo size="small" style={styles.logo} />
-          <Text style={styles.headerTitle}>Your Wishlists</Text>
-        </View>
-        <View style={styles.content}>
+        {renderHeader()}
+        <View style={styles.list}>
           <ListItemSkeleton />
           <ListItemSkeleton />
           <ListItemSkeleton />
@@ -447,95 +487,94 @@ export default function WishlistsScreen() {
   if (error && wishlists.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <OfflineNotice />
-        <View style={styles.header}>
-          <Logo size="small" style={styles.logo} />
-          <Text style={styles.headerTitle}>Your Wishlists</Text>
-        </View>
+        {!isConnected && <OfflineNotice />}
+        {renderHeader()}
         <ErrorState
-          title="Failed to load wishlists"
           message={error}
-          onRetry={() => handleRefresh()}
+          onRetry={() => fetchWishlistsFromNetwork(1, false)}
         />
       </SafeAreaView>
     );
   }
 
-  const deleteMessage = selectedWishlist 
-    ? selectedWishlist.itemCount > 0
-      ? `Are you sure you want to delete "${selectedWishlist.name}"? This will also delete ${selectedWishlist.itemCount} ${selectedWishlist.itemCount === 1 ? 'item' : 'items'}. This action cannot be undone.`
-      : `Are you sure you want to delete "${selectedWishlist.name}"? This action cannot be undone.`
-    : '';
+  if (wishlists.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {renderHeader()}
+        <EmptyState
+          icon="favorite-border"
+          title="No wishlists yet"
+          message="Create your first wishlist to start saving items"
+          actionLabel="Create Wishlist"
+          onAction={openCreateModal}
+        />
+
+        <Modal
+          visible={createModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCreateModalVisible(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Create Wishlist</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Wishlist name"
+                placeholderTextColor={colors.textSecondary}
+                value={newWishlistName}
+                onChangeText={setNewWishlistName}
+                autoFocus
+              />
+              <View style={styles.modalButtons}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setCreateModalVisible(false)}
+                  variant="secondary"
+                  style={styles.modalButton}
+                />
+                <Button
+                  title="Create"
+                  onPress={handleCreateWishlist}
+                  variant="primary"
+                  style={styles.modalButton}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <OfflineNotice />
-      
-      <View style={styles.header}>
-        <Logo size="small" style={styles.logo} />
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Your Wishlists</Text>
-          <TouchableOpacity
-            onPress={() => {
-              console.log('[WishlistsScreen] User tapped Search button');
-              router.push('/global-search');
-            }}
-            style={styles.searchButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <IconSymbol
-              ios_icon_name="magnifyingglass"
-              android_material_icon_name="search"
-              size={24}
-              color={colors.accent}
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {wishlists.length === 0 ? (
-        <View style={styles.content}>
-          <EmptyState
-            icon="favorite-border"
-            title="Start your first wishlist"
-            description="Create a wishlist to save items you love from any app or website"
-            actionLabel="Create Wishlist"
-            onAction={openCreateModal}
-            secondaryActionLabel="Bring your existing wishlists"
-            onSecondaryAction={() => {
-              console.log('[WishlistsScreen] User tapped Import Wishlist from empty state');
-              router.push('/import-wishlist');
-            }}
+      {!isConnected && <OfflineNotice />}
+      <FlatList
+        data={wishlists}
+        renderItem={renderWishlistItem}
+        keyExtractor={(item) => item.id}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        contentContainerStyle={styles.listContent}
+        style={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
           />
-        </View>
-      ) : (
-        <FlatList
-          data={wishlists}
-          renderItem={renderWishlistItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={renderHeader}
-          ListFooterComponent={renderFooter}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
-        />
-      )}
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+      />
 
-      <TouchableOpacity
-        style={styles.fab}
+      <Button
+        title="Create Wishlist"
         onPress={openCreateModal}
-        activeOpacity={0.8}
-      >
-        <IconSymbol
-          ios_icon_name="add"
-          android_material_icon_name="add"
-          size={28}
-          color={colors.textInverse}
-        />
-      </TouchableOpacity>
+        variant="primary"
+        style={{ margin: spacing.lg }}
+      />
 
       <Modal
         visible={createModalVisible}
@@ -545,17 +584,14 @@ export default function WishlistsScreen() {
       >
         <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>New Wishlist</Text>
+            <Text style={styles.modalTitle}>Create Wishlist</Text>
             <TextInput
               style={styles.modalInput}
               placeholder="Wishlist name"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={colors.textSecondary}
               value={newWishlistName}
               onChangeText={setNewWishlistName}
               autoFocus
-              returnKeyType="done"
-              onSubmitEditing={handleCreateWishlist}
-              editable={!creatingWishlist}
             />
             <View style={styles.modalButtons}>
               <Button
@@ -563,14 +599,12 @@ export default function WishlistsScreen() {
                 onPress={() => setCreateModalVisible(false)}
                 variant="secondary"
                 style={styles.modalButton}
-                disabled={creatingWishlist}
               />
               <Button
-                title={creatingWishlist ? 'Creating...' : 'Create'}
+                title="Create"
                 onPress={handleCreateWishlist}
                 variant="primary"
                 style={styles.modalButton}
-                disabled={creatingWishlist}
               />
             </View>
           </Pressable>
@@ -589,12 +623,10 @@ export default function WishlistsScreen() {
             <TextInput
               style={styles.modalInput}
               placeholder="Wishlist name"
-              placeholderTextColor={colors.textTertiary}
-              value={newWishlistName}
-              onChangeText={setNewWishlistName}
+              placeholderTextColor={colors.textSecondary}
+              value={renameWishlistName}
+              onChangeText={setRenameWishlistName}
               autoFocus
-              returnKeyType="done"
-              onSubmitEditing={handleRenameWishlist}
             />
             <View style={styles.modalButtons}>
               <Button
@@ -614,169 +646,55 @@ export default function WishlistsScreen() {
         </Pressable>
       </Modal>
 
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+          <View style={[styles.menuContent, { top: menuPosition.top, right: menuPosition.right }]}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => selectedWishlist && openRenameModal(selectedWishlist)}
+            >
+              <IconSymbol
+                ios_icon_name="pencil"
+                android_material_icon_name="edit"
+                size={20}
+                color={colors.text}
+              />
+              <Text style={styles.menuItemText}>Rename</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setMenuVisible(false);
+                setDeleteDialogVisible(true);
+              }}
+            >
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={20}
+                color={colors.error}
+              />
+              <Text style={[styles.menuItemText, styles.menuItemDanger]}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
       <ConfirmDialog
-        visible={deleteConfirmVisible}
+        visible={deleteDialogVisible}
         title="Delete Wishlist"
-        message={deleteMessage}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        message={`Are you sure you want to delete "${selectedWishlist?.name}"? This will also delete all items in this wishlist.`}
+        confirmText="Delete"
+        cancelText="Cancel"
         onConfirm={handleDeleteWishlist}
-        onCancel={() => {
-          setDeleteConfirmVisible(false);
-          setSelectedWishlist(null);
-        }}
+        onCancel={() => setDeleteDialogVisible(false)}
         destructive
-        icon="delete"
       />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    ...containerStyles.screen,
-    paddingTop: Platform.OS === 'android' ? 48 : 0,
-  },
-  header: {
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  logo: {
-    marginBottom: spacing.sm,
-  },
-  headerRow: {
-    ...containerStyles.row,
-    ...containerStyles.spaceBetween,
-    width: '100%',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    ...typography.titleLarge,
-    flex: 1,
-    textAlign: 'center',
-  },
-  searchButton: {
-    padding: spacing.xs,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  listContent: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-  },
-  wishlistCard: {
-    marginBottom: spacing.md,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  wishlistInfo: {
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  wishlistHeader: {
-    ...containerStyles.row,
-    marginBottom: spacing.xs,
-  },
-  wishlistName: {
-    ...typography.titleSmall,
-    flex: 1,
-  },
-  wishlistMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  itemCount: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-  },
-  metaDivider: {
-    ...typography.bodyMedium,
-    color: colors.textTertiary,
-  },
-  lastUpdated: {
-    ...typography.bodyMedium,
-    color: colors.textTertiary,
-  },
-  overflowButton: {
-    padding: spacing.xs,
-  },
-  bottomSpacer: {
-    height: 100,
-  },
-  loadingMore: {
-    paddingVertical: spacing.md,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 100,
-    right: spacing.md,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadowDark,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '85%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    ...typography.titleMedium,
-    marginBottom: spacing.md,
-  },
-  modalInput: {
-    ...inputStyles.base,
-    marginBottom: spacing.lg,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  modalButton: {
-    flex: 1,
-  },
-  importButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    borderWidth: 1.5,
-    borderColor: colors.accent,
-    gap: spacing.sm,
-  },
-  importButtonText: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
-    color: colors.accent,
-  },
-});

@@ -1,8 +1,8 @@
 
 import { supabase } from './supabase';
-import type {
-  Wishlist,
-  WishlistInsert,
+import type { 
+  Wishlist, 
+  WishlistInsert, 
   WishlistUpdate,
   WishlistItem,
   WishlistItemInsert,
@@ -11,348 +11,360 @@ import type {
   PriceHistoryInsert,
   SharedWishlist,
   SharedWishlistInsert,
+  SharedWishlistUpdate
 } from './supabase-types';
 
-// ============================================
-// WISHLIST OPERATIONS
-// ============================================
+// ============================================================================
+// WISHLISTS
+// ============================================================================
 
-export const supabaseWishlists = {
-  // Get all wishlists for the current user
-  getAll: async (): Promise<Wishlist[]> => {
-    console.log('[Supabase] Fetching all wishlists');
-    const { data, error } = await supabase
-      .from('wishlists')
-      .select('*')
-      .order('created_at', { ascending: false });
+export async function fetchWishlists(userId: string) {
+  console.log('[Supabase] Fetching wishlists for user:', userId);
+  
+  const { data, error } = await supabase
+    .from('wishlists')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[Supabase] Error fetching wishlists:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching wishlists:', error);
+    throw new Error(`Failed to fetch wishlists: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched wishlists:', data?.length);
-    return data || [];
-  },
+  console.log('[Supabase] Fetched wishlists:', data?.length);
+  return data as Wishlist[];
+}
 
-  // Get a single wishlist by ID
-  getById: async (id: string): Promise<Wishlist | null> => {
-    console.log('[Supabase] Fetching wishlist:', id);
-    const { data, error } = await supabase
-      .from('wishlists')
-      .select('*')
-      .eq('id', id)
-      .single();
+export async function fetchWishlistById(wishlistId: string) {
+  console.log('[Supabase] Fetching wishlist:', wishlistId);
+  
+  const { data, error } = await supabase
+    .from('wishlists')
+    .select('*')
+    .eq('id', wishlistId)
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error fetching wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching wishlist:', error);
+    throw new Error(`Failed to fetch wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched wishlist:', data?.name);
-    return data;
-  },
+  return data as Wishlist;
+}
 
-  // Create a new wishlist
-  create: async (wishlist: WishlistInsert): Promise<Wishlist> => {
-    console.log('[Supabase] Creating wishlist:', wishlist.name);
-    const { data, error } = await supabase
-      .from('wishlists')
-      .insert(wishlist)
-      .select()
-      .single();
+export async function createWishlist(wishlist: WishlistInsert) {
+  console.log('[Supabase] Creating wishlist:', wishlist.name);
+  
+  const { data, error } = await supabase
+    .from('wishlists')
+    .insert(wishlist)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error creating wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error creating wishlist:', error);
+    throw new Error(`Failed to create wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Created wishlist:', data.id);
-    return data;
-  },
+  console.log('[Supabase] Created wishlist:', data.id);
+  return data as Wishlist;
+}
 
-  // Update a wishlist
-  update: async (id: string, updates: WishlistUpdate): Promise<Wishlist> => {
-    console.log('[Supabase] Updating wishlist:', id);
-    const { data, error } = await supabase
-      .from('wishlists')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+export async function updateWishlist(wishlistId: string, updates: WishlistUpdate) {
+  console.log('[Supabase] Updating wishlist:', wishlistId);
+  
+  const { data, error } = await supabase
+    .from('wishlists')
+    .update(updates)
+    .eq('id', wishlistId)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error updating wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error updating wishlist:', error);
+    throw new Error(`Failed to update wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Updated wishlist:', data.id);
-    return data;
-  },
+  return data as Wishlist;
+}
 
-  // Delete a wishlist
-  delete: async (id: string): Promise<void> => {
-    console.log('[Supabase] Deleting wishlist:', id);
-    const { error } = await supabase
-      .from('wishlists')
-      .delete()
-      .eq('id', id);
+export async function deleteWishlist(wishlistId: string) {
+  console.log('[Supabase] Deleting wishlist:', wishlistId);
+  
+  const { error } = await supabase
+    .from('wishlists')
+    .delete()
+    .eq('id', wishlistId);
 
-    if (error) {
-      console.error('[Supabase] Error deleting wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error deleting wishlist:', error);
+    throw new Error(`Failed to delete wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Deleted wishlist:', id);
-  },
-};
+  console.log('[Supabase] Deleted wishlist:', wishlistId);
+}
 
-// ============================================
-// WISHLIST ITEM OPERATIONS
-// ============================================
+// ============================================================================
+// WISHLIST ITEMS
+// ============================================================================
 
-export const supabaseWishlistItems = {
-  // Get all items for a wishlist
-  getByWishlistId: async (wishlistId: string): Promise<WishlistItem[]> => {
-    console.log('[Supabase] Fetching items for wishlist:', wishlistId);
-    const { data, error } = await supabase
-      .from('wishlist_items')
-      .select('*')
-      .eq('wishlist_id', wishlistId)
-      .order('created_at', { ascending: false });
+export async function fetchWishlistItems(wishlistId: string) {
+  console.log('[Supabase] Fetching items for wishlist:', wishlistId);
+  
+  const { data, error } = await supabase
+    .from('wishlist_items')
+    .select('*')
+    .eq('wishlist_id', wishlistId)
+    .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('[Supabase] Error fetching wishlist items:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching items:', error);
+    throw new Error(`Failed to fetch items: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched items:', data?.length);
-    return data || [];
-  },
+  console.log('[Supabase] Fetched items:', data?.length);
+  return data as WishlistItem[];
+}
 
-  // Get a single item by ID
-  getById: async (id: string): Promise<WishlistItem | null> => {
-    console.log('[Supabase] Fetching item:', id);
-    const { data, error } = await supabase
-      .from('wishlist_items')
-      .select('*')
-      .eq('id', id)
-      .single();
+export async function fetchItemById(itemId: string) {
+  console.log('[Supabase] Fetching item:', itemId);
+  
+  const { data, error } = await supabase
+    .from('wishlist_items')
+    .select('*')
+    .eq('id', itemId)
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error fetching item:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching item:', error);
+    throw new Error(`Failed to fetch item: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched item:', data?.title);
-    return data;
-  },
+  return data as WishlistItem;
+}
 
-  // Create a new item
-  create: async (item: WishlistItemInsert): Promise<WishlistItem> => {
-    console.log('[Supabase] Creating item:', item.title);
-    const { data, error } = await supabase
-      .from('wishlist_items')
-      .insert(item)
-      .select()
-      .single();
+export async function createWishlistItem(item: WishlistItemInsert) {
+  console.log('[Supabase] Creating item:', item.title);
+  
+  const { data, error } = await supabase
+    .from('wishlist_items')
+    .insert(item)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error creating item:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error creating item:', error);
+    throw new Error(`Failed to create item: ${error.message}`);
+  }
 
-    console.log('[Supabase] Created item:', data.id);
-    return data;
-  },
+  console.log('[Supabase] Created item:', data.id);
+  return data as WishlistItem;
+}
 
-  // Update an item
-  update: async (id: string, updates: WishlistItemUpdate): Promise<WishlistItem> => {
-    console.log('[Supabase] Updating item:', id);
-    const { data, error } = await supabase
-      .from('wishlist_items')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+export async function updateWishlistItem(itemId: string, updates: WishlistItemUpdate) {
+  console.log('[Supabase] Updating item:', itemId);
+  
+  const { data, error } = await supabase
+    .from('wishlist_items')
+    .update(updates)
+    .eq('id', itemId)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error updating item:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error updating item:', error);
+    throw new Error(`Failed to update item: ${error.message}`);
+  }
 
-    console.log('[Supabase] Updated item:', data.id);
-    return data;
-  },
+  return data as WishlistItem;
+}
 
-  // Delete an item
-  delete: async (id: string): Promise<void> => {
-    console.log('[Supabase] Deleting item:', id);
-    const { error } = await supabase
-      .from('wishlist_items')
-      .delete()
-      .eq('id', id);
+export async function deleteWishlistItem(itemId: string) {
+  console.log('[Supabase] Deleting item:', itemId);
+  
+  const { error } = await supabase
+    .from('wishlist_items')
+    .delete()
+    .eq('id', itemId);
 
-    if (error) {
-      console.error('[Supabase] Error deleting item:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error deleting item:', error);
+    throw new Error(`Failed to delete item: ${error.message}`);
+  }
 
-    console.log('[Supabase] Deleted item:', id);
-  },
-};
+  console.log('[Supabase] Deleted item:', itemId);
+}
 
-// ============================================
-// PRICE HISTORY OPERATIONS
-// ============================================
+// ============================================================================
+// PRICE HISTORY
+// ============================================================================
 
-export const supabasePriceHistory = {
-  // Get price history for an item
-  getByItemId: async (itemId: string): Promise<PriceHistory[]> => {
-    console.log('[Supabase] Fetching price history for item:', itemId);
-    const { data, error } = await supabase
-      .from('price_history')
-      .select('*')
-      .eq('item_id', itemId)
-      .order('recorded_at', { ascending: true });
+export async function fetchPriceHistory(itemId: string) {
+  console.log('[Supabase] Fetching price history for item:', itemId);
+  
+  const { data, error } = await supabase
+    .from('price_history')
+    .select('*')
+    .eq('item_id', itemId)
+    .order('recorded_at', { ascending: true });
 
-    if (error) {
-      console.error('[Supabase] Error fetching price history:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching price history:', error);
+    throw new Error(`Failed to fetch price history: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched price history entries:', data?.length);
-    return data || [];
-  },
+  return data as PriceHistory[];
+}
 
-  // Add a price history entry
-  create: async (entry: PriceHistoryInsert): Promise<PriceHistory> => {
-    console.log('[Supabase] Creating price history entry for item:', entry.item_id);
-    const { data, error } = await supabase
-      .from('price_history')
-      .insert(entry)
-      .select()
-      .single();
+export async function addPriceHistory(priceEntry: PriceHistoryInsert) {
+  console.log('[Supabase] Adding price history for item:', priceEntry.item_id);
+  
+  const { data, error } = await supabase
+    .from('price_history')
+    .insert(priceEntry)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error creating price history:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error adding price history:', error);
+    throw new Error(`Failed to add price history: ${error.message}`);
+  }
 
-    console.log('[Supabase] Created price history entry:', data.id);
-    return data;
-  },
-};
+  return data as PriceHistory;
+}
 
-// ============================================
-// SHARED WISHLIST OPERATIONS
-// ============================================
+// ============================================================================
+// SHARED WISHLISTS
+// ============================================================================
 
-export const supabaseSharedWishlists = {
-  // Get shared wishlist by share slug
-  getByShareSlug: async (shareSlug: string): Promise<SharedWishlist | null> => {
-    console.log('[Supabase] Fetching shared wishlist by slug:', shareSlug);
-    const { data, error } = await supabase
-      .from('shared_wishlists')
-      .select('*')
-      .eq('share_slug', shareSlug)
-      .single();
+export async function fetchSharedWishlist(shareSlug: string) {
+  console.log('[Supabase] Fetching shared wishlist:', shareSlug);
+  
+  const { data, error } = await supabase
+    .from('shared_wishlists')
+    .select(`
+      *,
+      wishlists (
+        id,
+        name,
+        user_id,
+        created_at
+      )
+    `)
+    .eq('share_slug', shareSlug)
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error fetching shared wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching shared wishlist:', error);
+    throw new Error(`Failed to fetch shared wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched shared wishlist:', data?.id);
-    return data;
-  },
+  return data;
+}
 
-  // Get shared wishlist by wishlist ID
-  getByWishlistId: async (wishlistId: string): Promise<SharedWishlist | null> => {
-    console.log('[Supabase] Fetching shared wishlist for wishlist:', wishlistId);
-    const { data, error } = await supabase
-      .from('shared_wishlists')
-      .select('*')
-      .eq('wishlist_id', wishlistId)
-      .single();
+export async function createSharedWishlist(sharedWishlist: SharedWishlistInsert) {
+  console.log('[Supabase] Creating shared wishlist for:', sharedWishlist.wishlist_id);
+  
+  const { data, error } = await supabase
+    .from('shared_wishlists')
+    .insert(sharedWishlist)
+    .select()
+    .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        console.log('[Supabase] No shared wishlist found');
-        return null;
-      }
-      console.error('[Supabase] Error fetching shared wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error creating shared wishlist:', error);
+    throw new Error(`Failed to create shared wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Fetched shared wishlist:', data?.share_slug);
-    return data;
-  },
+  return data as SharedWishlist;
+}
 
-  // Create a shared wishlist
-  create: async (sharedWishlist: SharedWishlistInsert): Promise<SharedWishlist> => {
-    console.log('[Supabase] Creating shared wishlist for:', sharedWishlist.wishlist_id);
-    const { data, error } = await supabase
-      .from('shared_wishlists')
-      .insert(sharedWishlist)
-      .select()
-      .single();
+export async function updateSharedWishlist(wishlistId: string, updates: SharedWishlistUpdate) {
+  console.log('[Supabase] Updating shared wishlist:', wishlistId);
+  
+  const { data, error } = await supabase
+    .from('shared_wishlists')
+    .update(updates)
+    .eq('wishlist_id', wishlistId)
+    .select()
+    .single();
 
-    if (error) {
-      console.error('[Supabase] Error creating shared wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error updating shared wishlist:', error);
+    throw new Error(`Failed to update shared wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Created shared wishlist:', data.share_slug);
-    return data;
-  },
+  return data as SharedWishlist;
+}
 
-  // Delete a shared wishlist
-  delete: async (id: string): Promise<void> => {
-    console.log('[Supabase] Deleting shared wishlist:', id);
-    const { error } = await supabase
-      .from('shared_wishlists')
-      .delete()
-      .eq('id', id);
+export async function deleteSharedWishlist(wishlistId: string) {
+  console.log('[Supabase] Deleting shared wishlist:', wishlistId);
+  
+  const { error } = await supabase
+    .from('shared_wishlists')
+    .delete()
+    .eq('wishlist_id', wishlistId);
 
-    if (error) {
-      console.error('[Supabase] Error deleting shared wishlist:', error);
-      throw error;
-    }
+  if (error) {
+    console.error('[Supabase] Error deleting shared wishlist:', error);
+    throw new Error(`Failed to delete shared wishlist: ${error.message}`);
+  }
 
-    console.log('[Supabase] Deleted shared wishlist:', id);
-  },
+  console.log('[Supabase] Deleted shared wishlist:', wishlistId);
+}
 
-  // Get wishlist with items by share slug (for public viewing)
-  getPublicWishlistBySlug: async (shareSlug: string) => {
-    console.log('[Supabase] Fetching public wishlist by slug:', shareSlug);
-    
-    const sharedWishlist = await supabaseSharedWishlists.getByShareSlug(shareSlug);
-    if (!sharedWishlist) {
-      throw new Error('Shared wishlist not found');
-    }
+export async function fetchSharedWishlistByWishlistId(wishlistId: string) {
+  console.log('[Supabase] Fetching shared wishlist by wishlist ID:', wishlistId);
+  
+  const { data, error } = await supabase
+    .from('shared_wishlists')
+    .select('*')
+    .eq('wishlist_id', wishlistId)
+    .maybeSingle();
 
-    const wishlist = await supabaseWishlists.getById(sharedWishlist.wishlist_id);
-    if (!wishlist) {
-      throw new Error('Wishlist not found');
-    }
+  if (error) {
+    console.error('[Supabase] Error fetching shared wishlist:', error);
+    throw new Error(`Failed to fetch shared wishlist: ${error.message}`);
+  }
 
-    const items = await supabaseWishlistItems.getByWishlistId(wishlist.id);
+  return data as SharedWishlist | null;
+}
 
-    console.log('[Supabase] Fetched public wishlist with items:', items.length);
-    return {
-      wishlist,
-      items,
-      sharedWishlist,
-    };
-  },
-};
-
-// ============================================
+// ============================================================================
 // UTILITY FUNCTIONS
-// ============================================
+// ============================================================================
 
-// Generate a random share slug
+export async function getWishlistWithItemCount(userId: string) {
+  console.log('[Supabase] Fetching wishlists with item counts for user:', userId);
+  
+  const { data, error } = await supabase
+    .from('wishlists')
+    .select(`
+      *,
+      wishlist_items (count)
+    `)
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[Supabase] Error fetching wishlists with counts:', error);
+    throw new Error(`Failed to fetch wishlists: ${error.message}`);
+  }
+
+  const wishlistsWithCounts = data.map((wishlist: any) => ({
+    id: wishlist.id,
+    name: wishlist.name,
+    userId: wishlist.user_id,
+    createdAt: wishlist.created_at,
+    updatedAt: wishlist.updated_at,
+    itemCount: wishlist.wishlist_items?.[0]?.count || 0,
+    isDefault: false, // Can be determined by checking if it's the first wishlist
+  }));
+
+  return wishlistsWithCounts;
+}
+
 export function generateShareSlug(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let slug = '';
@@ -360,32 +372,4 @@ export function generateShareSlug(): string {
     slug += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return slug;
-}
-
-// Check if a price has dropped
-export function checkPriceDrop(currentPrice: number | null, priceHistory: PriceHistory[]): {
-  priceDropped: boolean;
-  originalPrice: number | null;
-  currentPrice: number | null;
-  percentageChange: number | null;
-} {
-  if (!currentPrice || priceHistory.length === 0) {
-    return {
-      priceDropped: false,
-      originalPrice: null,
-      currentPrice: null,
-      percentageChange: null,
-    };
-  }
-
-  const originalPrice = priceHistory[0].price;
-  const priceDropped = currentPrice < originalPrice;
-  const percentageChange = ((currentPrice - originalPrice) / originalPrice) * 100;
-
-  return {
-    priceDropped,
-    originalPrice,
-    currentPrice,
-    percentageChange,
-  };
 }
