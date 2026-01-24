@@ -117,6 +117,10 @@ export const userSettings = pgTable(
     quietHoursEnabled: boolean('quiet_hours_enabled').default(false).notNull(),
     quietHoursStartTime: text('quiet_hours_start_time'),
     quietHoursEndTime: text('quiet_hours_end_time'),
+    languageMode: text('language_mode', { enum: ['system', 'manual'] })
+      .default('system')
+      .notNull(),
+    languageCode: text('language_code').default('en').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

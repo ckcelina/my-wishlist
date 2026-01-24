@@ -92,6 +92,13 @@
       "when": 1769273113753,
       "tag": "20260124164513_classy_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1769274512346,
+      "tag": "20260124170832_strong_tarot",
+      "breakpoints": true
     }
   ]
 }
