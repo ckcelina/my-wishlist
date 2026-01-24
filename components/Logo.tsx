@@ -18,9 +18,12 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 export function Logo({ size = 'medium', style }: LogoProps) {
   const { isDark } = useAppTheme();
   
-  // Use official My Wishlist logos
-  const darkModeLogo = require('@/assets/images/74fdce54-12b6-4e4f-a867-37dee7e10bc0.png');
-  const lightModeLogo = require('@/assets/images/42c81ce9-afb0-476b-8c24-c86782627d50.png');
+  // My Wishlist logos - theme aware
+  // Dark mode: black background with white geometric shapes
+  const darkModeLogo = require('@/assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png');
+  // Light mode: white background with dark geometric shapes
+  // Using the same logo for now - you can replace with a light version if available
+  const lightModeLogo = require('@/assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png');
   
   const logoSource = isDark ? darkModeLogo : lightModeLogo;
   
@@ -30,7 +33,7 @@ export function Logo({ size = 'medium', style }: LogoProps) {
     large: { width: 160, height: 160 },
   };
   
-  console.log('[Logo] Rendering logo for theme:', isDark ? 'dark' : 'light');
+  console.log('[Logo] Rendering My Wishlist logo for theme:', isDark ? 'dark' : 'light');
   
   return (
     <Image
@@ -43,6 +46,6 @@ export function Logo({ size = 'medium', style }: LogoProps) {
 
 const styles = StyleSheet.create({
   logo: {
-    // Additional styling if needed
+    borderRadius: 20,
   },
 });

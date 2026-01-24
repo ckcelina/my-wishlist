@@ -1,20 +1,21 @@
+
 {
   "expo": {
     "name": "My Wishlist",
     "slug": "My Wishlist",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/natively-dark.png",
+    "icon": "./assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/natively-dark.png",
+      "image": "./assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Natively",
+      "bundleIdentifier": "com.anonymous.MyWishlist",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
@@ -24,11 +25,11 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/natively-dark.png",
+        "foregroundImage": "./assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png",
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.Natively",
+      "package": "com.anonymous.MyWishlist",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -62,7 +63,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -72,13 +73,13 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/natively-dark.png",
+          "icon": "./assets/images/7ef63ee6-ea78-4ae0-8c0f-5dabcd379909.png",
           "color": "#000000",
           "defaultChannel": "price-drops"
         }
       ]
     ],
-    "scheme": "wishzen",
+    "scheme": "mywishlist",
     "experiments": {
       "typedRoutes": true
     },
@@ -89,5 +90,5 @@
       "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY"
     }
   },
-  "scheme": "My Wishlist"
+  "scheme": "mywishlist"
 }
