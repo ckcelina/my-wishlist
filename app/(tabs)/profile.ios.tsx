@@ -56,6 +56,7 @@ export default function ProfileScreen() {
   const haptics = useHaptics();
   
   const [priceDropAlerts, setPriceDropAlerts] = useState(false);
+  const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
@@ -66,11 +67,13 @@ export default function ProfileScreen() {
     try {
       const data = await authenticatedGet<{
         priceDropAlertsEnabled: boolean;
+        weeklyDigestEnabled: boolean;
         defaultCurrency: string;
       }>('/api/users/settings');
       
       console.log('[ProfileScreen] Settings fetched:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
+      setWeeklyDigest(data.weeklyDigestEnabled || false);
       setDefaultCurrency(data.defaultCurrency || 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
@@ -96,16 +99,18 @@ export default function ProfileScreen() {
     }
   }, [user, fetchSettings, fetchLocation]);
 
-  const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; defaultCurrency?: string }) => {
+  const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; weeklyDigestEnabled?: boolean; defaultCurrency?: string }) => {
     console.log('[ProfileScreen] Updating settings:', updates);
     try {
       const data = await authenticatedPut<{
         priceDropAlertsEnabled: boolean;
+        weeklyDigestEnabled: boolean;
         defaultCurrency: string;
       }>('/api/users/settings', updates);
       
       console.log('[ProfileScreen] Settings updated:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
+      setWeeklyDigest(data.weeklyDigestEnabled || false);
       setDefaultCurrency(data.defaultCurrency || 'USD');
       haptics.success();
     } catch (error) {
@@ -181,13 +186,13 @@ export default function ProfileScreen() {
   const handlePrivacyPolicy = () => {
     console.log('[ProfileScreen] User tapped Privacy Policy');
     haptics.light();
-    Alert.alert('Privacy Policy', 'Privacy policy coming soon.');
+    router.push('/legal/privacy');
   };
 
   const handleTerms = () => {
     console.log('[ProfileScreen] User tapped Terms of Service');
     haptics.light();
-    Alert.alert('Terms of Service', 'Terms of service coming soon.');
+    router.push('/legal/terms');
   };
 
   const handleEditLocation = () => {

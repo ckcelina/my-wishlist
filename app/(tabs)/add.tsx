@@ -466,6 +466,70 @@ export default function AddItemScreen() {
     setSaving(true);
 
     try {
+      // Check for duplicates before saving
+      console.log('[AddItemScreen] Checking for duplicates');
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishlistId,
+          title: extractedTitle.trim(),
+          originalUrl: originalUrl || undefined,
+          imageUrl: extractedImageUrl || undefined,
+        }),
+      });
+
+      if (!duplicateCheckResponse.ok) {
+        console.error('[AddItemScreen] Duplicate check failed, proceeding anyway');
+      } else {
+        const duplicateData = await duplicateCheckResponse.json();
+        console.log('[AddItemScreen] Duplicate check result:', duplicateData);
+
+        if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
+          console.log('[AddItemScreen] Found duplicates:', duplicateData.duplicates.length);
+          
+          // Show duplicate detection modal
+          const DuplicateDetectionModal = (await import('@/components/DuplicateDetectionModal')).DuplicateDetectionModal;
+          
+          // For now, show an alert (we'll implement the modal properly later)
+          const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
+          Alert.alert(
+            'Possible Duplicate',
+            `This item looks similar to:\n\n${duplicateTitles}\n\nDo you want to add it anyway?`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  setSaving(false);
+                },
+              },
+              {
+                text: 'Add Anyway',
+                onPress: async () => {
+                  await saveItemToBackend();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+
+      // No duplicates found, proceed with saving
+      await saveItemToBackend();
+    } catch (error: any) {
+      console.error('Failed to save item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  const saveItemToBackend = async () => {
+    try {
       let finalImageUrl = extractedImageUrl;
       if (extractedImageUrl && extractedImageUrl.startsWith('file://')) {
         console.log('Uploading local image to backend');
@@ -551,6 +615,65 @@ export default function AddItemScreen() {
     console.log('Saving manual item to wishlist:', wishlistId);
     setSaving(true);
 
+    try {
+      // Check for duplicates before saving
+      console.log('[AddItemScreen] Checking for duplicates (manual)');
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishlistId,
+          title: manualTitle.trim(),
+          imageUrl: manualImageUri || undefined,
+        }),
+      });
+
+      if (!duplicateCheckResponse.ok) {
+        console.error('[AddItemScreen] Duplicate check failed, proceeding anyway');
+      } else {
+        const duplicateData = await duplicateCheckResponse.json();
+        console.log('[AddItemScreen] Duplicate check result:', duplicateData);
+
+        if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
+          console.log('[AddItemScreen] Found duplicates:', duplicateData.duplicates.length);
+          
+          const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
+          Alert.alert(
+            'Possible Duplicate',
+            `This item looks similar to:\n\n${duplicateTitles}\n\nDo you want to add it anyway?`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  setSaving(false);
+                },
+              },
+              {
+                text: 'Add Anyway',
+                onPress: async () => {
+                  await saveManualItemToBackend();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+
+      // No duplicates found, proceed with saving
+      await saveManualItemToBackend();
+    } catch (error: any) {
+      console.error('Failed to save manual item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  const saveManualItemToBackend = async () => {
     try {
       let finalImageUrl = manualImageUri;
       if (manualImageUri && manualImageUri.startsWith('file://')) {
@@ -654,9 +777,45 @@ export default function AddItemScreen() {
     setIdentifying(true);
 
     try {
-      // TODO: Backend Integration - POST /api/items/identify-from-image
-      // Body: { imageUrl?: string, imageBase64?: string }
-      // Returns: { bestGuessTitle, bestGuessCategory, keywords, confidence, suggestedProducts }
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      
+      // Prepare request body
+      const requestBody: { imageUrl?: string; imageBase64?: string } = {};
+      
+      if (imageForIdentification.startsWith('http://') || imageForIdentification.startsWith('https://')) {
+        // It's a URL
+        requestBody.imageUrl = imageForIdentification;
+      } else if (imageForIdentification.startsWith('file://')) {
+        // It's a local file, we need to convert to base64
+        // For now, upload it first and use the URL
+        const uploadedUrl = await uploadImage(imageForIdentification);
+        if (uploadedUrl) {
+          requestBody.imageUrl = uploadedUrl;
+        } else {
+          throw new Error('Failed to upload image');
+        }
+      } else {
+        // Assume it's already base64
+        requestBody.imageBase64 = imageForIdentification;
+      }
+
+      console.log('[AddItemScreen] Calling identify-from-image API');
+      const response = await fetch(`${backendUrl}/api/items/identify-from-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[AddItemScreen] Image identification failed:', errorText);
+        throw new Error('Failed to identify product');
+      }
+
+      const data = await response.json();
+      console.log('[AddItemScreen] Image identification result:', data);
       
       // Navigate to confirmation screen with results
       router.push({
@@ -664,6 +823,7 @@ export default function AddItemScreen() {
         params: {
           imageUrl: imageForIdentification,
           wishlistId: wishlistId as string,
+          identificationResult: JSON.stringify(data),
         },
       });
     } catch (error: any) {

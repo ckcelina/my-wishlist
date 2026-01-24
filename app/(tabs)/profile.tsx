@@ -58,6 +58,7 @@ export default function ProfileScreen() {
   const haptics = useHaptics();
   
   const [priceDropAlerts, setPriceDropAlerts] = useState(false);
+  const [weeklyDigest, setWeeklyDigest] = useState(false);
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
@@ -68,11 +69,13 @@ export default function ProfileScreen() {
     try {
       const data = await authenticatedGet<{
         priceDropAlertsEnabled: boolean;
+        weeklyDigestEnabled: boolean;
         defaultCurrency: string;
       }>('/api/users/settings');
       
       console.log('[ProfileScreen] Settings fetched:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
+      setWeeklyDigest(data.weeklyDigestEnabled || false);
       setDefaultCurrency(data.defaultCurrency || 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
@@ -98,16 +101,18 @@ export default function ProfileScreen() {
     }
   }, [user, fetchSettings, fetchLocation]);
 
-  const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; defaultCurrency?: string }) => {
+  const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; weeklyDigestEnabled?: boolean; defaultCurrency?: string }) => {
     console.log('[ProfileScreen] Updating settings:', updates);
     try {
       const data = await authenticatedPut<{
         priceDropAlertsEnabled: boolean;
+        weeklyDigestEnabled: boolean;
         defaultCurrency: string;
       }>('/api/users/settings', updates);
       
       console.log('[ProfileScreen] Settings updated:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
+      setWeeklyDigest(data.weeklyDigestEnabled || false);
       setDefaultCurrency(data.defaultCurrency || 'USD');
       haptics.success();
     } catch (error) {
@@ -183,13 +188,13 @@ export default function ProfileScreen() {
   const handlePrivacyPolicy = () => {
     console.log('[ProfileScreen] User tapped Privacy Policy');
     haptics.light();
-    Alert.alert('Privacy Policy', 'Privacy policy coming soon.');
+    router.push('/legal/privacy');
   };
 
   const handleTerms = () => {
     console.log('[ProfileScreen] User tapped Terms of Service');
     haptics.light();
-    Alert.alert('Terms of Service', 'Terms of service coming soon.');
+    router.push('/legal/terms');
   };
 
   const handleEditLocation = () => {
@@ -463,6 +468,62 @@ export default function ProfileScreen() {
                   color={theme.colors.textSecondary}
                 />
               </View>
+            </PressableScale>
+
+            <Divider />
+
+            <View style={styles.menuItem}>
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="calendar"
+                  android_material_icon_name="calendar-today"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Weekly Deals Summary</Text>
+              </View>
+              <Switch
+                value={weeklyDigest}
+                onValueChange={(value) => {
+                  haptics.selection();
+                  setWeeklyDigest(value);
+                  updateSettings({ weeklyDigestEnabled: value });
+                }}
+                trackColor={{ false: theme.colors.border, true: theme.colors.accent + '80' }}
+                thumbColor={weeklyDigest ? theme.colors.accent : theme.colors.card}
+              />
+            </View>
+          </Card>
+        </Animated.View>
+
+        {/* Engagement Section */}
+        <Animated.View entering={FadeInDown.delay(175).springify()} style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>DEALS</Text>
+          
+          <Card style={styles.card}>
+            <PressableScale
+              style={styles.menuItem}
+              onPress={() => {
+                haptics.light();
+                router.push('/on-sale');
+              }}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="tag"
+                  android_material_icon_name="local-offer"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>On Sale</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
             </PressableScale>
           </Card>
         </Animated.View>

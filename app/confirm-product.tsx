@@ -224,7 +224,7 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 
 export default function ConfirmProductScreen() {
   const router = useRouter();
-  const { imageUrl, wishlistId } = useLocalSearchParams();
+  const { imageUrl, wishlistId, identificationResult } = useLocalSearchParams();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -242,50 +242,73 @@ export default function ConfirmProductScreen() {
 
   useEffect(() => {
     console.log('ConfirmProductScreen mounted with imageUrl:', imageUrl);
-    identifyProduct();
-  }, [imageUrl]);
+    
+    // Check if we already have identification result from params
+    if (identificationResult && typeof identificationResult === 'string') {
+      try {
+        const parsedResult = JSON.parse(identificationResult);
+        console.log('[ConfirmProductScreen] Using pre-identified result:', parsedResult);
+        setResult(parsedResult);
+        setTitle(parsedResult.bestGuessTitle || '');
+        setLoading(false);
+      } catch (error) {
+        console.error('[ConfirmProductScreen] Failed to parse identification result:', error);
+        identifyProduct();
+      }
+    } else {
+      identifyProduct();
+    }
+  }, [imageUrl, identificationResult]);
 
   const identifyProduct = async () => {
-    console.log('Calling identify-from-image API');
+    console.log('[ConfirmProductScreen] Calling identify-from-image API');
     setLoading(true);
     setIdentifying(true);
 
     try {
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       
-      // TODO: Backend Integration - POST /api/items/identify-from-image
-      // Body: { imageUrl?: string, imageBase64?: string }
-      // Returns: { bestGuessTitle, bestGuessCategory, keywords, confidence, suggestedProducts }
+      // Prepare request body
+      const requestBody: { imageUrl?: string; imageBase64?: string } = {};
       
-      // Mock data for now
-      const mockResult: IdentificationResult = {
-        bestGuessTitle: 'Product Name',
-        bestGuessCategory: 'Electronics',
-        keywords: ['product', 'electronics', 'gadget'],
-        confidence: 0.85,
-        suggestedProducts: [
-          {
-            title: 'Similar Product 1',
-            imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
-            likelyUrl: 'https://example.com/product1',
-          },
-          {
-            title: 'Similar Product 2',
-            imageUrl: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400',
-            likelyUrl: 'https://example.com/product2',
-          },
-          {
-            title: 'Similar Product 3',
-            imageUrl: 'https://images.unsplash.com/photo-1572635196237-14b3f281503f?w=400',
-            likelyUrl: 'https://example.com/product3',
-          },
-        ],
-      };
+      if (typeof imageUrl === 'string') {
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          requestBody.imageUrl = imageUrl;
+        } else if (imageUrl.startsWith('file://')) {
+          // Upload local file first
+          const uploadedUrl = await uploadImage(imageUrl);
+          if (uploadedUrl) {
+            requestBody.imageUrl = uploadedUrl;
+          } else {
+            throw new Error('Failed to upload image');
+          }
+        } else {
+          requestBody.imageBase64 = imageUrl;
+        }
+      }
 
-      setResult(mockResult);
-      setTitle(mockResult.bestGuessTitle || '');
+      console.log('[ConfirmProductScreen] Sending identification request');
+      const response = await fetch(`${backendUrl}/api/items/identify-from-image`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[ConfirmProductScreen] Image identification failed:', errorText);
+        throw new Error('Failed to identify product');
+      }
+
+      const data = await response.json();
+      console.log('[ConfirmProductScreen] Image identification result:', data);
+
+      setResult(data);
+      setTitle(data.bestGuessTitle || '');
     } catch (error: any) {
-      console.error('Failed to identify product:', error);
+      console.error('[ConfirmProductScreen] Failed to identify product:', error);
       Alert.alert('Error', 'Failed to identify product. Please try again.');
     } finally {
       setLoading(false);
@@ -380,13 +403,72 @@ export default function ConfirmProductScreen() {
       return;
     }
 
-    console.log('Saving confirmed product to wishlist:', wishlistId);
+    console.log('[ConfirmProductScreen] Saving confirmed product to wishlist:', wishlistId);
     setSaving(true);
 
     try {
+      // Check for duplicates before saving
+      console.log('[ConfirmProductScreen] Checking for duplicates');
+      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          wishlistId,
+          title: title.trim(),
+          imageUrl: imageUri || undefined,
+        }),
+      });
+
+      if (!duplicateCheckResponse.ok) {
+        console.error('[ConfirmProductScreen] Duplicate check failed, proceeding anyway');
+      } else {
+        const duplicateData = await duplicateCheckResponse.json();
+        console.log('[ConfirmProductScreen] Duplicate check result:', duplicateData);
+
+        if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
+          console.log('[ConfirmProductScreen] Found duplicates:', duplicateData.duplicates.length);
+          
+          const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
+          Alert.alert(
+            'Possible Duplicate',
+            `This item looks similar to:\n\n${duplicateTitles}\n\nDo you want to add it anyway?`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  setSaving(false);
+                },
+              },
+              {
+                text: 'Add Anyway',
+                onPress: async () => {
+                  await saveConfirmedItemToBackend();
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+
+      // No duplicates found, proceed with saving
+      await saveConfirmedItemToBackend();
+    } catch (error: any) {
+      console.error('[ConfirmProductScreen] Failed to save item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  const saveConfirmedItemToBackend = async () => {
+    try {
       let finalImageUrl = imageUri;
       if (imageUri && imageUri.startsWith('file://')) {
-        console.log('Uploading local image to backend');
+        console.log('[ConfirmProductScreen] Uploading local image to backend');
         const uploadedUrl = await uploadImage(imageUri);
         if (uploadedUrl) {
           finalImageUrl = uploadedUrl;
@@ -417,7 +499,7 @@ export default function ConfirmProductScreen() {
       }
 
       const savedItem = await response.json();
-      console.log('Item saved successfully:', savedItem);
+      console.log('[ConfirmProductScreen] Item saved successfully:', savedItem);
 
       Alert.alert('Success', 'Item added to wishlist!', [
         {
@@ -426,7 +508,7 @@ export default function ConfirmProductScreen() {
         },
       ]);
     } catch (error: any) {
-      console.error('Failed to save item:', error);
+      console.error('[ConfirmProductScreen] Failed to save item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
     } finally {
       setSaving(false);
