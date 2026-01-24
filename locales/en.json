@@ -324,7 +324,16 @@
     "tryAgain": "Try Again",
     "goBack": "Go Back",
     "offline": "You are offline",
-    "offlineDesc": "Your changes will be saved and synced when you're back online"
+    "offlineDesc": "Your changes will be saved and synced when you're back online",
+    "authFailed": "Authentication failed. Please try again.",
+    "invalidCredentials": "Invalid email or password.",
+    "networkOffline": "No internet connection. Please check your network.",
+    "aiExtractionFailed": "Unable to extract item details. Please try again or enter manually.",
+    "importPartialFailure": "Some items could not be imported. Please review and try again.",
+    "storeUnavailable": "This store is not available in your area.",
+    "linkUnavailable": "This link is no longer available.",
+    "invalidLink": "Invalid link. Please check the URL.",
+    "cannotOpenLink": "Unable to open this link on your device."
   },
   "empty": {
     "noWishlists": "No wishlists yet",

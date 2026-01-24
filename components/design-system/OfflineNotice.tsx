@@ -4,8 +4,10 @@ import { View, Text, StyleSheet, Animated } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing } from '@/styles/designSystem';
+import { useTranslation } from 'react-i18next';
 
 export function OfflineNotice() {
+  const { t } = useTranslation();
   const [isOffline, setIsOffline] = useState(false);
   const [slideAnim] = useState(new Animated.Value(-100));
 
@@ -37,6 +39,8 @@ export function OfflineNotice() {
     return null;
   }
 
+  const offlineText = t('errors.networkOffline');
+
   return (
     <Animated.View 
       style={[
@@ -52,7 +56,7 @@ export function OfflineNotice() {
         size={16}
         color={colors.textInverse}
       />
-      <Text style={styles.text}>No internet connection</Text>
+      <Text style={styles.text}>{offlineText}</Text>
     </Animated.View>
   );
 }

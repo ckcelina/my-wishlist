@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import * as Clipboard from 'expo-clipboard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { getDiagnosticLogs, clearDiagnosticLogs, formatDiagnostics } from '@/utils/observability';
+import { useI18n } from '@/contexts/I18nContext';
+import { useTranslation } from 'react-i18next';
 
 interface LogEntry {
   timestamp: string;
@@ -32,6 +35,8 @@ function resolveImageSource(source: string | number | any | undefined): any {
 
 export default function DiagnosticsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const { translationDebugEnabled, toggleTranslationDebug, currentLanguage, isRTL } = useI18n();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -80,6 +85,10 @@ export default function DiagnosticsScreen() {
     );
   }
 
+  async function handleToggleTranslationDebug() {
+    await toggleTranslationDebug();
+  }
+
   function getLevelColor(level: string) {
     switch (level) {
       case 'error':
@@ -106,6 +115,8 @@ export default function DiagnosticsScreen() {
   const totalWarnings = logs.filter(l => l.level === 'warn').length;
   const totalEvents = logs.filter(l => l.type === 'event').length;
 
+  const directionText = isRTL ? 'RTL' : 'LTR';
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
@@ -115,118 +126,155 @@ export default function DiagnosticsScreen() {
         }}
       />
 
-      <View style={styles.header}>
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{logs.length}</Text>
-            <Text style={styles.statLabel}>Total Logs</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: colors.error }]}>{totalErrors}</Text>
-            <Text style={styles.statLabel}>Errors</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: colors.warning }]}>{totalWarnings}</Text>
-            <Text style={styles.statLabel}>Warnings</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: colors.primary }]}>{totalEvents}</Text>
-            <Text style={styles.statLabel}>Events</Text>
-          </View>
-        </View>
-
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.primaryButton]}
-            onPress={handleCopyDiagnostics}
-          >
-            <IconSymbol
-              ios_icon_name="doc.on.doc"
-              android_material_icon_name="content-copy"
-              size={18}
-              color={colors.textInverse}
-            />
-            <Text style={styles.primaryButtonText}>Copy Diagnostics</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, styles.secondaryButton]}
-            onPress={handleClearLogs}
-          >
-            <IconSymbol
-              ios_icon_name="trash"
-              android_material_icon_name="delete"
-              size={18}
-              color={colors.error}
-            />
-            <Text style={styles.secondaryButtonText}>Clear</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={containerStyles.center}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      ) : logs.length === 0 ? (
-        <View style={containerStyles.center}>
-          <IconSymbol
-            ios_icon_name="checkmark.circle"
-            android_material_icon_name="check-circle"
-            size={64}
-            color={colors.success}
-          />
-          <Text style={styles.emptyTitle}>No logs yet</Text>
-          <Text style={styles.emptyDescription}>
-            Diagnostic logs will appear here as you use the app
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Translation Debug</Text>
+          <Text style={styles.sectionDescription}>
+            Show missing translation keys in brackets with warning color
           </Text>
+          
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Translation Debug Mode</Text>
+              <Text style={styles.settingDescription}>
+                {translationDebugEnabled ? 'Missing keys shown as [key_name]' : 'Normal mode'}
+              </Text>
+            </View>
+            <Switch
+              value={translationDebugEnabled}
+              onValueChange={handleToggleTranslationDebug}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.background}
+            />
+          </View>
+
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Current Language:</Text>
+              <Text style={styles.infoValue}>{currentLanguage}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Text Direction:</Text>
+              <Text style={styles.infoValue}>{directionText}</Text>
+            </View>
+          </View>
         </View>
-      ) : (
-        <ScrollView style={styles.logsList}>
-          {logs.map((log, index) => {
-            const isExpanded = expandedIndex === index;
-            const levelColor = getLevelColor(log.level);
-            const levelIcon = getLevelIcon(log.level);
-            const time = new Date(log.timestamp).toLocaleString();
 
-            return (
-              <TouchableOpacity
-                key={index}
-                style={styles.logItem}
-                onPress={() => setExpandedIndex(isExpanded ? null : index)}
-              >
-                <View style={styles.logHeader}>
-                  <IconSymbol
-                    ios_icon_name={levelIcon}
-                    android_material_icon_name={levelIcon}
-                    size={20}
-                    color={levelColor}
-                  />
-                  <View style={styles.logHeaderText}>
-                    <Text style={styles.logMessage} numberOfLines={isExpanded ? undefined : 1}>
-                      {log.message}
-                    </Text>
-                    <Text style={styles.logTime}>{time}</Text>
-                  </View>
-                  <View style={[styles.levelBadge, { backgroundColor: `${levelColor}20` }]}>
-                    <Text style={[styles.levelText, { color: levelColor }]}>
-                      {log.level.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Diagnostic Logs</Text>
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{logs.length}</Text>
+              <Text style={styles.statLabel}>Total</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.error }]}>{totalErrors}</Text>
+              <Text style={styles.statLabel}>Errors</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.warning }]}>{totalWarnings}</Text>
+              <Text style={styles.statLabel}>Warnings</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: colors.primary }]}>{totalEvents}</Text>
+              <Text style={styles.statLabel}>Events</Text>
+            </View>
+          </View>
 
-                {isExpanded && log.data && (
-                  <View style={styles.logData}>
-                    <Text style={styles.logDataText}>
-                      {JSON.stringify(log.data, null, 2)}
-                    </Text>
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.primaryButton]}
+              onPress={handleCopyDiagnostics}
+            >
+              <IconSymbol
+                ios_icon_name="doc.on.doc"
+                android_material_icon_name="content-copy"
+                size={18}
+                color={colors.textInverse}
+              />
+              <Text style={styles.primaryButtonText}>Copy</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.actionButton, styles.secondaryButton]}
+              onPress={handleClearLogs}
+            >
+              <IconSymbol
+                ios_icon_name="trash"
+                android_material_icon_name="delete"
+                size={18}
+                color={colors.error}
+              />
+              <Text style={styles.secondaryButtonText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={containerStyles.center}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : logs.length === 0 ? (
+          <View style={styles.emptyState}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle"
+              android_material_icon_name="check-circle"
+              size={64}
+              color={colors.success}
+            />
+            <Text style={styles.emptyTitle}>No logs yet</Text>
+            <Text style={styles.emptyDescription}>
+              Diagnostic logs will appear here as you use the app
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.logsList}>
+            {logs.map((log, index) => {
+              const isExpanded = expandedIndex === index;
+              const levelColor = getLevelColor(log.level);
+              const levelIcon = getLevelIcon(log.level);
+              const time = new Date(log.timestamp).toLocaleString();
+
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={styles.logItem}
+                  onPress={() => setExpandedIndex(isExpanded ? null : index)}
+                >
+                  <View style={styles.logHeader}>
+                    <IconSymbol
+                      ios_icon_name={levelIcon}
+                      android_material_icon_name={levelIcon}
+                      size={20}
+                      color={levelColor}
+                    />
+                    <View style={styles.logHeaderText}>
+                      <Text style={styles.logMessage} numberOfLines={isExpanded ? undefined : 1}>
+                        {log.message}
+                      </Text>
+                      <Text style={styles.logTime}>{time}</Text>
+                    </View>
+                    <View style={[styles.levelBadge, { backgroundColor: `${levelColor}20` }]}>
+                      <Text style={[styles.levelText, { color: levelColor }]}>
+                        {log.level.toUpperCase()}
+                      </Text>
+                    </View>
                   </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      )}
+
+                  {isExpanded && log.data && (
+                    <View style={styles.logData}>
+                      <Text style={styles.logDataText}>
+                        {JSON.stringify(log.data, null, 2)}
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -236,10 +284,66 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
+  scrollView: {
+    flex: 1,
+  },
+  section: {
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  sectionTitle: {
+    ...typography.titleMedium,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  sectionDescription: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  settingLabel: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  settingDescription: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+  },
+  infoCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  infoLabel: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+  },
+  infoValue: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',
@@ -295,7 +399,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   logsList: {
-    flex: 1,
+    paddingBottom: spacing.xl,
   },
   logItem: {
     padding: spacing.md,
@@ -339,6 +443,10 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontFamily: 'monospace',
     color: colors.textSecondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: spacing.xl,
   },
   emptyTitle: {
     ...typography.titleMedium,

@@ -8,12 +8,15 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { getDiagnosticLogs, clearDiagnosticLogs, formatDiagnostics } from '@/utils/observability';
+import { useI18n } from '@/contexts/I18nContext';
+import { useTranslation } from 'react-i18next';
 
 interface LogEntry {
   timestamp: string;
@@ -31,6 +34,8 @@ function resolveImageSource(source: string | number | any | undefined): any {
 
 export default function DiagnosticsScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const { translationDebugEnabled, toggleTranslationDebug, currentLanguage, isRTL } = useI18n();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -79,6 +84,10 @@ export default function DiagnosticsScreen() {
     );
   }
 
+  async function handleToggleTranslationDebug() {
+    await toggleTranslationDebug();
+  }
+
   function getLevelColor(level: string) {
     switch (level) {
       case 'error':
@@ -105,6 +114,8 @@ export default function DiagnosticsScreen() {
   const totalWarnings = logs.filter(l => l.level === 'warn').length;
   const totalEvents = logs.filter(l => l.type === 'event').length;
 
+  const directionText = isRTL ? 'RTL' : 'LTR';
+
   return (
     <>
       <Stack.Screen
@@ -113,12 +124,47 @@ export default function DiagnosticsScreen() {
           headerShown: true,
         }}
       />
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <ScrollView style={styles.container}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Translation Debug</Text>
+          <Text style={styles.sectionDescription}>
+            Show missing translation keys in brackets with warning color
+          </Text>
+          
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Translation Debug Mode</Text>
+              <Text style={styles.settingDescription}>
+                {translationDebugEnabled ? 'Missing keys shown as [key_name]' : 'Normal mode'}
+              </Text>
+            </View>
+            <Switch
+              value={translationDebugEnabled}
+              onValueChange={handleToggleTranslationDebug}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor={colors.background}
+            />
+          </View>
+
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Current Language:</Text>
+              <Text style={styles.infoValue}>{currentLanguage}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Text Direction:</Text>
+              <Text style={styles.infoValue}>{directionText}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Diagnostic Logs</Text>
+          
           <View style={styles.statsRow}>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{logs.length}</Text>
-              <Text style={styles.statLabel}>Total Logs</Text>
+              <Text style={styles.statLabel}>Total</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={[styles.statValue, { color: colors.error }]}>{totalErrors}</Text>
@@ -145,7 +191,7 @@ export default function DiagnosticsScreen() {
                 size={18}
                 color={colors.textInverse}
               />
-              <Text style={styles.primaryButtonText}>Copy Diagnostics</Text>
+              <Text style={styles.primaryButtonText}>Copy</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -168,7 +214,7 @@ export default function DiagnosticsScreen() {
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : logs.length === 0 ? (
-          <View style={containerStyles.center}>
+          <View style={styles.emptyState}>
             <IconSymbol
               ios_icon_name="checkmark.circle.fill"
               android_material_icon_name="check-circle"
@@ -181,7 +227,7 @@ export default function DiagnosticsScreen() {
             </Text>
           </View>
         ) : (
-          <ScrollView style={styles.logsList}>
+          <View style={styles.logsList}>
             {logs.map((log, index) => {
               const isExpanded = expandedIndex === index;
               const levelColor = getLevelColor(log.level);
@@ -224,9 +270,9 @@ export default function DiagnosticsScreen() {
                 </TouchableOpacity>
               );
             })}
-          </ScrollView>
+          </View>
         )}
-      </View>
+      </ScrollView>
     </>
   );
 }
@@ -236,10 +282,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
+  section: {
     padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  sectionTitle: {
+    ...typography.titleMedium,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  sectionDescription: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  settingLabel: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  settingDescription: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+  },
+  infoCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  infoLabel: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+  },
+  infoValue: {
+    ...typography.bodyMedium,
+    color: colors.text,
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',
@@ -295,7 +394,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   logsList: {
-    flex: 1,
+    paddingBottom: spacing.xl,
   },
   logItem: {
     padding: spacing.md,
@@ -339,6 +438,10 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     fontFamily: 'monospace',
     color: colors.textSecondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: spacing.xl,
   },
   emptyTitle: {
     ...typography.titleMedium,

@@ -79,5 +79,20 @@
   },
   "toast": {
     "languageUpdated": "Langue mise à jour"
+  },
+  "errors": {
+    "generic": "Une erreur s'est produite",
+    "network": "Erreur réseau. Veuillez vérifier votre connexion.",
+    "authFailed": "Échec de l'authentification. Veuillez réessayer.",
+    "invalidCredentials": "Email ou mot de passe invalide.",
+    "networkOffline": "Pas de connexion Internet. Veuillez vérifier votre réseau.",
+    "aiExtractionFailed": "Impossible d'extraire les détails de l'article. Veuillez réessayer ou saisir manuellement.",
+    "importPartialFailure": "Certains articles n'ont pas pu être importés. Veuillez vérifier et réessayer.",
+    "storeUnavailable": "Ce magasin n'est pas disponible dans votre région.",
+    "linkUnavailable": "Ce lien n'est plus disponible.",
+    "invalidLink": "Lien invalide. Veuillez vérifier l'URL.",
+    "cannotOpenLink": "Impossible d'ouvrir ce lien sur votre appareil.",
+    "tryAgain": "Réessayer",
+    "offline": "Vous êtes hors ligne"
   }
 }
