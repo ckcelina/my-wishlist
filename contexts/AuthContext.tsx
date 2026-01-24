@@ -1,10 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { Platform } from "react-native";
-import { authClient, storeWebBearerToken } from "@/lib/auth";
 import { supabase, supabaseAuth } from "@/lib/supabase";
-import { supabaseWishlists } from "@/lib/supabase-helpers";
-import type { Session, User as SupabaseUser } from "@supabase/supabase-js";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 interface User {
   id: string;
@@ -26,49 +23,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-function openOAuthPopup(provider: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const popupUrl = `${window.location.origin}/auth-popup?provider=${provider}`;
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-
-    const popup = window.open(
-      popupUrl,
-      "oauth-popup",
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-    );
-
-    if (!popup) {
-      reject(new Error("Failed to open popup. Please allow popups."));
-      return;
-    }
-
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === "oauth-success" && event.data?.token) {
-        window.removeEventListener("message", handleMessage);
-        clearInterval(checkClosed);
-        resolve(event.data.token);
-      } else if (event.data?.type === "oauth-error") {
-        window.removeEventListener("message", handleMessage);
-        clearInterval(checkClosed);
-        reject(new Error(event.data.error || "OAuth failed"));
-      }
-    };
-
-    window.addEventListener("message", handleMessage);
-
-    const checkClosed = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(checkClosed);
-        window.removeEventListener("message", handleMessage);
-        reject(new Error("Authentication cancelled"));
-      }
-    }, 500);
-  });
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -127,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AuthContext] Checking for existing session');
       setLoading(true);
       
-      // Check Supabase session first
+      // Check Supabase session
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (error) {
@@ -172,13 +126,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0],
           image: supabaseUser.user_metadata?.avatar_url,
         });
-        return;
-      }
-      
-      const session = await authClient.getSession();
-      if (session?.data?.user) {
-        console.log('[AuthContext] Better Auth user found');
-        setUser(session.data.user as User);
       } else {
         console.log('[AuthContext] No user found');
         setUser(null);
@@ -226,19 +173,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
-      const existingWishlists = await supabaseWishlists.getAll();
-      console.log('[AuthContext] Existing wishlists:', existingWishlists.length);
+      // Check if user already has wishlists
+      const { data: existingWishlists, error } = await supabase
+        .from('wishlists')
+        .select('id, name')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: true });
       
-      if (existingWishlists.length > 0) {
+      if (error) {
+        console.error('[AuthContext] Error fetching wishlists:', error);
+        return null;
+      }
+
+      console.log('[AuthContext] Existing wishlists:', existingWishlists?.length || 0);
+      
+      if (existingWishlists && existingWishlists.length > 0) {
         const defaultWishlist = existingWishlists.find(w => w.name === 'My Wishlist') || existingWishlists[0];
         console.log('[AuthContext] Found existing wishlist:', defaultWishlist.id);
         return defaultWishlist.id;
       }
 
-      const newWishlist = await supabaseWishlists.create({
-        user_id: currentUser.id,
-        name: 'My Wishlist',
-      });
+      // Create default wishlist
+      const { data: newWishlist, error: createError } = await supabase
+        .from('wishlists')
+        .insert({
+          user_id: currentUser.id,
+          name: 'My Wishlist',
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        console.error('[AuthContext] Error creating wishlist:', createError);
+        return null;
+      }
       
       console.log('[AuthContext] Created default wishlist:', newWishlist.id);
       return newWishlist.id;
@@ -295,32 +263,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithSocial = async (provider: "google" | "apple") => {
+  const signInWithGoogle = async () => {
     try {
-      console.log(`[AuthContext] Starting ${provider} OAuth flow`);
+      console.log('[AuthContext] Starting Google OAuth flow');
       
-      if (Platform.OS === "web") {
-        const token = await openOAuthPopup(provider);
-        storeWebBearerToken(token);
-        await fetchUser();
-      } else {
-        await authClient.signIn.social({
-          provider,
-          callbackURL: "/wishlists",
-        });
-        await fetchUser();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: 'wishzen://auth-callback',
+        },
+      });
+      
+      if (error) {
+        console.error('[AuthContext] Google sign in error:', error);
+        throw error;
       }
       
-      console.log(`[AuthContext] ${provider} OAuth successful, checking for default wishlist`);
-      await initializeDefaultWishlist();
+      console.log('[AuthContext] Google OAuth initiated');
+      // The auth state listener will handle the user update after OAuth completes
     } catch (error) {
-      console.error(`[AuthContext] ${provider} sign in failed:`, error);
+      console.error('[AuthContext] Google sign in failed:', error);
       throw error;
     }
   };
 
-  const signInWithGoogle = () => signInWithSocial("google");
-  const signInWithApple = () => signInWithSocial("apple");
+  const signInWithApple = async () => {
+    try {
+      console.log('[AuthContext] Starting Apple OAuth flow');
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'apple',
+        options: {
+          redirectTo: 'wishzen://auth-callback',
+        },
+      });
+      
+      if (error) {
+        console.error('[AuthContext] Apple sign in error:', error);
+        throw error;
+      }
+      
+      console.log('[AuthContext] Apple OAuth initiated');
+      // The auth state listener will handle the user update after OAuth completes
+    } catch (error) {
+      console.error('[AuthContext] Apple sign in failed:', error);
+      throw error;
+    }
+  };
 
   const signOut = async () => {
     try {
@@ -330,13 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('[AuthContext] Supabase sign out error:', error);
-      }
-      
-      // Sign out from Better Auth
-      try {
-        await authClient.signOut();
-      } catch (error) {
-        console.error('[AuthContext] Better Auth sign out error:', error);
+        throw error;
       }
       
       // Clear user state

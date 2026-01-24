@@ -1,54 +1,80 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { Platform } from "react-native";
 
-type Status = "processing" | "success" | "error";
+import { useEffect } from 'react';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import { colors, typography } from '@/styles/designSystem';
 
 export default function AuthCallbackScreen() {
-  const [status, setStatus] = useState<Status>("processing");
-  const [message, setMessage] = useState("Processing authentication...");
+  const router = useRouter();
 
   useEffect(() => {
-    if (Platform.OS !== "web") return;
-    handleCallback();
+    console.log('[AuthCallback] Handling OAuth callback');
+    handleOAuthCallback();
   }, []);
 
-  const handleCallback = () => {
+  const handleOAuthCallback = async () => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("better_auth_token");
-      const error = urlParams.get("error");
-
+      // Get the current session after OAuth redirect
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
       if (error) {
-        setStatus("error");
-        setMessage(`Authentication failed: ${error}`);
-        window.opener?.postMessage({ type: "oauth-error", error }, "*");
+        console.error('[AuthCallback] Error getting session:', error);
+        router.replace('/auth');
         return;
       }
 
-      if (token) {
-        setStatus("success");
-        setMessage("Authentication successful! Closing...");
-        window.opener?.postMessage({ type: "oauth-success", token }, "*");
-        setTimeout(() => window.close(), 1000);
+      if (session) {
+        console.log('[AuthCallback] OAuth successful, user:', session.user.id);
+        
+        // Check if user has wishlists
+        const { data: wishlists, error: wishlistError } = await supabase
+          .from('wishlists')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .limit(1);
+        
+        if (wishlistError) {
+          console.error('[AuthCallback] Error checking wishlists:', wishlistError);
+        }
+
+        if (!wishlists || wishlists.length === 0) {
+          // Create default wishlist for new OAuth users
+          console.log('[AuthCallback] Creating default wishlist for new user');
+          const { data: newWishlist, error: createError } = await supabase
+            .from('wishlists')
+            .insert({
+              user_id: session.user.id,
+              name: 'My Wishlist',
+            })
+            .select()
+            .single();
+          
+          if (createError) {
+            console.error('[AuthCallback] Error creating wishlist:', createError);
+            router.replace('/(tabs)/wishlists');
+          } else {
+            console.log('[AuthCallback] Navigating to new wishlist:', newWishlist.id);
+            router.replace(`/wishlist/${newWishlist.id}`);
+          }
+        } else {
+          console.log('[AuthCallback] Navigating to wishlists');
+          router.replace('/(tabs)/wishlists');
+        }
       } else {
-        setStatus("error");
-        setMessage("No authentication token received");
-        window.opener?.postMessage({ type: "oauth-error", error: "No token" }, "*");
+        console.log('[AuthCallback] No session found, redirecting to auth');
+        router.replace('/auth');
       }
-    } catch (err) {
-      setStatus("error");
-      setMessage("Failed to process authentication");
-      console.error("Auth callback error:", err);
+    } catch (error) {
+      console.error('[AuthCallback] OAuth callback error:', error);
+      router.replace('/auth');
     }
   };
 
   return (
     <View style={styles.container}>
-      {status === "processing" && <ActivityIndicator size="large" color="#007AFF" />}
-      {status === "success" && <Text style={styles.successIcon}>✓</Text>}
-      {status === "error" && <Text style={styles.errorIcon}>✗</Text>}
-      <Text style={styles.message}>{message}</Text>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={styles.text}>Completing sign in...</Text>
     </View>
   );
 }
@@ -56,23 +82,13 @@ export default function AuthCallbackScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#fff",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
   },
-  successIcon: {
-    fontSize: 48,
-    color: "#34C759",
-  },
-  errorIcon: {
-    fontSize: 48,
-    color: "#FF3B30",
-  },
-  message: {
-    fontSize: 18,
-    marginTop: 20,
-    textAlign: "center",
-    color: "#333",
+  text: {
+    ...typography.bodyLarge,
+    marginTop: 16,
+    color: colors.textSecondary,
   },
 });
