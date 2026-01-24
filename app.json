@@ -88,7 +88,7 @@
       "router": {},
       "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
       "supabaseUrl": "https://dixgmnuayzblwpqyplsi.supabase.co",
-      "supabaseAnonKey": "YOUR_ACTUAL_SUPABASE_ANON_KEY_HERE"
+      "supabaseAnonKey": 
     }
   },
   "scheme": "mywishlist"
