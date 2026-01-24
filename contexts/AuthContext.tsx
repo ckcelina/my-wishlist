@@ -40,6 +40,16 @@ class AuthApiError extends Error {
 function formatAuthError(error: AuthError): AuthApiError {
   console.log('[AuthContext] Formatting auth error:', error.message, 'Code:', error.status);
   
+  // Handle rate limiting errors
+  if (error.message.includes('Email rate limit exceeded') || 
+      error.message.includes('rate limit') || 
+      error.message.includes('too many requests')) {
+    return new AuthApiError(
+      'Too many attempts. Please wait a few minutes before trying again.',
+      'rate_limit_exceeded'
+    );
+  }
+  
   // Map Supabase error messages to user-friendly messages
   if (error.message.includes('Invalid login credentials')) {
     return new AuthApiError('Email or password is incorrect', 'invalid_credentials');
@@ -206,13 +216,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedPassword = password.trim();
 
-    // DEV ONLY: Log exact values being sent
-    if (__DEV__) {
-      console.log('[AuthContext] [DEV] Sign in email:', trimmedEmail);
-      console.log('[AuthContext] [DEV] Email length:', trimmedEmail.length);
-      console.log('[AuthContext] [DEV] Email type:', typeof trimmedEmail);
-      console.log('[AuthContext] [DEV] Password length:', trimmedPassword.length);
-    }
+    console.log('[AuthContext] Sign in attempt for:', trimmedEmail);
 
     // Validate BEFORE calling Supabase
     if (!trimmedEmail) {
@@ -230,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      console.log('[AuthContext] Signing in with email (SINGLE CALL)');
+      console.log('[AuthContext] Calling Supabase signInWithPassword');
       
       // SINGLE Supabase call - signInWithPassword
       const { data, error: signInError } = await supabase.auth.signInWithPassword({
@@ -242,7 +246,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('[AuthContext] Sign in error:', signInError.message);
         const formattedError = formatAuthError(signInError);
         setError(formattedError.message);
-        // Return error, do NOT rethrow
         throw formattedError;
       }
       
@@ -257,7 +260,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(newUser);
         setError(null);
         
-        // Navigation will be handled by RootLayout based on auth state
         console.log('[AuthContext] User state updated, navigation will be handled by RootLayout');
       }
     } catch (err) {
@@ -326,13 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const trimmedPassword = password.trim();
     const trimmedName = name?.trim() || '';
 
-    // DEV ONLY: Log exact values being sent
-    if (__DEV__) {
-      console.log('[AuthContext] [DEV] Sign up email:', trimmedEmail);
-      console.log('[AuthContext] [DEV] Email length:', trimmedEmail.length);
-      console.log('[AuthContext] [DEV] Email type:', typeof trimmedEmail);
-      console.log('[AuthContext] [DEV] Password length:', trimmedPassword.length);
-    }
+    console.log('[AuthContext] Sign up attempt for:', trimmedEmail);
 
     // Validate BEFORE calling Supabase
     if (!trimmedEmail) {
@@ -350,7 +346,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      console.log('[AuthContext] Starting signup process (SINGLE CALL)');
+      console.log('[AuthContext] Calling Supabase signUp');
       
       // SINGLE Supabase call - signUp with ONLY email and password
       const { data, error: signUpError } = await supabase.auth.signUp({
@@ -367,7 +363,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('[AuthContext] Sign up error:', signUpError.message);
         const formattedError = formatAuthError(signUpError);
         setError(formattedError.message);
-        // Return error, do NOT rethrow
         throw formattedError;
       }
       
@@ -421,7 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: 'wishzen://auth-callback',
+          redirectTo: 'mywishlist://auth-callback',
         },
       });
       
@@ -434,7 +429,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('[AuthContext] Google OAuth initiated');
       // The auth state listener will handle the user update after OAuth completes
-      // Navigation will be handled by RootLayout based on auth state
     } catch (err) {
       console.error('[AuthContext] Google sign in failed:', err);
       throw err;
@@ -448,7 +442,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'apple',
         options: {
-          redirectTo: 'wishzen://auth-callback',
+          redirectTo: 'mywishlist://auth-callback',
         },
       });
       
@@ -461,7 +455,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('[AuthContext] Apple OAuth initiated');
       // The auth state listener will handle the user update after OAuth completes
-      // Navigation will be handled by RootLayout based on auth state
     } catch (err) {
       console.error('[AuthContext] Apple sign in failed:', err);
       throw err;
@@ -508,7 +501,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('[AuthContext] Resetting password for:', trimmedEmail);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: 'wishzen://reset-password',
+        redirectTo: 'mywishlist://reset-password',
       });
       
       if (resetError) {

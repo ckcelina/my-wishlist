@@ -27,6 +27,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [confirmationEmailSent, setConfirmationEmailSent] = useState(false);
+  const [rateLimitError, setRateLimitError] = useState(false);
 
   const handleEmailAuth = async () => {
     // Validate inputs
@@ -59,6 +60,8 @@ export default function AuthScreen() {
 
     setLoading(true);
     setConfirmationEmailSent(false);
+    setRateLimitError(false);
+    
     try {
       if (mode === 'signin') {
         console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
@@ -72,8 +75,12 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
       
-      // Check if this is an email confirmation required error
-      if (error.code === 'email_confirmation_required') {
+      // Check if this is a rate limit error
+      if (error.code === 'rate_limit_exceeded') {
+        setRateLimitError(true);
+        // Don't show alert, show inline message instead
+      } else if (error.code === 'email_confirmation_required') {
+        // Check if this is an email confirmation required error
         setConfirmationEmailSent(true);
         // Don't show alert, show inline message instead
       } else {
@@ -102,6 +109,8 @@ export default function AuthScreen() {
     }
 
     setLoading(true);
+    setRateLimitError(false);
+    
     try {
       console.log('[AuthScreen] User tapped Reset Password button for:', trimmedEmail);
       await resetPassword(trimmedEmail);
@@ -110,8 +119,13 @@ export default function AuthScreen() {
       Alert.alert('Success', 'Password reset email sent! Check your inbox.');
     } catch (error: any) {
       console.error('[AuthScreen] Password reset error:', error);
-      const errorMessage = error.message || 'Failed to send reset email';
-      Alert.alert('Error', errorMessage);
+      
+      if (error.code === 'rate_limit_exceeded') {
+        setRateLimitError(true);
+      } else {
+        const errorMessage = error.message || 'Failed to send reset email';
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -119,6 +133,8 @@ export default function AuthScreen() {
 
   const handleSocialAuth = async (provider: 'google' | 'apple') => {
     setLoading(true);
+    setRateLimitError(false);
+    
     try {
       console.log(`[AuthScreen] User tapped ${provider} sign in button`);
       if (provider === 'google') {
@@ -129,8 +145,13 @@ export default function AuthScreen() {
       console.log(`[AuthScreen] ${provider} sign in initiated, navigation will be handled by RootLayout`);
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
-      const errorMessage = error.message || `${provider} sign in failed`;
-      Alert.alert('Error', errorMessage);
+      
+      if (error.code === 'rate_limit_exceeded') {
+        setRateLimitError(true);
+      } else {
+        const errorMessage = error.message || `${provider} sign in failed`;
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -151,7 +172,22 @@ export default function AuthScreen() {
         <Text style={styles.title}>{titleText}</Text>
         <Text style={styles.subtitle}>{subtitleText}</Text>
 
-        {resetEmailSent && (
+        {rateLimitError && (
+          <View style={styles.warningMessage}>
+            <Text style={styles.warningMessageTitle}>Too Many Attempts</Text>
+            <Text style={styles.warningMessageText}>
+              You've made too many password reset attempts. Please wait a few minutes before trying again.
+            </Text>
+            <TouchableOpacity
+              style={styles.dismissButton}
+              onPress={() => setRateLimitError(false)}
+            >
+              <Text style={styles.dismissButtonText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {resetEmailSent && !rateLimitError && (
           <View style={styles.successMessage}>
             <Text style={styles.successMessageText}>
               Password reset email sent! Check your inbox.
@@ -177,7 +213,7 @@ export default function AuthScreen() {
           onPress={handleForgotPassword}
           variant="primary"
           loading={loading}
-          disabled={loading}
+          disabled={loading || rateLimitError}
           style={styles.button}
         />
 
@@ -186,6 +222,7 @@ export default function AuthScreen() {
           onPress={() => {
             setMode('signin');
             setResetEmailSent(false);
+            setRateLimitError(false);
           }}
           disabled={loading}
         >
@@ -216,7 +253,22 @@ export default function AuthScreen() {
         <Text style={styles.title}>{titleText}</Text>
         <Text style={styles.subtitle}>{subtitleText}</Text>
 
-        {confirmationEmailSent && (
+        {rateLimitError && (
+          <View style={styles.warningMessage}>
+            <Text style={styles.warningMessageTitle}>Too Many Attempts</Text>
+            <Text style={styles.warningMessageText}>
+              You've made too many authentication attempts. Please wait a few minutes before trying again. This is a security measure to protect your account.
+            </Text>
+            <TouchableOpacity
+              style={styles.dismissButton}
+              onPress={() => setRateLimitError(false)}
+            >
+              <Text style={styles.dismissButtonText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {confirmationEmailSent && !rateLimitError && (
           <View style={styles.infoMessage}>
             <Text style={styles.infoMessageTitle}>Check Your Email</Text>
             <Text style={styles.infoMessageText}>
@@ -274,7 +326,10 @@ export default function AuthScreen() {
         {isSignIn && (
           <TouchableOpacity
             style={styles.forgotPasswordButton}
-            onPress={() => setMode('forgot-password')}
+            onPress={() => {
+              setMode('forgot-password');
+              setRateLimitError(false);
+            }}
             disabled={loading}
           >
             <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
@@ -286,7 +341,7 @@ export default function AuthScreen() {
           onPress={handleEmailAuth}
           variant="primary"
           loading={loading}
-          disabled={loading}
+          disabled={loading || rateLimitError}
           style={styles.button}
         />
 
@@ -300,7 +355,7 @@ export default function AuthScreen() {
           title="Continue with Google"
           onPress={() => handleSocialAuth('google')}
           variant="secondary"
-          disabled={loading}
+          disabled={loading || rateLimitError}
           style={styles.socialButton}
         />
 
@@ -309,7 +364,7 @@ export default function AuthScreen() {
             title="Continue with Apple"
             onPress={() => handleSocialAuth('apple')}
             variant="secondary"
-            disabled={loading}
+            disabled={loading || rateLimitError}
             style={styles.socialButton}
           />
         )}
@@ -317,7 +372,10 @@ export default function AuthScreen() {
         <View style={styles.switchModeContainer}>
           <Text style={styles.switchModeText}>{switchText}</Text>
           <TouchableOpacity 
-            onPress={() => setMode(isSignIn ? 'signup' : 'signin')}
+            onPress={() => {
+              setMode(isSignIn ? 'signup' : 'signin');
+              setRateLimitError(false);
+            }}
             disabled={loading}
           >
             <Text style={styles.switchModeButton}>{switchButtonText}</Text>
@@ -447,6 +505,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   infoMessageText: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  warningMessage: {
+    backgroundColor: colors.warningLight,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  warningMessageTitle: {
+    ...typography.titleMedium,
+    color: colors.warning,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  warningMessageText: {
     ...typography.bodyMedium,
     color: colors.textSecondary,
     textAlign: 'center',
