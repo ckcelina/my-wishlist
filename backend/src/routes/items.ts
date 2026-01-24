@@ -310,6 +310,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
             currentPrice: { type: 'string' },
             currency: { type: 'string' },
             originalUrl: { type: 'string' },
+            normalizedUrl: { type: 'string' },
             sourceDomain: { type: 'string' },
             notes: { type: 'string' },
           },
@@ -325,6 +326,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
               currentPrice: { type: 'string' },
               currency: { type: 'string' },
               originalUrl: { type: 'string' },
+              normalizedUrl: { type: 'string' },
               sourceDomain: { type: 'string' },
               notes: { type: 'string' },
               createdAt: { type: 'string' },
@@ -342,6 +344,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
           currentPrice?: string;
           currency?: string;
           originalUrl?: string;
+          normalizedUrl?: string;
           sourceDomain?: string;
           notes?: string;
         };
@@ -359,6 +362,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
         currentPrice,
         currency = 'USD',
         originalUrl,
+        normalizedUrl,
         sourceDomain,
         notes,
       } = request.body;
@@ -387,6 +391,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
           currentPrice: currentPrice ? currentPrice : null,
           currency,
           originalUrl: originalUrl || null,
+          normalizedUrl: normalizedUrl || null,
           sourceDomain: sourceDomain || null,
           notes: notes || null,
         })
@@ -433,6 +438,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
             title: { type: 'string' },
             imageUrl: { type: 'string' },
             currentPrice: { type: 'string' },
+            normalizedUrl: { type: 'string' },
             notes: { type: 'string' },
           },
         },
@@ -444,6 +450,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
               title: { type: 'string' },
               imageUrl: { type: 'string' },
               currentPrice: { type: 'string' },
+              normalizedUrl: { type: 'string' },
               notes: { type: 'string' },
               updatedAt: { type: 'string' },
             },
@@ -458,6 +465,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
           title?: string;
           imageUrl?: string;
           currentPrice?: string;
+          normalizedUrl?: string;
           notes?: string;
         };
       }>,
@@ -468,7 +476,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
 
       const userId = session.user.id;
       const { id } = request.params;
-      const { title, imageUrl, currentPrice, notes } = request.body;
+      const { title, imageUrl, currentPrice, normalizedUrl, notes } = request.body;
 
       app.logger.info({ itemId: id, userId }, 'Updating item');
 
@@ -488,6 +496,7 @@ Return ONLY valid JSON, no markdown or extra text.`,
       const updateData: any = {};
       if (title !== undefined) updateData.title = title;
       if (imageUrl !== undefined) updateData.imageUrl = imageUrl || null;
+      if (normalizedUrl !== undefined) updateData.normalizedUrl = normalizedUrl || null;
       if (notes !== undefined) updateData.notes = notes || null;
       if (currentPrice !== undefined) {
         updateData.currentPrice = currentPrice ? currentPrice : null;

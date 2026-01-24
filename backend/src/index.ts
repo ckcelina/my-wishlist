@@ -15,6 +15,9 @@ import { registerReportRoutes } from './routes/reports.js';
 import { registerImportPreviewRoutes } from './routes/import-preview.js';
 import { registerEnhancementRoutes } from './routes/enhancements.js';
 import { registerEngagementRoutes } from './routes/engagement.js';
+import { registerPremiumRoutes } from './routes/premium.js';
+import { registerLinkNormalizationRoutes } from './routes/link-normalization.js';
+import { registerPriceRefreshQueueRoutes } from './routes/price-refresh-queue.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -46,6 +49,9 @@ registerReportRoutes(app);
 registerImportPreviewRoutes(app);
 registerEnhancementRoutes(app);
 registerEngagementRoutes(app);
+registerPremiumRoutes(app);
+registerLinkNormalizationRoutes(app);
+registerPriceRefreshQueueRoutes(app);
 
 await app.run();
 app.logger.info('Application running');

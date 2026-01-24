@@ -7,8 +7,10 @@ import {
   index,
   unique,
   boolean,
+  integer,
+  check,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 import { user } from './auth-schema.js';
 
 // Wishlists table
@@ -40,6 +42,7 @@ export const wishlistItems = pgTable(
         onDelete: 'cascade',
       }),
     originalUrl: text('original_url'),
+    normalizedUrl: text('normalized_url'),
     sourceDomain: text('source_domain'),
     title: text('title').notNull(),
     imageUrl: text('image_url'),
@@ -295,6 +298,75 @@ export const userReportsRelations = relations(userReports, ({ one }) => ({
   }),
   wishlist: one(wishlists, {
     fields: [userReports.wishlistId],
+    references: [wishlists.id],
+  }),
+}));
+
+// User Entitlements table
+export const userEntitlements = pgTable(
+  'user_entitlements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .unique()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    isPremium: boolean('is_premium').default(false).notNull(),
+    planName: text('plan_name'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('user_entitlements_user_id_idx').on(table.userId)]
+);
+
+// Price Refresh Jobs table
+export const priceRefreshJobs = pgTable(
+  'price_refresh_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    wishlistId: uuid('wishlist_id').references(() => wishlists.id, {
+      onDelete: 'set null',
+    }),
+    status: text('status').default('queued').notNull(),
+    totalItems: integer('total_items').default(0).notNull(),
+    processedItems: integer('processed_items').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    startedAt: timestamp('started_at'),
+    finishedAt: timestamp('finished_at'),
+    errorMessage: text('error_message'),
+  },
+  (table) => [
+    index('price_refresh_jobs_user_id_idx').on(table.userId),
+    index('price_refresh_jobs_status_idx').on(table.status),
+    check('status_check', sql`status IN ('queued', 'running', 'done', 'failed')`),
+  ]
+);
+
+// Relations
+export const userEntitlementsRelations = relations(userEntitlements, ({ one }) => ({
+  user: one(user, {
+    fields: [userEntitlements.userId],
+    references: [user.id],
+  }),
+}));
+
+export const priceRefreshJobsRelations = relations(priceRefreshJobs, ({ one }) => ({
+  user: one(user, {
+    fields: [priceRefreshJobs.userId],
+    references: [user.id],
+  }),
+  wishlist: one(wishlists, {
+    fields: [priceRefreshJobs.wishlistId],
     references: [wishlists.id],
   }),
 }));
