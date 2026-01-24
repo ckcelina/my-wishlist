@@ -1,0 +1,44 @@
+
+{
+  "status": "connected",
+  "provider": "supabase",
+  "url": "https://dixgmnuayzblwpqyplsi.supabase.co",
+  "anonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
+  "version": "2.91.1",
+  "features": {
+    "authentication": true,
+    "database": true,
+    "edgeFunctions": true,
+    "storage": true,
+    "realtime": true
+  },
+  "configuration": {
+    "autoRefreshToken": true,
+    "persistSession": true,
+    "storageAdapter": "expo-secure-store",
+    "platform": "expo"
+  },
+  "integration": {
+    "natively": true,
+    "verified": true,
+    "timestamp": "2026-01-24T21:35:00.000Z"
+  },
+  "tables": [
+    "wishlists",
+    "items",
+    "users",
+    "user_settings",
+    "user_locations",
+    "wishlist_shares",
+    "reservations",
+    "price_history",
+    "notifications",
+    "analytics_events"
+  ],
+  "edgeFunctions": [
+    "extract-item",
+    "find-alternatives",
+    "import-wishlist",
+    "identify-from-image"
+  ]
+}

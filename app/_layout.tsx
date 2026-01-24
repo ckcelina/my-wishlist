@@ -1,17 +1,20 @@
 
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import 'react-native-reanimated';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { ThemeProvider } from '@/contexts/ThemeContext';
+import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { useFonts } from 'expo-font';
-import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-connection';
-import 'react-native-reanimated';
+import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
 
+// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
@@ -25,31 +28,33 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
-  // Verify Supabase connection on app startup
   useEffect(() => {
-    const checkConnection = async () => {
-      console.log('[App] Verifying Supabase connection...');
-      
-      const config = getSupabaseConfig();
-      console.log('[App] Supabase Config:', config);
-      
-      const status = await verifySupabaseConnection();
-      
+    // Verify Supabase connection on app start
+    console.log('[App] ═══════════════════════════════════════════════════');
+    console.log('[App] 🚀 MY WISHLIST APP STARTING');
+    console.log('[App] ═══════════════════════════════════════════════════');
+    console.log('[App] Verifying Supabase connection...');
+    
+    const config = getSupabaseConfig();
+    console.log('[App] Supabase Config:', config);
+    console.log('[App] Supabase Connection Status:', SUPABASE_CONNECTION_STATUS);
+    
+    verifySupabaseConnection().then((status) => {
+      console.log('[App] ═══════════════════════════════════════════════════');
       if (status.connected) {
-        console.log('[App] ✅ Supabase connection verified successfully');
+        console.log('[App] ✅ SUPABASE CONNECTION VERIFIED SUCCESSFULLY');
+        console.log('[App] ═══════════════════════════════════════════════════');
         console.log('[App] - URL:', status.url);
         console.log('[App] - Auth configured:', status.authConfigured);
         console.log('[App] - Database accessible:', status.databaseAccessible);
+        console.log('[App] - Anon key configured:', status.hasAnonKey);
+        console.log('[App] ═══════════════════════════════════════════════════');
+        console.log('[App] 🎉 NATIVELY + SUPABASE INTEGRATION ACTIVE');
+        console.log('[App] ═══════════════════════════════════════════════════');
       } else {
         console.error('[App] ❌ Supabase connection failed:', status.error);
-        console.error('[App] - URL:', status.url);
-        console.error('[App] - Has anon key:', status.hasAnonKey);
-        console.error('[App] - Auth configured:', status.authConfigured);
-        console.error('[App] - Database accessible:', status.databaseAccessible);
       }
-    };
-    
-    checkConnection();
+    });
   }, []);
 
   if (!loaded) {
@@ -58,50 +63,22 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider>
+      <AppThemeProvider>
+        <I18nProvider>
           <AuthProvider>
-            <I18nProvider>
-              <WidgetProvider>
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                  }}
-                >
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                  <Stack.Screen name="wishlist/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="item/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="item/edit/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="item/price-history/[id]" options={{ headerShown: false }} />
-                  <Stack.Screen name="shared/[shareSlug]" options={{ headerShown: false }} />
-                  <Stack.Screen name="import-wishlist" options={{ headerShown: false }} />
-                  <Stack.Screen name="import-preview" options={{ headerShown: false }} />
-                  <Stack.Screen name="import-summary" options={{ headerShown: false }} />
-                  <Stack.Screen name="confirm-product" options={{ headerShown: false }} />
-                  <Stack.Screen name="location" options={{ headerShown: false }} />
-                  <Stack.Screen name="alerts" options={{ headerShown: false }} />
-                  <Stack.Screen name="quiet-hours" options={{ headerShown: false }} />
-                  <Stack.Screen name="on-sale" options={{ headerShown: false }} />
-                  <Stack.Screen name="global-search" options={{ headerShown: false }} />
-                  <Stack.Screen name="export-data" options={{ headerShown: false }} />
-                  <Stack.Screen name="diagnostics" options={{ headerShown: false }} />
-                  <Stack.Screen name="language-selector" options={{ headerShown: false }} />
-                  <Stack.Screen name="premium-info" options={{ headerShown: false }} />
-                  <Stack.Screen name="report-problem" options={{ headerShown: false }} />
-                  <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
-                  <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
-                  <Stack.Screen name="permissions/camera" options={{ headerShown: false }} />
-                  <Stack.Screen name="permissions/photos" options={{ headerShown: false }} />
-                  <Stack.Screen name="permissions/notifications" options={{ headerShown: false }} />
-                </Stack>
-              </WidgetProvider>
-            </I18nProvider>
+            <WidgetProvider>
+              <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="auth" options={{ headerShown: false }} />
+                <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                <Stack.Screen name="+not-found" />
+              </Stack>
+              <StatusBar style="auto" />
+            </WidgetProvider>
           </AuthProvider>
-        </ThemeProvider>
-      </GestureHandlerRootView>
+        </I18nProvider>
+      </AppThemeProvider>
     </ErrorBoundary>
   );
 }
