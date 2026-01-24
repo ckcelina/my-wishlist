@@ -64,8 +64,8 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <AppThemeProvider>
-        <I18nProvider>
-          <AuthProvider>
+        <AuthProvider>
+          <I18nProvider>
             <WidgetProvider>
               <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -76,8 +76,8 @@ export default function RootLayout() {
               </Stack>
               <StatusBar style="auto" />
             </WidgetProvider>
-          </AuthProvider>
-        </I18nProvider>
+          </I18nProvider>
+        </AuthProvider>
       </AppThemeProvider>
     </ErrorBoundary>
   );
