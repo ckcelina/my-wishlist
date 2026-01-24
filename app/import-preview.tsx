@@ -129,7 +129,6 @@ export default function ImportPreviewScreen() {
   useEffect(() => {
     fetchWishlists();
     fetchUserLocation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchUserLocation = async () => {
@@ -327,7 +326,7 @@ export default function ImportPreviewScreen() {
 
       console.log('[ImportPreview] Sending items for auto-grouping');
       const response = await authenticatedPost<{
-        groups: Array<{ groupName: string; memberTempIds: string[]; confidence: number }>;
+        groups: { groupName: string; memberTempIds: string[]; confidence: number }[];
         autoMode?: string;
       }>('/api/auto-group-import-items', {
         items: itemsForGrouping,
@@ -520,13 +519,13 @@ export default function ImportPreviewScreen() {
       const result = await authenticatedPost<{
         success: boolean;
         createdCount: number;
-        destinationWishlists: Array<{ id: string; name: string }>;
-        itemAvailability?: Array<{
+        destinationWishlists: { id: string; name: string }[];
+        itemAvailability?: {
           tempId: string;
           sourceDomain: string;
           available: boolean;
           reason?: string;
-        }>;
+        }[];
         warnings: string[];
       }>('/api/import-execute', importRequest);
 

@@ -211,14 +211,7 @@ export default function WishlistsScreen() {
   const router = useRouter();
   const { isConnected } = useNetworkStatus();
 
-  useEffect(() => {
-    if (user) {
-      console.log('[WishlistsScreen] User authenticated, fetching wishlists');
-      fetchWishlistsFromNetwork(1, false);
-    }
-  }, [user]);
-
-  const initializeDefaultWishlist = async () => {
+  const initializeDefaultWishlist = useCallback(async () => {
     if (!user?.id || initializing) {
       return;
     }
@@ -244,7 +237,7 @@ export default function WishlistsScreen() {
     } finally {
       setInitializing(false);
     }
-  };
+  }, [user, initializing, router]);
 
   const fetchWishlistsFromNetwork = useCallback(async (pageNum: number, append: boolean) => {
     if (!user?.id) {
@@ -304,7 +297,15 @@ export default function WishlistsScreen() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [user, initializing]);
+  }, [user, initializing, initializeDefaultWishlist]);
+
+  useEffect(() => {
+    if (user) {
+      console.log('[WishlistsScreen] User authenticated, fetching wishlists');
+      fetchWishlistsFromNetwork(1, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const handleRefresh = useCallback(() => {
     console.log('[WishlistsScreen] User triggered refresh');
