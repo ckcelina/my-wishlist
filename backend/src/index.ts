@@ -11,6 +11,7 @@ import { registerPriceRefreshRoutes } from './routes/price-refresh.js';
 import { registerImportRoutes } from './routes/import.js';
 import { registerLocationRoutes } from './routes/location.js';
 import { registerStoresRoutes } from './routes/stores.js';
+import { registerReportRoutes } from './routes/reports.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -38,6 +39,7 @@ registerPriceRefreshRoutes(app);
 registerImportRoutes(app);
 registerLocationRoutes(app);
 registerStoresRoutes(app);
+registerReportRoutes(app);
 
 await app.run();
 app.logger.info('Application running');

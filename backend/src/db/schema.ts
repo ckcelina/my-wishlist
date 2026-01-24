@@ -249,3 +249,44 @@ export const storeShippingRulesRelations = relations(
     }),
   })
 );
+
+// User reports table
+export const userReports = pgTable(
+  'user_reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id').notNull().references(() => user.id, {
+      onDelete: 'cascade',
+    }),
+    reportType: text('report_type').notNull(), // 'wrong_product_match', 'wrong_price', 'store_not_available', 'broken_link', 'image_issue', 'other'
+    context: text('context').notNull(), // 'item_detail', 'confirm_product', 'import_preview'
+    itemId: uuid('item_id').references(() => wishlistItems.id, {
+      onDelete: 'set null',
+    }),
+    wishlistId: uuid('wishlist_id').references(() => wishlists.id, {
+      onDelete: 'set null',
+    }),
+    details: text('details').notNull(),
+    suggestedFix: text('suggested_fix'), // Can be plain text or JSON
+    attachmentUrl: text('attachment_url'),
+    status: text('status').default('open').notNull(), // 'open', 'triaged', 'resolved', 'closed'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('user_reports_user_id_idx').on(table.userId)]
+);
+
+// Relations
+export const userReportsRelations = relations(userReports, ({ one }) => ({
+  user: one(user, {
+    fields: [userReports.userId],
+    references: [user.id],
+  }),
+  item: one(wishlistItems, {
+    fields: [userReports.itemId],
+    references: [wishlistItems.id],
+  }),
+  wishlist: one(wishlists, {
+    fields: [userReports.wishlistId],
+    references: [wishlists.id],
+  }),
+}));
