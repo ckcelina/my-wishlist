@@ -440,17 +440,12 @@ export default function ConfirmProductScreen() {
 
   const handleReportIssue = () => {
     console.log('User tapped Report an issue');
-    Alert.alert(
-      'Report Issue',
-      'Please describe the issue with the product identification results.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Send Report', onPress: () => {
-          console.log('Issue report sent');
-          Alert.alert('Thank you', 'Your feedback has been submitted.');
-        }},
-      ]
-    );
+    router.push({
+      pathname: '/report-problem',
+      params: {
+        context: 'confirm_product',
+      },
+    });
   };
 
   const confidencePercentage = result ? Math.round(result.confidence * 100) : 0;

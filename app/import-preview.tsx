@@ -220,6 +220,16 @@ export default function ImportPreviewScreen() {
     return priceText;
   };
 
+  const handleReportProblem = () => {
+    console.log('[ImportPreview] User tapped Report a Problem button');
+    router.push({
+      pathname: '/report-problem',
+      params: {
+        context: 'import_preview',
+      },
+    });
+  };
+
   const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
   const selectedWishlistName = selectedWishlist?.name || 'Select wishlist';
   const storeNameText = storeName || 'Store';
@@ -338,26 +348,38 @@ export default function ImportPreviewScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-            disabled={loading}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+          <TouchableOpacity style={styles.reportLink} onPress={handleReportProblem}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="report"
+              size={16}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.reportLinkText}>Report a Problem</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.importButton, (selectedItems.size === 0 || loading) && styles.importButtonDisabled]}
-            onPress={handleImport}
-            disabled={selectedItems.size === 0 || loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
-            ) : (
-              <Text style={styles.importButtonText}>Import Items</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.footerButtons}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.importButton, (selectedItems.size === 0 || loading) && styles.importButtonDisabled]}
+              onPress={handleImport}
+              disabled={selectedItems.size === 0 || loading}
+              activeOpacity={0.8}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              ) : (
+                <Text style={styles.importButtonText}>Import Items</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Modal
@@ -537,11 +559,25 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
     padding: spacing.md,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  reportLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  reportLinkText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  footerButtons: {
+    flexDirection: 'row',
     gap: spacing.sm,
   },
   cancelButton: {

@@ -362,6 +362,17 @@ export default function ItemDetailScreen() {
     router.push('/location');
   };
 
+  const handleReportProblem = () => {
+    console.log('[ItemDetailScreen] User tapped Report a Problem button');
+    router.push({
+      pathname: '/report-problem',
+      params: {
+        context: 'item_detail',
+        itemId: id,
+      },
+    });
+  };
+
   if (loading || !item) {
     return (
       <>
@@ -544,6 +555,17 @@ export default function ItemDetailScreen() {
                 <Text style={styles.linkButtonText}>View Original Product</Text>
               </TouchableOpacity>
             )}
+
+            {/* Report a Problem Button */}
+            <TouchableOpacity style={styles.reportButton} onPress={handleReportProblem}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle"
+                android_material_icon_name="report"
+                size={18}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.reportButtonText}>Report a Problem</Text>
+            </TouchableOpacity>
 
             {/* Other Stores Section */}
             <View style={styles.otherStoresSection}>
@@ -939,6 +961,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 8,
+    marginBottom: 16,
+  },
+  reportButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.textSecondary,
   },
   modalContainer: {
     flex: 1,
