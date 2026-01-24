@@ -45,6 +45,19 @@ export default function AuthScreen() {
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
+    // Password length validation
+    if (trimmedPassword.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === 'signin') {
@@ -61,22 +74,8 @@ export default function AuthScreen() {
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
       
-      // Parse Supabase error messages
-      let errorMessage = 'Authentication failed';
-      if (error.message) {
-        if (error.message.includes('Invalid login credentials')) {
-          errorMessage = 'Invalid email or password';
-        } else if (error.message.includes('User already registered')) {
-          errorMessage = 'An account with this email already exists';
-        } else if (error.message.includes('Password should be at least')) {
-          errorMessage = 'Password must be at least 6 characters';
-        } else if (error.message.includes('Invalid email')) {
-          errorMessage = 'Please enter a valid email address';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
+      // Use the error message from the formatted error
+      const errorMessage = error.message || 'Authentication failed';
       Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
@@ -91,6 +90,13 @@ export default function AuthScreen() {
       return;
     }
 
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert('Error', 'Please enter a valid email address');
+      return;
+    }
+
     setLoading(true);
     try {
       console.log('[AuthScreen] User tapped Reset Password button for:', trimmedEmail);
@@ -100,7 +106,8 @@ export default function AuthScreen() {
       Alert.alert('Success', 'Password reset email sent! Check your inbox.');
     } catch (error: any) {
       console.error('[AuthScreen] Password reset error:', error);
-      Alert.alert('Error', error.message || 'Failed to send reset email');
+      const errorMessage = error.message || 'Failed to send reset email';
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -119,7 +126,8 @@ export default function AuthScreen() {
       router.replace('/(tabs)/wishlists');
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
-      Alert.alert('Error', error.message || `${provider} sign in failed`);
+      const errorMessage = error.message || `${provider} sign in failed`;
+      Alert.alert('Error', errorMessage);
     } finally {
       setLoading(false);
     }

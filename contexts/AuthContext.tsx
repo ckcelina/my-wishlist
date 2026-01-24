@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { supabase, supabaseAuth } from "@/lib/supabase";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import type { User as SupabaseUser, AuthError } from "@supabase/supabase-js";
 
 interface User {
   id: string;
@@ -23,6 +23,51 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Custom error class for better error messages
+class AuthApiError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'AuthApiError';
+  }
+}
+
+// Helper to format Supabase auth errors
+function formatAuthError(error: AuthError): AuthApiError {
+  console.log('[AuthContext] Formatting auth error:', error.message, 'Code:', error.status);
+  
+  // Map Supabase error messages to user-friendly messages
+  if (error.message.includes('Invalid login credentials')) {
+    return new AuthApiError('Invalid email or password', 'invalid_credentials');
+  }
+  
+  if (error.message.includes('Email not confirmed')) {
+    return new AuthApiError('Please verify your email address', 'email_not_confirmed');
+  }
+  
+  if (error.message.includes('User already registered')) {
+    return new AuthApiError('An account with this email already exists', 'user_exists');
+  }
+  
+  if (error.message.includes('Password should be at least')) {
+    return new AuthApiError('Password must be at least 6 characters', 'weak_password');
+  }
+  
+  if (error.message.includes('Unable to validate email address')) {
+    return new AuthApiError('Please enter a valid email address', 'invalid_email');
+  }
+  
+  if (error.message.includes('Email address') && error.message.includes('is invalid')) {
+    return new AuthApiError('Please enter a valid email address', 'invalid_email');
+  }
+  
+  if (error.message.includes('Signup requires a valid password')) {
+    return new AuthApiError('Please enter a password', 'missing_password');
+  }
+  
+  // Default error message
+  return new AuthApiError(error.message || 'Authentication failed', error.status?.toString());
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -117,7 +162,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       console.log('[AuthContext] Fetching current user');
       
-      const supabaseUser = await supabaseAuth.getCurrentUser();
+      const { data: { user: supabaseUser }, error } = await supabase.auth.getUser();
+      
+      if (error) {
+        console.error('[AuthContext] Get user error:', error);
+        setUser(null);
+        return;
+      }
+      
       if (supabaseUser) {
         console.log('[AuthContext] Supabase user found:', supabaseUser.id);
         setUser({
@@ -146,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (error) {
         console.error('[AuthContext] Sign in error:', error);
-        throw error;
+        throw formatAuthError(error);
       }
       
       if (data.user) {
@@ -167,8 +219,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializeDefaultWishlist = async (): Promise<string | null> => {
     console.log('[AuthContext] Initializing default wishlist');
     try {
-      const currentUser = await supabaseAuth.getCurrentUser();
-      if (!currentUser) {
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !currentUser) {
         console.error('[AuthContext] No user found for wishlist initialization');
         return null;
       }
@@ -231,7 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (error) {
         console.error('[AuthContext] Sign up error:', error);
-        throw error;
+        throw formatAuthError(error);
       }
       
       if (data.user) {
@@ -276,7 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (error) {
         console.error('[AuthContext] Google sign in error:', error);
-        throw error;
+        throw formatAuthError(error);
       }
       
       console.log('[AuthContext] Google OAuth initiated');
@@ -300,7 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (error) {
         console.error('[AuthContext] Apple sign in error:', error);
-        throw error;
+        throw formatAuthError(error);
       }
       
       console.log('[AuthContext] Apple OAuth initiated');
@@ -319,7 +372,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('[AuthContext] Supabase sign out error:', error);
-        throw error;
+        throw formatAuthError(error);
       }
       
       // Clear user state
@@ -338,7 +391,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const resetPassword = async (email: string) => {
     try {
       console.log('[AuthContext] Resetting password for:', email);
-      await supabaseAuth.resetPassword(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: 'wishzen://reset-password',
+      });
+      
+      if (error) {
+        console.error('[AuthContext] Reset password error:', error);
+        throw formatAuthError(error);
+      }
+      
+      console.log('[AuthContext] Password reset email sent');
     } catch (error) {
       console.error('[AuthContext] Password reset failed:', error);
       throw error;
