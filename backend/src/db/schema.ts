@@ -107,6 +107,7 @@ export const userSettings = pgTable(
     priceDropAlertsEnabled: boolean('price_drop_alerts_enabled').default(false).notNull(),
     defaultCurrency: text('default_currency').default('USD').notNull(),
     expoPushToken: text('expo_push_token'),
+    weeklyDigestEnabled: boolean('weekly_digest_enabled').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()

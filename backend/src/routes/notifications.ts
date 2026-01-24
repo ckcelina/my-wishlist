@@ -236,6 +236,7 @@ export function registerNotificationRoutes(app: App) {
               priceDropAlertsEnabled: { type: 'boolean' },
               defaultCurrency: { type: 'string' },
               expoPushToken: { type: ['string', 'null'] },
+              weeklyDigestEnabled: { type: 'boolean' },
             },
           },
         },
@@ -267,6 +268,7 @@ export function registerNotificationRoutes(app: App) {
               userId,
               priceDropAlertsEnabled: false,
               defaultCurrency: 'USD',
+              weeklyDigestEnabled: false,
             })
             .returning();
 
@@ -274,7 +276,7 @@ export function registerNotificationRoutes(app: App) {
         }
 
         app.logger.info(
-          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency },
+          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency, weeklyDigest: settings.weeklyDigestEnabled },
           'User settings retrieved'
         );
 
@@ -282,6 +284,7 @@ export function registerNotificationRoutes(app: App) {
           priceDropAlertsEnabled: settings.priceDropAlertsEnabled,
           defaultCurrency: settings.defaultCurrency,
           expoPushToken: settings.expoPushToken || null,
+          weeklyDigestEnabled: settings.weeklyDigestEnabled,
         };
       } catch (error) {
         app.logger.error(
@@ -306,6 +309,7 @@ export function registerNotificationRoutes(app: App) {
             priceDropAlertsEnabled: { type: 'boolean' },
             defaultCurrency: { type: 'string' },
             expoPushToken: { type: 'string' },
+            weeklyDigestEnabled: { type: 'boolean' },
           },
         },
         response: {
@@ -315,6 +319,7 @@ export function registerNotificationRoutes(app: App) {
               priceDropAlertsEnabled: { type: 'boolean' },
               defaultCurrency: { type: 'string' },
               expoPushToken: { type: ['string', 'null'] },
+              weeklyDigestEnabled: { type: 'boolean' },
             },
           },
         },
@@ -326,6 +331,7 @@ export function registerNotificationRoutes(app: App) {
           priceDropAlertsEnabled?: boolean;
           defaultCurrency?: string;
           expoPushToken?: string;
+          weeklyDigestEnabled?: boolean;
         };
       }>,
       reply: FastifyReply
@@ -334,10 +340,10 @@ export function registerNotificationRoutes(app: App) {
       if (!session) return;
 
       const userId = session.user.id;
-      const { priceDropAlertsEnabled, defaultCurrency, expoPushToken } = request.body;
+      const { priceDropAlertsEnabled, defaultCurrency, expoPushToken, weeklyDigestEnabled } = request.body;
 
       app.logger.info(
-        { userId, alertsEnabled: priceDropAlertsEnabled, currency: defaultCurrency },
+        { userId, alertsEnabled: priceDropAlertsEnabled, currency: defaultCurrency, weeklyDigest: weeklyDigestEnabled },
         'Updating user settings'
       );
 
@@ -358,6 +364,7 @@ export function registerNotificationRoutes(app: App) {
                   : false,
               defaultCurrency: defaultCurrency || 'USD',
               expoPushToken: expoPushToken || null,
+              weeklyDigestEnabled: weeklyDigestEnabled !== undefined ? weeklyDigestEnabled : false,
             })
             .returning();
 
@@ -374,6 +381,9 @@ export function registerNotificationRoutes(app: App) {
           if (expoPushToken !== undefined) {
             updateData.expoPushToken = expoPushToken || null;
           }
+          if (weeklyDigestEnabled !== undefined) {
+            updateData.weeklyDigestEnabled = weeklyDigestEnabled;
+          }
 
           const [updated] = await app.db
             .update(schema.userSettings)
@@ -385,7 +395,7 @@ export function registerNotificationRoutes(app: App) {
         }
 
         app.logger.info(
-          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency },
+          { userId, alertsEnabled: settings.priceDropAlertsEnabled, currency: settings.defaultCurrency, weeklyDigest: settings.weeklyDigestEnabled },
           'User settings updated'
         );
 
@@ -393,6 +403,7 @@ export function registerNotificationRoutes(app: App) {
           priceDropAlertsEnabled: settings.priceDropAlertsEnabled,
           defaultCurrency: settings.defaultCurrency,
           expoPushToken: settings.expoPushToken || null,
+          weeklyDigestEnabled: settings.weeklyDigestEnabled,
         };
       } catch (error) {
         app.logger.error(
