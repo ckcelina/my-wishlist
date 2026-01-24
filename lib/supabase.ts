@@ -7,7 +7,7 @@ import type { Database } from './supabase-types';
 
 // Get Supabase configuration from app.json
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || 'https://dixgmnuayzblwpqyplsi.supabase.co';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
+const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-';
 
 console.log('[Supabase] Initializing with URL:', SUPABASE_URL);
 console.log('[Supabase] Anon key configured:', SUPABASE_ANON_KEY ? 'Yes' : 'No');
