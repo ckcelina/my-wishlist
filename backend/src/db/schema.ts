@@ -47,6 +47,8 @@ export const wishlistItems = pgTable(
     currency: text('currency').default('USD').notNull(),
     notes: text('notes'),
     lastCheckedAt: timestamp('last_checked_at'),
+    alertEnabled: boolean('alert_enabled').default(false).notNull(),
+    alertPrice: decimal('alert_price', { precision: 10, scale: 2 }),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -269,8 +271,13 @@ export const userReports = pgTable(
     details: text('details').notNull(),
     suggestedFix: text('suggested_fix'), // Can be plain text or JSON
     attachmentUrl: text('attachment_url'),
+    adminReply: text('admin_reply'),
     status: text('status').default('open').notNull(), // 'open', 'triaged', 'resolved', 'closed'
     createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
   },
   (table) => [index('user_reports_user_id_idx').on(table.userId)]
 );

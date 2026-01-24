@@ -623,7 +623,7 @@ export function registerWishlistRoutes(app: App) {
     '/api/wishlists/shared/:shareSlug',
     {
       schema: {
-        description: 'Get public wishlist by share slug',
+        description: 'Get public wishlist by share slug (no authentication required)',
         tags: ['wishlists'],
         params: {
           type: 'object',
@@ -642,6 +642,8 @@ export function registerWishlistRoutes(app: App) {
                   id: { type: 'string' },
                   name: { type: 'string' },
                   visibility: { type: 'string' },
+                  itemCount: { type: 'number' },
+                  topImageUrl: { type: ['string', 'null'] },
                 },
               },
               items: {
@@ -651,8 +653,8 @@ export function registerWishlistRoutes(app: App) {
                   properties: {
                     id: { type: 'string' },
                     title: { type: 'string' },
-                    imageUrl: { type: 'string' },
-                    currentPrice: { type: 'string' },
+                    imageUrl: { type: ['string', 'null'] },
+                    currentPrice: { type: ['string', 'null'] },
                     currency: { type: 'string' },
                   },
                 },
@@ -696,6 +698,11 @@ export function registerWishlistRoutes(app: App) {
         return reply.status(404).send({ error: 'Wishlist not found' });
       }
 
+      // Get top image (first item with an image)
+      const topImageUrl =
+        sharedWishlist.wishlist.items.find((item) => item.imageUrl)
+          ?.imageUrl || null;
+
       app.logger.info(
         {
           wishlistId: sharedWishlist.wishlist.id,
@@ -708,6 +715,8 @@ export function registerWishlistRoutes(app: App) {
           id: sharedWishlist.wishlist.id,
           name: sharedWishlist.wishlist.name,
           visibility: sharedWishlist.visibility,
+          itemCount: sharedWishlist.wishlist.items.length,
+          topImageUrl,
         },
         items: sharedWishlist.wishlist.items,
       };
