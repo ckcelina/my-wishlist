@@ -71,6 +71,13 @@
       "when": 1769268415910,
       "tag": "20260124152655_early_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1769269571916,
+      "tag": "20260124154611_fantastic_meteorite",
+      "breakpoints": true
     }
   ]
 }

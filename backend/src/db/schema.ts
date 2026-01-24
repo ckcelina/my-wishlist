@@ -91,6 +91,9 @@ export const sharedWishlists = pgTable(
       }),
     shareSlug: text('share_slug').notNull().unique(),
     visibility: text('visibility').notNull(), // 'public' or 'unlisted'
+    allowReservations: boolean('allow_reservations').default(false).notNull(),
+    hideReservedItems: boolean('hide_reserved_items').default(false).notNull(),
+    showReserverNames: boolean('show_reserver_names').default(false).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [index('shared_wishlists_wishlist_id_idx').on(table.wishlistId)]
@@ -111,6 +114,9 @@ export const userSettings = pgTable(
     defaultCurrency: text('default_currency').default('USD').notNull(),
     expoPushToken: text('expo_push_token'),
     weeklyDigestEnabled: boolean('weekly_digest_enabled').default(false).notNull(),
+    quietHoursEnabled: boolean('quiet_hours_enabled').default(false).notNull(),
+    quietHoursStartTime: text('quiet_hours_start_time'),
+    quietHoursEndTime: text('quiet_hours_end_time'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at')
       .defaultNow()
@@ -367,6 +373,118 @@ export const priceRefreshJobsRelations = relations(priceRefreshJobs, ({ one }) =
   }),
   wishlist: one(wishlists, {
     fields: [priceRefreshJobs.wishlistId],
+    references: [wishlists.id],
+  }),
+}));
+
+// Notification Deduplication table
+export const notificationDedupe = pgTable(
+  'notification_dedupe',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => wishlistItems.id, {
+        onDelete: 'cascade',
+      }),
+    type: text('type').notNull(),
+    lastSentAt: timestamp('last_sent_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('notification_dedupe_user_id_idx').on(table.userId),
+    index('notification_dedupe_item_id_idx').on(table.itemId),
+    check('type_check', sql`type IN ('price_drop', 'under_target', 'weekly_digest')`),
+  ]
+);
+
+// Item Reservations table
+export const itemReservations = pgTable(
+  'item_reservations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sharedWishlistId: uuid('shared_wishlist_id')
+      .notNull()
+      .references(() => sharedWishlists.id, {
+        onDelete: 'cascade',
+      }),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => wishlistItems.id, {
+        onDelete: 'cascade',
+      }),
+    reservedByName: text('reserved_by_name').notNull(),
+    reservedAt: timestamp('reserved_at').defaultNow().notNull(),
+    status: text('status').default('reserved').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('item_reservations_shared_wishlist_id_idx').on(table.sharedWishlistId),
+    index('item_reservations_item_id_idx').on(table.itemId),
+    check('status_check', sql`status IN ('reserved', 'released')`),
+  ]
+);
+
+// Import Templates table
+export const importTemplates = pgTable(
+  'import_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    name: text('name').notNull(),
+    mode: text('mode').notNull(),
+    groupingMode: text('grouping_mode').notNull(),
+    defaultWishlistId: uuid('default_wishlist_id').references(() => wishlists.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('import_templates_user_id_idx').on(table.userId),
+    check('mode_check', sql`mode IN ('merge', 'new', 'split')`),
+    check('grouping_mode_check', sql`grouping_mode IN ('store', 'category', 'price', 'person', 'occasion')`),
+  ]
+);
+
+// Relations
+export const notificationDedupeRelations = relations(notificationDedupe, ({ one }) => ({
+  user: one(user, {
+    fields: [notificationDedupe.userId],
+    references: [user.id],
+  }),
+  item: one(wishlistItems, {
+    fields: [notificationDedupe.itemId],
+    references: [wishlistItems.id],
+  }),
+}));
+
+export const itemReservationsRelations = relations(itemReservations, ({ one }) => ({
+  sharedWishlist: one(sharedWishlists, {
+    fields: [itemReservations.sharedWishlistId],
+    references: [sharedWishlists.id],
+  }),
+  item: one(wishlistItems, {
+    fields: [itemReservations.itemId],
+    references: [wishlistItems.id],
+  }),
+}));
+
+export const importTemplatesRelations = relations(importTemplates, ({ one }) => ({
+  user: one(user, {
+    fields: [importTemplates.userId],
+    references: [user.id],
+  }),
+  wishlist: one(wishlists, {
+    fields: [importTemplates.defaultWishlistId],
     references: [wishlists.id],
   }),
 }));

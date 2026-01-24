@@ -18,6 +18,12 @@ import { registerEngagementRoutes } from './routes/engagement.js';
 import { registerPremiumRoutes } from './routes/premium.js';
 import { registerLinkNormalizationRoutes } from './routes/link-normalization.js';
 import { registerPriceRefreshQueueRoutes } from './routes/price-refresh-queue.js';
+import { registerNotificationDedupeRoutes } from './routes/notification-dedup.js';
+import { registerQuietHoursRoutes } from './routes/quiet-hours.js';
+import { registerReservationRoutes } from './routes/reservations.js';
+import { registerImportTemplateRoutes } from './routes/import-templates.js';
+import { registerOnboardingRoutes } from './routes/onboarding.js';
+import { registerSearchExportRoutes } from './routes/search-export.js';
 
 // Combine schemas for full database type support
 const schema = { ...appSchema, ...authSchema };
@@ -52,6 +58,12 @@ registerEngagementRoutes(app);
 registerPremiumRoutes(app);
 registerLinkNormalizationRoutes(app);
 registerPriceRefreshQueueRoutes(app);
+registerNotificationDedupeRoutes(app);
+registerQuietHoursRoutes(app);
+registerReservationRoutes(app);
+registerImportTemplateRoutes(app);
+registerOnboardingRoutes(app);
+registerSearchExportRoutes(app);
 
 await app.run();
 app.logger.info('Application running');
