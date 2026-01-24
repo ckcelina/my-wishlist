@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,18 @@ interface Wishlist {
   isDefault: boolean;
   itemCount: number;
   createdAt: string;
+  allowReservations?: boolean;
+  hideReservedItems?: boolean;
+  showReserverNames?: boolean;
+}
+
+interface Reservation {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  reservedByName: string;
+  reservedAt: string;
+  status: string;
 }
 
 interface PriceDropInfo {
@@ -89,6 +101,13 @@ export default function WishlistDetailScreen() {
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [existingShareSlug, setExistingShareSlug] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string>('');
+  const [showReservationSettings, setShowReservationSettings] = useState(false);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loadingReservations, setLoadingReservations] = useState(false);
+  const [allowReservations, setAllowReservations] = useState(false);
+  const [hideReservedItems, setHideReservedItems] = useState(false);
+  const [showReserverNames, setShowReserverNames] = useState(false);
+  const [savingReservationSettings, setSavingReservationSettings] = useState(false);
 
   const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
@@ -101,6 +120,11 @@ export default function WishlistDetailScreen() {
       console.log('WishlistDetailScreen: Fetched wishlist:', wishlistData.name);
       setWishlist(wishlistData);
       setNewName(wishlistData.name);
+      
+      // Set reservation settings from wishlist data
+      setAllowReservations(wishlistData.allowReservations || false);
+      setHideReservedItems(wishlistData.hideReservedItems || false);
+      setShowReserverNames(wishlistData.showReserverNames || false);
       
       const itemsData = await authenticatedGet<Item[]>(`/api/wishlists/${id}/items`);
       console.log('WishlistDetailScreen: Fetched items:', itemsData.length);
@@ -283,6 +307,71 @@ export default function WishlistDetailScreen() {
     }
     
     setShowShareModal(true);
+  };
+
+  const openReservationSettings = async () => {
+    console.log('WishlistDetailScreen: Opening reservation settings');
+    setShowMenu(false);
+    setLoadingReservations(true);
+    
+    try {
+      const { authenticatedGet } = await import('@/utils/api');
+      const reservationsData = await authenticatedGet<Reservation[]>(`/api/wishlists/${id}/reservations`);
+      
+      console.log('WishlistDetailScreen: Fetched reservations:', reservationsData.length);
+      setReservations(reservationsData);
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error fetching reservations:', error);
+      setReservations([]);
+    } finally {
+      setLoadingReservations(false);
+    }
+    
+    setShowReservationSettings(true);
+  };
+
+  const handleSaveReservationSettings = async () => {
+    console.log('WishlistDetailScreen: Saving reservation settings');
+    
+    if (!isOnline) {
+      Alert.alert('Offline', 'You need an internet connection to update reservation settings.');
+      return;
+    }
+
+    setSavingReservationSettings(true);
+    
+    try {
+      const { authenticatedPut } = await import('@/utils/api');
+      
+      const response = await authenticatedPut<{
+        allowReservations: boolean;
+        hideReservedItems: boolean;
+        showReserverNames: boolean;
+      }>(`/api/wishlists/${id}/reservation-settings`, {
+        allowReservations,
+        hideReservedItems,
+        showReserverNames,
+      });
+      
+      console.log('WishlistDetailScreen: Reservation settings saved:', response);
+      
+      // Update local wishlist state
+      if (wishlist) {
+        setWishlist({
+          ...wishlist,
+          allowReservations: response.allowReservations,
+          hideReservedItems: response.hideReservedItems,
+          showReserverNames: response.showReserverNames,
+        });
+      }
+      
+      Alert.alert('Success', 'Reservation settings updated');
+    } catch (error) {
+      console.error('WishlistDetailScreen: Error saving reservation settings:', error);
+      Alert.alert('Error', 'Failed to save reservation settings');
+    } finally {
+      setSavingReservationSettings(false);
+    }
   };
 
   const openSortModal = () => {
@@ -772,6 +861,19 @@ export default function WishlistDetailScreen() {
               <View style={styles.menuDivider} />
               <TouchableOpacity
                 style={styles.menuItem}
+                onPress={openReservationSettings}
+              >
+                <IconSymbol
+                  ios_icon_name="gift"
+                  android_material_icon_name="card-giftcard"
+                  size={20}
+                  color={colors.text}
+                />
+                <Text style={styles.menuItemText}>Reservation Settings</Text>
+              </TouchableOpacity>
+              <View style={styles.menuDivider} />
+              <TouchableOpacity
+                style={styles.menuItem}
                 onPress={() => {
                   setShowMenu(false);
                   setShowDeleteConfirm(true);
@@ -1143,6 +1245,173 @@ export default function WishlistDetailScreen() {
           destructive
           icon="link"
         />
+
+        {/* Reservation Settings Modal */}
+        <Modal
+          visible={showReservationSettings}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowReservationSettings(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowReservationSettings(false)}
+          >
+            <Pressable style={styles.reservationModalContainer}>
+              <Text style={styles.modalTitle}>Reservation Settings</Text>
+              <Text style={styles.modalSubtitle}>
+                Allow guests to reserve items on shared wishlists
+              </Text>
+
+              <ScrollView style={styles.reservationModalScroll}>
+                {/* Allow Reservations Toggle */}
+                <View style={styles.settingRow}>
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>Allow Reservations</Text>
+                    <Text style={styles.settingDescription}>
+                      Let guests reserve items to avoid duplicate gifts
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.toggle,
+                      allowReservations && styles.toggleActive,
+                    ]}
+                    onPress={() => setAllowReservations(!allowReservations)}
+                    disabled={savingReservationSettings}
+                  >
+                    <View
+                      style={[
+                        styles.toggleThumb,
+                        allowReservations && styles.toggleThumbActive,
+                      ]}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                {allowReservations && (
+                  <>
+                    {/* Hide Reserved Items Toggle */}
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingTitle}>Hide Reserved Items</Text>
+                        <Text style={styles.settingDescription}>
+                          Reserved items won't be visible to other guests
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.toggle,
+                          hideReservedItems && styles.toggleActive,
+                        ]}
+                        onPress={() => setHideReservedItems(!hideReservedItems)}
+                        disabled={savingReservationSettings}
+                      >
+                        <View
+                          style={[
+                            styles.toggleThumb,
+                            hideReservedItems && styles.toggleThumbActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Show Reserver Names Toggle */}
+                    <View style={styles.settingRow}>
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingTitle}>Show Reserver Names</Text>
+                        <Text style={styles.settingDescription}>
+                          Guests can see who reserved each item
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.toggle,
+                          showReserverNames && styles.toggleActive,
+                        ]}
+                        onPress={() => setShowReserverNames(!showReserverNames)}
+                        disabled={savingReservationSettings}
+                      >
+                        <View
+                          style={[
+                            styles.toggleThumb,
+                            showReserverNames && styles.toggleThumbActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Current Reservations */}
+                    {loadingReservations ? (
+                      <View style={styles.reservationsLoading}>
+                        <ActivityIndicator size="small" color={colors.primary} />
+                        <Text style={styles.reservationsLoadingText}>Loading reservations...</Text>
+                      </View>
+                    ) : reservations.length > 0 ? (
+                      <View style={styles.reservationsSection}>
+                        <Text style={styles.reservationsSectionTitle}>
+                          Current Reservations ({reservations.length})
+                        </Text>
+                        {reservations.map((reservation) => (
+                          <View key={reservation.id} style={styles.reservationCard}>
+                            <View style={styles.reservationInfo}>
+                              <Text style={styles.reservationItemTitle} numberOfLines={1}>
+                                {reservation.itemTitle}
+                              </Text>
+                              <Text style={styles.reservationDetails}>
+                                Reserved by {reservation.reservedByName}
+                              </Text>
+                              <Text style={styles.reservationDate}>
+                                {new Date(reservation.reservedAt).toLocaleDateString()}
+                              </Text>
+                            </View>
+                            <IconSymbol
+                              ios_icon_name="checkmark.circle.fill"
+                              android_material_icon_name="check-circle"
+                              size={24}
+                              color="#10B981"
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <View style={styles.noReservations}>
+                        <IconSymbol
+                          ios_icon_name="gift"
+                          android_material_icon_name="card-giftcard"
+                          size={32}
+                          color={colors.textSecondary}
+                        />
+                        <Text style={styles.noReservationsText}>No reservations yet</Text>
+                      </View>
+                    )}
+                  </>
+                )}
+              </ScrollView>
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => setShowReservationSettings(false)}
+                  disabled={savingReservationSettings}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.saveButton]}
+                  onPress={handleSaveReservationSettings}
+                  disabled={savingReservationSettings}
+                >
+                  {savingReservationSettings ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveButtonText}>Save Settings</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -1524,5 +1793,125 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     marginTop: 8,
     marginBottom: 16,
+  },
+  reservationModalContainer: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    padding: 20,
+    width: '90%',
+    maxWidth: 450,
+    maxHeight: '80%',
+  },
+  reservationModalScroll: {
+    maxHeight: 500,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 12,
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  settingTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+  toggle: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.border,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  reservationsLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 12,
+  },
+  reservationsLoadingText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  reservationsSection: {
+    marginTop: 16,
+  },
+  reservationsSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  reservationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  reservationInfo: {
+    flex: 1,
+  },
+  reservationItemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  reservationDetails: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  reservationDate: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  noReservations: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  noReservationsText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

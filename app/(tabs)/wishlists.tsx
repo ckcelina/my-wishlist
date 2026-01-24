@@ -473,7 +473,24 @@ export default function WishlistsScreen() {
       
       <View style={styles.header}>
         <Logo size="small" style={styles.logo} />
-        <Text style={styles.headerTitle}>Your Wishlists</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>Your Wishlists</Text>
+          <TouchableOpacity
+            onPress={() => {
+              console.log('[WishlistsScreen] User tapped Search button');
+              router.push('/global-search');
+            }}
+            style={styles.searchButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <IconSymbol
+              ios_icon_name="magnifyingglass"
+              android_material_icon_name="search"
+              size={24}
+              color={colors.accent}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {wishlists.length === 0 ? (
@@ -631,9 +648,19 @@ const styles = StyleSheet.create({
   logo: {
     marginBottom: spacing.sm,
   },
+  headerRow: {
+    ...containerStyles.row,
+    ...containerStyles.spaceBetween,
+    width: '100%',
+    alignItems: 'center',
+  },
   headerTitle: {
     ...typography.titleLarge,
+    flex: 1,
     textAlign: 'center',
+  },
+  searchButton: {
+    padding: spacing.xs,
   },
   content: {
     flex: 1,

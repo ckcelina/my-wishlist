@@ -19,7 +19,8 @@ import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
-import { BACKEND_URL } from "@/utils/api";
+import { BACKEND_URL, authenticatedGet, authenticatedPost } from "@/utils/api";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_700Bold,
@@ -45,6 +46,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   const segments = useSegments();
   const router = useRouter();
   const [isNavigationReady, setIsNavigationReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   useEffect(() => {
     if (loading) {
@@ -76,6 +79,47 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, segments, isNavigationReady, router]);
 
+  // Check onboarding status
+  useEffect(() => {
+    if (user && !onboardingChecked) {
+      console.log('[AuthGate] Checking onboarding status');
+      authenticatedGet<{ completed: boolean; completedAt: string | null }>('/api/users/onboarding-status')
+        .then((data) => {
+          console.log('[AuthGate] Onboarding status:', data);
+          if (!data.completed) {
+            setShowOnboarding(true);
+          }
+          setOnboardingChecked(true);
+        })
+        .catch((error) => {
+          console.error('[AuthGate] Error checking onboarding:', error);
+          setOnboardingChecked(true);
+        });
+    }
+  }, [user, onboardingChecked]);
+
+  const handleOnboardingComplete = async () => {
+    console.log('[AuthGate] User completed onboarding');
+    try {
+      await authenticatedPost('/api/users/complete-onboarding', {});
+      setShowOnboarding(false);
+    } catch (error) {
+      console.error('[AuthGate] Error completing onboarding:', error);
+      setShowOnboarding(false);
+    }
+  };
+
+  const handleOnboardingSkip = async () => {
+    console.log('[AuthGate] User skipped onboarding');
+    try {
+      await authenticatedPost('/api/users/complete-onboarding', {});
+      setShowOnboarding(false);
+    } catch (error) {
+      console.error('[AuthGate] Error skipping onboarding:', error);
+      setShowOnboarding(false);
+    }
+  };
+
   // Show loading screen while checking auth
   if (loading || !isNavigationReady) {
     return (
@@ -85,7 +129,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {user && (
+        <OnboardingModal
+          visible={showOnboarding}
+          onComplete={handleOnboardingComplete}
+          onSkip={handleOnboardingSkip}
+        />
+      )}
+    </>
+  );
 }
 
 function RootLayoutContent() {

@@ -479,6 +479,33 @@ export default function ProfileScreen() {
 
             <Divider />
 
+            <PressableScale
+              style={styles.menuItem}
+              onPress={() => {
+                haptics.light();
+                router.push('/quiet-hours');
+              }}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="moon"
+                  android_material_icon_name="bedtime"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Quiet Hours</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </PressableScale>
+
+            <Divider />
+
             <View style={styles.menuItem}>
               <View style={styles.menuItemLeft}>
                 <IconSymbol
@@ -535,8 +562,40 @@ export default function ProfileScreen() {
           </Card>
         </Animated.View>
 
-        {/* Help Section */}
+        {/* Data Section */}
         <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>DATA</Text>
+          
+          <Card style={styles.card}>
+            <PressableScale
+              style={styles.menuItem}
+              onPress={() => {
+                haptics.light();
+                router.push('/export-data');
+              }}
+              hapticFeedback="light"
+            >
+              <View style={styles.menuItemLeft}>
+                <IconSymbol
+                  ios_icon_name="download"
+                  android_material_icon_name="download"
+                  size={24}
+                  color={theme.colors.textSecondary}
+                />
+                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Export My Data</Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={theme.colors.textSecondary}
+              />
+            </PressableScale>
+          </Card>
+        </Animated.View>
+
+        {/* Help Section */}
+        <Animated.View entering={FadeInDown.delay(225).springify()} style={styles.section}>
           <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>HELP</Text>
           
           <Card style={styles.card}>
