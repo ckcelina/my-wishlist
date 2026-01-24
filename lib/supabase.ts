@@ -6,11 +6,17 @@ import Constants from 'expo-constants';
 import type { Database } from './supabase-types';
 
 // Get Supabase configuration from app.json
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || 'https://dixgmnuayzblwpqyplsi.supabase.co';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-';
+const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
+const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
 
 console.log('[Supabase] Initializing with URL:', SUPABASE_URL);
+console.log('[Supabase] Anon key format:', SUPABASE_ANON_KEY ? (SUPABASE_ANON_KEY.startsWith('sb_publishable_') ? 'sb_publishable_*' : 'legacy format') : 'Not configured');
 console.log('[Supabase] Anon key configured:', SUPABASE_ANON_KEY ? 'Yes' : 'No');
+
+// Validate configuration
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('[Supabase] ERROR: Missing Supabase URL or Anon Key in app.json extra config');
+}
 
 // Platform-specific storage adapter for Supabase
 const ExpoSecureStoreAdapter = {
@@ -37,6 +43,8 @@ const ExpoSecureStoreAdapter = {
 };
 
 // Create Supabase client with custom storage and typed database
+// This supports both legacy anon keys and new sb_publishable_* format
+// No manual JWT validation - @supabase/supabase-js v2 handles all key formats
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: ExpoSecureStoreAdapter,
@@ -47,5 +55,6 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, 
 });
 
 console.log('[Supabase] Client initialized successfully');
+console.log('[Supabase] Ready to accept sb_publishable_* anon keys');
 
 export { SUPABASE_URL, SUPABASE_ANON_KEY };
