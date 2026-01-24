@@ -7,16 +7,17 @@ import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { Badge } from '@/components/design-system/Badge';
 import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { supabase } from '@/lib/supabase';
 import { getWishlistWithItemCount, createWishlist, updateWishlist, deleteWishlist } from '@/lib/supabase-helpers';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'expo-router';
 import { OfflineNotice } from '@/components/design-system/OfflineNotice';
 import { ErrorState } from '@/components/design-system/ErrorState';
 import { Logo } from '@/components/Logo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/design-system/Card';
+import { useAppTheme } from '@/contexts/ThemeContext';
 import {
   View,
   Text,
@@ -43,151 +44,6 @@ interface Wishlist {
 
 const PAGE_SIZE = 20;
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  logo: {
-    width: 120,
-    height: 40,
-  },
-  title: {
-    ...typography.h1,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-  },
-  list: {
-    paddingHorizontal: spacing.lg,
-  },
-  listContent: {
-    paddingBottom: spacing.xl,
-  },
-  wishlistCard: {
-    marginBottom: spacing.md,
-  },
-  wishlistContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  wishlistLeft: {
-    flex: 1,
-  },
-  wishlistName: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  wishlistMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  wishlistMetaText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  wishlistRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  moreButton: {
-    padding: spacing.sm,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: spacing.xl,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '85%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    ...typography.h2,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  modalInput: {
-    ...inputStyles.input,
-    marginBottom: spacing.md,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  modalButton: {
-    flex: 1,
-  },
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  menuContent: {
-    position: 'absolute',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.xs,
-    minWidth: 200,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderRadius: 8,
-    gap: spacing.sm,
-  },
-  menuItemText: {
-    ...typography.body,
-    color: colors.text,
-  },
-  menuItemDanger: {
-    color: colors.error,
-  },
-  loadingFooter: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
-  },
-});
-
 export default function WishlistsScreen() {
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,21 +66,183 @@ export default function WishlistsScreen() {
   const { user } = useAuth();
   const router = useRouter();
   const { isConnected } = useNetworkStatus();
+  const { theme } = useAppTheme();
+  
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    header: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.md,
+    },
+    headerTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    logo: {
+      width: 120,
+      height: 40,
+    },
+    title: {
+      ...typography.h1,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    subtitle: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    list: {
+      paddingHorizontal: spacing.lg,
+    },
+    listContent: {
+      paddingBottom: spacing.xl,
+    },
+    wishlistCard: {
+      marginBottom: spacing.md,
+    },
+    wishlistContent: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    wishlistLeft: {
+      flex: 1,
+    },
+    wishlistName: {
+      ...typography.h3,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    wishlistMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    wishlistMetaText: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    wishlistRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    moreButton: {
+      padding: spacing.sm,
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: spacing.xl,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.lg,
+      width: '85%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      ...typography.h2,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    modalInput: {
+      backgroundColor: colors.surface,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      fontSize: 16,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    modalButton: {
+      flex: 1,
+    },
+    menuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    menuContent: {
+      position: 'absolute',
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: spacing.xs,
+      minWidth: 200,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.25,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 8,
+        },
+      }),
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.md,
+      borderRadius: 8,
+      gap: spacing.sm,
+    },
+    menuItemText: {
+      ...typography.body,
+      color: colors.text,
+    },
+    menuItemDanger: {
+      color: colors.error,
+    },
+    loadingFooter: {
+      paddingVertical: spacing.lg,
+      alignItems: 'center',
+    },
+  }), [colors, typography]);
 
   const initializeDefaultWishlist = useCallback(async () => {
     if (!user?.id || initializing) {
+      console.log('[WishlistsScreen] Cannot initialize default wishlist - user:', user?.id, 'initializing:', initializing);
       return;
     }
 
     setInitializing(true);
     try {
-      console.log('[WishlistsScreen] Creating default wishlist for new user');
-      const newWishlist = await createWishlist({
+      console.log('[WishlistsScreen] Creating default wishlist for new user:', user.id);
+      
+      const wishlistData = {
         user_id: user.id,
         name: 'My Wishlist',
-      });
+      };
+      
+      console.log('[WishlistsScreen] Wishlist data:', wishlistData);
+      
+      const newWishlist = await createWishlist(wishlistData);
 
-      console.log('[WishlistsScreen] Default wishlist created:', newWishlist.id);
+      console.log('[WishlistsScreen] Default wishlist created successfully:', newWishlist.id);
       
       // Refresh the list
       await fetchWishlistsFromNetwork(1, false);
@@ -233,7 +251,10 @@ export default function WishlistsScreen() {
       router.push(`/wishlist/${newWishlist.id}`);
     } catch (err) {
       console.error('[WishlistsScreen] Error creating default wishlist:', err);
-      Alert.alert('Error', 'Failed to create default wishlist');
+      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
+      
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create default wishlist';
+      Alert.alert('Error', errorMessage);
     } finally {
       setInitializing(false);
     }
@@ -253,7 +274,7 @@ export default function WishlistsScreen() {
       }
       setError(null);
 
-      console.log('[WishlistsScreen] Fetching wishlists from Supabase');
+      console.log('[WishlistsScreen] Fetching wishlists from Supabase for user:', user.id);
       const data = await getWishlistWithItemCount(user.id);
 
       const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
@@ -283,6 +304,7 @@ export default function WishlistsScreen() {
       console.log('[WishlistsScreen] Fetched wishlists:', formattedWishlists.length);
     } catch (err) {
       console.error('[WishlistsScreen] Error fetching wishlists:', err);
+      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
       setError(err instanceof Error ? err.message : 'Failed to load wishlists');
 
       if (!append) {
@@ -324,7 +346,9 @@ export default function WishlistsScreen() {
   }, [loadingMore, hasMore, loading, page, fetchWishlistsFromNetwork]);
 
   const handleCreateWishlist = async () => {
-    if (!newWishlistName.trim()) {
+    const trimmedName = newWishlistName.trim();
+    
+    if (!trimmedName) {
       Alert.alert('Error', 'Please enter a wishlist name');
       return;
     }
@@ -335,11 +359,18 @@ export default function WishlistsScreen() {
     }
 
     try {
-      console.log('[WishlistsScreen] Creating wishlist:', newWishlistName);
-      await createWishlist({
+      console.log('[WishlistsScreen] Creating wishlist:', trimmedName, 'for user:', user.id);
+      
+      const wishlistData = {
         user_id: user.id,
-        name: newWishlistName.trim(),
-      });
+        name: trimmedName,
+      };
+      
+      console.log('[WishlistsScreen] Wishlist data:', wishlistData);
+      
+      const newWishlist = await createWishlist(wishlistData);
+      
+      console.log('[WishlistsScreen] Wishlist created successfully:', newWishlist);
 
       setCreateModalVisible(false);
       setNewWishlistName('');
@@ -347,20 +378,25 @@ export default function WishlistsScreen() {
       Alert.alert('Success', 'Wishlist created successfully');
     } catch (err) {
       console.error('[WishlistsScreen] Error creating wishlist:', err);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create wishlist');
+      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
+      
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create wishlist';
+      Alert.alert('Error', errorMessage);
     }
   };
 
   const handleRenameWishlist = async () => {
-    if (!renameWishlistName.trim() || !selectedWishlist) {
+    const trimmedName = renameWishlistName.trim();
+    
+    if (!trimmedName || !selectedWishlist) {
       Alert.alert('Error', 'Please enter a wishlist name');
       return;
     }
 
     try {
-      console.log('[WishlistsScreen] Renaming wishlist:', selectedWishlist.id);
+      console.log('[WishlistsScreen] Renaming wishlist:', selectedWishlist.id, 'to:', trimmedName);
       await updateWishlist(selectedWishlist.id, {
-        name: renameWishlistName.trim(),
+        name: trimmedName,
       });
 
       setRenameModalVisible(false);
@@ -461,9 +497,11 @@ export default function WishlistsScreen() {
               <Text style={styles.wishlistName}>{item.name}</Text>
               <View style={styles.wishlistMeta}>
                 <Text style={styles.wishlistMetaText}>
-                  {item.itemCount} {itemCountText}
+                  {item.itemCount}
                 </Text>
-                <Text style={styles.wishlistMetaText}>•</Text>
+                <Text style={styles.wishlistMetaText}> </Text>
+                <Text style={styles.wishlistMetaText}>{itemCountText}</Text>
+                <Text style={styles.wishlistMetaText}> • </Text>
                 <Text style={styles.wishlistMetaText}>{lastUpdatedText}</Text>
               </View>
             </View>

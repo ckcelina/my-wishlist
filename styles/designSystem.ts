@@ -10,54 +10,60 @@ import { Theme, lightTheme, darkTheme } from './theme';
 export { lightTheme, darkTheme };
 export type { Theme };
 
+// ═══════════════════════════════════════════════════════
+// 🎨 COLORS - Dynamic theme-aware colors
+// ═══════════════════════════════════════════════════════
+
+export function createColors(theme: Theme) {
+  return {
+    // Primary palette
+    primary: '#6366F1',
+    primaryLight: '#818CF8',
+    primaryDark: '#4F46E5',
+    
+    // Neutral palette
+    background: theme.colors.background,
+    backgroundAlt: theme.colors.backgroundSecondary,
+    surface: theme.colors.card,
+    
+    // Text hierarchy
+    text: theme.colors.text,
+    textPrimary: theme.colors.text,
+    textSecondary: theme.colors.textSecondary,
+    textTertiary: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(59,42,31,0.5)',
+    textInverse: theme.mode === 'dark' ? '#000000' : '#FFFFFF',
+    
+    // Borders and dividers
+    border: theme.colors.border,
+    borderLight: theme.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    divider: theme.colors.divider,
+    
+    // Semantic colors
+    success: theme.colors.success,
+    successLight: theme.mode === 'dark' ? 'rgba(52,199,89,0.2)' : '#D1FAE5',
+    warning: theme.colors.warning,
+    warningLight: theme.mode === 'dark' ? 'rgba(255,149,0,0.2)' : '#FEF3C7',
+    error: theme.colors.error,
+    errorLight: theme.mode === 'dark' ? 'rgba(255,59,48,0.2)' : '#FEE2E2',
+    info: theme.colors.info,
+    infoLight: theme.mode === 'dark' ? 'rgba(90,200,250,0.2)' : '#DBEAFE',
+    
+    // Accent colors
+    accent: theme.colors.accent,
+    accentLight: theme.colors.accentLight,
+    
+    // Shadows
+    shadowLight: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.05)',
+    shadowMedium: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
+    shadowDark: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.15)',
+  };
+}
+
 // Default to light theme for static exports (components should use useAppTheme hook)
 const defaultTheme = lightTheme;
 
-// ═══════════════════════════════════════════════════════
-// 🎨 COLORS - Backward compatibility
-// ═══════════════════════════════════════════════════════
-
-export const colors = {
-  // Primary palette
-  primary: '#6366F1',
-  primaryLight: '#818CF8',
-  primaryDark: '#4F46E5',
-  
-  // Neutral palette
-  background: defaultTheme.colors.background,
-  backgroundAlt: defaultTheme.colors.backgroundSecondary,
-  surface: defaultTheme.colors.card,
-  
-  // Text hierarchy
-  textPrimary: defaultTheme.colors.text,
-  textSecondary: defaultTheme.colors.textSecondary,
-  textTertiary: 'rgba(59,42,31,0.5)',
-  textInverse: '#FFFFFF',
-  
-  // Borders and dividers
-  border: defaultTheme.colors.border,
-  borderLight: 'rgba(0,0,0,0.05)',
-  divider: defaultTheme.colors.divider,
-  
-  // Semantic colors
-  success: defaultTheme.colors.success,
-  successLight: '#D1FAE5',
-  warning: defaultTheme.colors.warning,
-  warningLight: '#FEF3C7',
-  error: defaultTheme.colors.error,
-  errorLight: '#FEE2E2',
-  info: defaultTheme.colors.info,
-  infoLight: '#DBEAFE',
-  
-  // Accent colors
-  accent: defaultTheme.colors.accent,
-  accentLight: defaultTheme.colors.accentLight,
-  
-  // Shadows
-  shadowLight: 'rgba(0, 0, 0, 0.05)',
-  shadowMedium: 'rgba(0, 0, 0, 0.1)',
-  shadowDark: 'rgba(0, 0, 0, 0.15)',
-};
+// Backward compatibility - static colors export (use createColors with theme instead)
+export const colors = createColors(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
 // 📏 SPACING SCALE
@@ -77,107 +83,153 @@ export const spacing = {
 // 🔤 TYPOGRAPHY HIERARCHY
 // ═══════════════════════════════════════════════════════
 
-export const typography = StyleSheet.create({
-  // Display text - Large, elegant headings (Playfair Display)
-  displayLarge: {
-    fontSize: 32,
-    fontWeight: '400',
-    lineHeight: 40,
-    color: colors.textPrimary,
-    letterSpacing: -0.5,
-  } as TextStyle,
+export function createTypography(theme: Theme) {
+  const themeColors = createColors(theme);
   
-  displayMedium: {
-    fontSize: 28,
-    fontWeight: '400',
-    lineHeight: 36,
-    color: colors.textPrimary,
-    letterSpacing: -0.5,
-  } as TextStyle,
-  
-  // Titles - Section headings (Playfair Display)
-  titleLarge: {
-    fontSize: 24,
-    fontWeight: '400',
-    lineHeight: 32,
-    color: colors.textPrimary,
-    letterSpacing: -0.3,
-  } as TextStyle,
-  
-  titleMedium: {
-    fontSize: 20,
-    fontWeight: '400',
-    lineHeight: 28,
-    color: colors.textPrimary,
-    letterSpacing: -0.2,
-  } as TextStyle,
-  
-  titleSmall: {
-    fontSize: 18,
-    fontWeight: '400',
-    lineHeight: 24,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  // Body text - Regular content (Inter)
-  bodyLarge: {
-    fontSize: 16,
-    fontWeight: '400',
-    lineHeight: 24,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  bodyMedium: {
-    fontSize: 14,
-    fontWeight: '400',
-    lineHeight: 20,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  bodySmall: {
-    fontSize: 12,
-    fontWeight: '400',
-    lineHeight: 16,
-    color: colors.textSecondary,
-  } as TextStyle,
-  
-  // Labels - UI labels and captions
-  labelLarge: {
-    fontSize: 14,
-    fontWeight: '500',
-    lineHeight: 20,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  labelMedium: {
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 16,
-    color: colors.textSecondary,
-  } as TextStyle,
-  
-  labelSmall: {
-    fontSize: 10,
-    fontWeight: '500',
-    lineHeight: 14,
-    color: colors.textTertiary,
-  } as TextStyle,
-  
-  // Button text
-  buttonLarge: {
-    fontSize: 16,
-    fontWeight: '600',
-    lineHeight: 24,
-    color: colors.textInverse,
-  } as TextStyle,
-  
-  buttonMedium: {
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 20,
-    color: colors.textInverse,
-  } as TextStyle,
-});
+  return {
+    // Display text - Large, elegant headings (Playfair Display)
+    displayLarge: {
+      fontSize: 32,
+      fontWeight: '400' as const,
+      lineHeight: 40,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.5,
+    },
+    
+    displayMedium: {
+      fontSize: 28,
+      fontWeight: '400' as const,
+      lineHeight: 36,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.5,
+    },
+    
+    // Titles - Section headings (Playfair Display)
+    titleLarge: {
+      fontSize: 24,
+      fontWeight: '400' as const,
+      lineHeight: 32,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.3,
+    },
+    
+    titleMedium: {
+      fontSize: 20,
+      fontWeight: '400' as const,
+      lineHeight: 28,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.2,
+    },
+    
+    titleSmall: {
+      fontSize: 18,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: themeColors.textPrimary,
+    },
+    
+    // Body text - Regular content (Inter)
+    bodyLarge: {
+      fontSize: 16,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: themeColors.textPrimary,
+    },
+    
+    bodyMedium: {
+      fontSize: 14,
+      fontWeight: '400' as const,
+      lineHeight: 20,
+      color: themeColors.textPrimary,
+    },
+    
+    bodySmall: {
+      fontSize: 12,
+      fontWeight: '400' as const,
+      lineHeight: 16,
+      color: themeColors.textSecondary,
+    },
+    
+    // Labels - UI labels and captions
+    labelLarge: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      lineHeight: 20,
+      color: themeColors.textPrimary,
+    },
+    
+    labelMedium: {
+      fontSize: 12,
+      fontWeight: '500' as const,
+      lineHeight: 16,
+      color: themeColors.textSecondary,
+    },
+    
+    labelSmall: {
+      fontSize: 10,
+      fontWeight: '500' as const,
+      lineHeight: 14,
+      color: themeColors.textTertiary,
+    },
+    
+    // Button text
+    buttonLarge: {
+      fontSize: 16,
+      fontWeight: '600' as const,
+      lineHeight: 24,
+      color: themeColors.textInverse,
+    },
+    
+    buttonMedium: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      lineHeight: 20,
+      color: themeColors.textInverse,
+    },
+    
+    // Backward compatibility
+    h1: {
+      fontSize: 32,
+      fontWeight: '400' as const,
+      lineHeight: 40,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.5,
+    },
+    
+    h2: {
+      fontSize: 24,
+      fontWeight: '400' as const,
+      lineHeight: 32,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.3,
+    },
+    
+    h3: {
+      fontSize: 20,
+      fontWeight: '400' as const,
+      lineHeight: 28,
+      color: themeColors.textPrimary,
+      letterSpacing: -0.2,
+    },
+    
+    body: {
+      fontSize: 16,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: themeColors.textPrimary,
+    },
+    
+    caption: {
+      fontSize: 12,
+      fontWeight: '400' as const,
+      lineHeight: 16,
+      color: themeColors.textSecondary,
+    },
+  };
+}
+
+// Static typography export for backward compatibility
+export const typography = createTypography(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
 // 🔘 BUTTON STYLES
@@ -354,6 +406,17 @@ export const containerStyles = StyleSheet.create({
 
 export const inputStyles = StyleSheet.create({
   base: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    fontSize: 16,
+    color: colors.textPrimary,
+  } as TextStyle,
+  
+  input: {
     backgroundColor: colors.surface,
     borderWidth: 1.5,
     borderColor: colors.border,

@@ -1,5 +1,22 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
+import { PressableScale } from '@/components/design-system/PressableScale';
+import { getCurrencyByCode } from '@/constants/currencies';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
+import { Card } from '@/components/design-system/Card';
+import { Divider } from '@/components/design-system/Divider';
+import { useRouter } from 'expo-router';
+import { authenticatedGet, authenticatedPut } from '@/utils/api';
+import { PremiumCard } from '@/components/PremiumCard';
+import { Button } from '@/components/design-system/Button';
+import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
+import { useI18n } from '@/contexts/I18nContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -12,25 +29,8 @@ import {
   Linking,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
-import { useAppTheme } from '@/contexts/ThemeContext';
-import { IconSymbol } from '@/components/IconSymbol';
-import { Button } from '@/components/design-system/Button';
-import { Card } from '@/components/design-system/Card';
-import { Divider } from '@/components/design-system/Divider';
-import { PressableScale } from '@/components/design-system/PressableScale';
-import { PremiumCard } from '@/components/PremiumCard';
-import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
-import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
-import { getCurrencyByCode } from '@/constants/currencies';
-import { useI18n } from '@/contexts/I18nContext';
-import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
-import { useTranslation } from 'react-i18next';
+import { IconSymbol } from '@/components/IconSymbol';
 
 interface UserLocation {
   id: string;
@@ -44,44 +44,167 @@ interface UserLocation {
 }
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const { user, signOut } = useAuth();
-  const { theme, isDark, themePreference, setThemePreference } = useAppTheme();
-  const haptics = useHaptics();
-  const { t } = useTranslation();
-  const { currentLanguage, languageMode } = useI18n();
-  
-  const [priceDropAlerts, setPriceDropAlerts] = useState(false);
-  const [weeklyDigest, setWeeklyDigest] = useState(false);
+  const [priceDropAlertsEnabled, setPriceDropAlertsEnabled] = useState(false);
+  const [weeklyDigestEnabled, setWeeklyDigestEnabled] = useState(false);
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
-  const [showCurrencyModal, setShowCurrencyModal] = useState(false);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [currencyPickerVisible, setCurrencyPickerVisible] = useState(false);
+  const [location, setLocation] = useState<UserLocation | null>(null);
+
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+  const { t } = useTranslation();
+  const { language, changeLanguage } = useI18n();
+  const { theme, themePreference, setThemePreference } = useAppTheme();
+  const { triggerHaptic } = useHaptics();
+  
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    header: {
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.md,
+    },
+    title: {
+      ...typography.h1,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    subtitle: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    section: {
+      marginBottom: spacing.lg,
+    },
+    sectionTitle: {
+      ...typography.h3,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    settingRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+    },
+    settingLeft: {
+      flex: 1,
+      marginRight: spacing.md,
+    },
+    settingLabel: {
+      ...typography.body,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    settingDescription: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    settingValue: {
+      ...typography.body,
+      color: colors.textSecondary,
+    },
+    themeOptions: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    themeButton: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+    },
+    themeButtonActive: {
+      borderColor: colors.accent,
+      backgroundColor: colors.accentLight,
+    },
+    themeButtonText: {
+      ...typography.body,
+      color: colors.text,
+    },
+    themeButtonTextActive: {
+      ...typography.body,
+      color: colors.accent,
+      fontWeight: '600',
+    },
+    locationCard: {
+      marginTop: spacing.sm,
+    },
+    locationText: {
+      ...typography.body,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    locationSubtext: {
+      ...typography.caption,
+      color: colors.textSecondary,
+    },
+    linkButton: {
+      paddingVertical: spacing.md,
+    },
+    linkText: {
+      ...typography.body,
+      color: colors.accent,
+    },
+    signOutButton: {
+      marginTop: spacing.lg,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+  }), [colors, typography]);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[ProfileScreen] Fetching user settings');
     try {
-      const data = await authenticatedGet<{
-        priceDropAlertsEnabled: boolean;
-        weeklyDigestEnabled: boolean;
-        defaultCurrency: string;
-      }>('/api/users/settings');
+      console.log('[ProfileScreen] Fetching user settings');
+      const response = await authenticatedGet('/api/users/settings');
       
-      console.log('[ProfileScreen] Settings fetched:', data);
-      setPriceDropAlerts(data.priceDropAlertsEnabled || false);
-      setWeeklyDigest(data.weeklyDigestEnabled || false);
-      setDefaultCurrency(data.defaultCurrency || 'USD');
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[ProfileScreen] Settings fetched:', data);
+        
+        setPriceDropAlertsEnabled(data.priceDropAlertsEnabled ?? false);
+        setWeeklyDigestEnabled(data.weeklyDigestEnabled ?? false);
+        setDefaultCurrency(data.defaultCurrency ?? 'USD');
+      } else {
+        console.error('[ProfileScreen] Failed to fetch settings:', response.status);
+      }
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   const fetchLocation = useCallback(async () => {
-    console.log('[ProfileScreen] Fetching user location');
     try {
-      const data = await authenticatedGet<UserLocation | null>('/api/users/location');
-      console.log('[ProfileScreen] Location fetched:', data);
-      setUserLocation(data);
+      console.log('[ProfileScreen] Fetching user location');
+      const response = await authenticatedGet('/api/users/location');
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[ProfileScreen] Location fetched:', data);
+        setLocation(data);
+      } else {
+        console.log('[ProfileScreen] No location set');
+      }
     } catch (error) {
       console.error('[ProfileScreen] Error fetching location:', error);
     }
@@ -89,77 +212,70 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (user) {
-      Promise.all([fetchSettings(), fetchLocation()]).finally(() => {
-        setLoading(false);
-      });
+      fetchSettings();
+      fetchLocation();
     }
   }, [user, fetchSettings, fetchLocation]);
 
-  const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; weeklyDigestEnabled?: boolean; defaultCurrency?: string }) => {
-    console.log('[ProfileScreen] Updating settings:', updates);
+  const updateSettings = async (updates: {
+    priceDropAlertsEnabled?: boolean;
+    weeklyDigestEnabled?: boolean;
+    defaultCurrency?: string;
+  }) => {
     try {
-      const data = await authenticatedPut<{
-        priceDropAlertsEnabled: boolean;
-        weeklyDigestEnabled: boolean;
-        defaultCurrency: string;
-      }>('/api/users/settings', updates);
+      console.log('[ProfileScreen] Updating settings:', updates);
+      const response = await authenticatedPut('/api/users/settings', updates);
       
-      console.log('[ProfileScreen] Settings updated:', data);
-      setPriceDropAlerts(data.priceDropAlertsEnabled || false);
-      setWeeklyDigest(data.weeklyDigestEnabled || false);
-      setDefaultCurrency(data.defaultCurrency || 'USD');
-      haptics.success();
+      if (!response.ok) {
+        throw new Error('Failed to update settings');
+      }
+      
+      console.log('[ProfileScreen] Settings updated successfully');
     } catch (error) {
       console.error('[ProfileScreen] Error updating settings:', error);
-      haptics.error();
       Alert.alert('Error', 'Failed to update settings');
     }
   };
 
   const handleTogglePriceAlerts = async (value: boolean) => {
     console.log('[ProfileScreen] User toggled price alerts:', value);
-    setPriceDropAlerts(value);
+    triggerHaptic('light');
+    setPriceDropAlertsEnabled(value);
     await updateSettings({ priceDropAlertsEnabled: value });
   };
 
   const handleSelectCurrency = async (currency: { currencyCode: string; currencyName: string }) => {
-    console.log('[ProfileScreen] User selected currency:', currency.currencyCode, currency.currencyName);
-    haptics.selection();
+    console.log('[ProfileScreen] User selected currency:', currency.currencyCode);
+    triggerHaptic('light');
     setDefaultCurrency(currency.currencyCode);
-    setShowCurrencyModal(false);
+    setCurrencyPickerVisible(false);
     await updateSettings({ defaultCurrency: currency.currencyCode });
   };
 
   const handleThemeChange = async (preference: 'light' | 'dark' | 'system') => {
-    console.log('[ProfileScreen] User changed theme to:', preference);
-    haptics.selection();
+    console.log('[ProfileScreen] User changed theme preference:', preference);
+    triggerHaptic('light');
     await setThemePreference(preference);
   };
 
   const handleSignOut = async () => {
-    haptics.warning();
+    console.log('[ProfileScreen] User tapped sign out');
+    triggerHaptic('medium');
+    
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
       [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => haptics.light(),
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Sign Out',
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('[ProfileScreen] User tapped Sign Out');
-              haptics.medium();
               await signOut();
-              console.log('[ProfileScreen] Sign out successful');
-              // Navigation is handled by AuthGate in _layout.tsx
-            } catch (error: any) {
-              console.error('[ProfileScreen] Sign out error:', error);
-              haptics.error();
+              router.replace('/auth');
+            } catch (error) {
+              console.error('[ProfileScreen] Error signing out:', error);
               Alert.alert('Error', 'Failed to sign out');
             }
           },
@@ -169,699 +285,229 @@ export default function ProfileScreen() {
   };
 
   const handleContactSupport = () => {
-    console.log('[ProfileScreen] User tapped Contact Support');
-    haptics.light();
-    const email = 'support@mywishlist.app';
-    const subject = 'Support Request';
-    const mailtoUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}`;
-    Linking.openURL(mailtoUrl).catch(() => {
-      Alert.alert('Error', 'Could not open email app');
-    });
+    console.log('[ProfileScreen] User tapped contact support');
+    triggerHaptic('light');
+    Linking.openURL('mailto:support@mywishlist.app');
   };
 
   const handlePrivacyPolicy = () => {
-    console.log('[ProfileScreen] User tapped Privacy Policy');
-    haptics.light();
+    console.log('[ProfileScreen] User tapped privacy policy');
+    triggerHaptic('light');
     router.push('/legal/privacy');
   };
 
   const handleTerms = () => {
-    console.log('[ProfileScreen] User tapped Terms of Service');
-    haptics.light();
+    console.log('[ProfileScreen] User tapped terms');
+    triggerHaptic('light');
     router.push('/legal/terms');
   };
 
   const handleEditLocation = () => {
-    console.log('[ProfileScreen] User tapped Edit Location');
-    haptics.light();
+    console.log('[ProfileScreen] User tapped edit location');
+    triggerHaptic('light');
     router.push('/location');
   };
 
-  const userNameText = user?.name || 'User';
-  const userEmailText = user?.email || '';
-  const userInitial = userNameText.charAt(0).toUpperCase();
-  
-  const selectedCurrency = getCurrencyByCode(defaultCurrency);
-  const currencyDisplayText = selectedCurrency 
-    ? `${selectedCurrency.symbol || selectedCurrency.code} ${selectedCurrency.code}`
-    : defaultCurrency;
-
-  const locationDisplayText = userLocation 
-    ? `${userLocation.countryName}${userLocation.city ? `, ${userLocation.city}` : ''}`
-    : 'Not set';
-
-  const themeDisplayText = themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark';
-  
-  const currentLangInfo = SUPPORTED_LANGUAGES.find(l => l.code === currentLanguage);
-  const languageDisplayText = languageMode === 'system' 
-    ? t('profile.systemAuto')
-    : currentLangInfo?.nativeName || currentLanguage;
-
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={[]}>
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
-        </View>
+      <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.accent} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
   }
 
+  const currencyInfo = getCurrencyByCode(defaultCurrency);
+  const currencyDisplay = currencyInfo 
+    ? `${currencyInfo.symbol} ${currencyInfo.name}` 
+    : defaultCurrency;
+
+  const locationDisplay = location
+    ? `${location.city ? location.city + ', ' : ''}${location.countryName}`
+    : 'Not set';
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={[]}>
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Account Section */}
-        <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ACCOUNT</Text>
-          
-          <Card style={styles.card}>
-            <View style={styles.profileHeader}>
-              <View style={[styles.avatar, { backgroundColor: theme.colors.accent }]}>
-                <Text style={[styles.avatarText, { color: isDark ? theme.colors.text : '#FFFFFF' }]}>{userInitial}</Text>
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={[styles.profileName, { color: theme.colors.text }]}>{userNameText}</Text>
-                <Text style={[styles.profileEmail, { color: theme.colors.textSecondary }]}>{userEmailText}</Text>
-              </View>
-            </View>
-
-            <Divider />
-
-            <PressableScale
-              style={styles.menuItem}
-              onPress={handleSignOut}
-              hapticFeedback="medium"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="arrow.right.square"
-                  android_material_icon_name="logout"
-                  size={24}
-                  color={colors.error}
-                />
-                <Text style={[styles.menuItemText, styles.logoutText]}>Logout</Text>
-              </View>
-            </PressableScale>
-          </Card>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <Animated.View entering={FadeIn} style={styles.header}>
+          <Text style={styles.title}>{t('profile.title')}</Text>
+          <Text style={styles.subtitle}>{user?.email}</Text>
         </Animated.View>
 
-        {/* Premium Section */}
-        <Animated.View entering={FadeInDown.delay(25).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>PREMIUM</Text>
+        <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
           <PremiumCard />
         </Animated.View>
 
-        {/* Appearance Section */}
-        <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>APPEARANCE</Text>
-          
-          <Card style={styles.card}>
-            <View style={styles.themeSection}>
-              <View style={styles.themeSectionHeader}>
-                <IconSymbol
-                  ios_icon_name="paintbrush"
-                  android_material_icon_name="palette"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Theme</Text>
+        <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.appearance')}</Text>
+          <Card>
+            <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('profile.theme')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('profile.themeDescription')}
+                </Text>
               </View>
-              
-              <View style={styles.themeButtons}>
-                <PressableScale
-                  style={[
-                    styles.themeButton,
-                    { 
-                      backgroundColor: themePreference === 'light' ? theme.colors.accent : theme.colors.card,
-                      borderColor: theme.colors.border,
-                    }
-                  ]}
-                  onPress={() => handleThemeChange('light')}
-                  hapticFeedback="selection"
+            </View>
+            <View style={styles.themeOptions}>
+              <TouchableOpacity
+                style={[
+                  styles.themeButton,
+                  themePreference === 'light' && styles.themeButtonActive,
+                ]}
+                onPress={() => handleThemeChange('light')}
+              >
+                <Text
+                  style={
+                    themePreference === 'light'
+                      ? styles.themeButtonTextActive
+                      : styles.themeButtonText
+                  }
                 >
-                  <IconSymbol
-                    ios_icon_name="sun.max"
-                    android_material_icon_name="light-mode"
-                    size={20}
-                    color={themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
-                  />
-                  <Text style={[
-                    styles.themeButtonText,
-                    { 
-                      color: themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
-                    }
-                  ]}>Light</Text>
-                </PressableScale>
-
-                <PressableScale
-                  style={[
-                    styles.themeButton,
-                    { 
-                      backgroundColor: themePreference === 'dark' ? theme.colors.accent : theme.colors.card,
-                      borderColor: theme.colors.border,
-                    }
-                  ]}
-                  onPress={() => handleThemeChange('dark')}
-                  hapticFeedback="selection"
+                  {t('profile.light')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.themeButton,
+                  themePreference === 'dark' && styles.themeButtonActive,
+                ]}
+                onPress={() => handleThemeChange('dark')}
+              >
+                <Text
+                  style={
+                    themePreference === 'dark'
+                      ? styles.themeButtonTextActive
+                      : styles.themeButtonText
+                  }
                 >
-                  <IconSymbol
-                    ios_icon_name="moon"
-                    android_material_icon_name="dark-mode"
-                    size={20}
-                    color={themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
-                  />
-                  <Text style={[
-                    styles.themeButtonText,
-                    { 
-                      color: themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
-                    }
-                  ]}>Dark</Text>
-                </PressableScale>
-
-                <PressableScale
-                  style={[
-                    styles.themeButton,
-                    { 
-                      backgroundColor: themePreference === 'system' ? theme.colors.accent : theme.colors.card,
-                      borderColor: theme.colors.border,
-                    }
-                  ]}
-                  onPress={() => handleThemeChange('system')}
-                  hapticFeedback="selection"
+                  {t('profile.dark')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.themeButton,
+                  themePreference === 'system' && styles.themeButtonActive,
+                ]}
+                onPress={() => handleThemeChange('system')}
+              >
+                <Text
+                  style={
+                    themePreference === 'system'
+                      ? styles.themeButtonTextActive
+                      : styles.themeButtonText
+                  }
                 >
-                  <IconSymbol
-                    ios_icon_name="gear"
-                    android_material_icon_name="settings"
-                    size={20}
-                    color={themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
-                  />
-                  <Text style={[
-                    styles.themeButtonText,
-                    { 
-                      color: themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
-                    }
-                  ]}>System</Text>
-                </PressableScale>
-              </View>
+                  {t('profile.system')}
+                </Text>
+              </TouchableOpacity>
             </View>
           </Card>
         </Animated.View>
 
-        {/* Shopping Location Section */}
-        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>SHOPPING LOCATION</Text>
-          
-          <Card style={styles.card}>
-            <PressableScale
-              style={styles.menuItem}
-              onPress={handleEditLocation}
-              hapticFeedback="light"
+        <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.preferences')}</Text>
+          <Card>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => setCurrencyPickerVisible(true)}
             >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="location"
-                  android_material_icon_name="location-on"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <View style={styles.locationInfo}>
-                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Location</Text>
-                  <Text style={[styles.locationValue, { color: theme.colors.textSecondary }]}>{locationDisplayText}</Text>
-                </View>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('profile.currency')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('profile.currencyDescription')}
+                </Text>
               </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
+              <Text style={styles.settingValue}>{currencyDisplay}</Text>
+            </TouchableOpacity>
+
+            <Divider />
+
+            <TouchableOpacity style={styles.settingRow} onPress={handleEditLocation}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('profile.location')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('profile.locationDescription')}
+                </Text>
+              </View>
+              <Text style={styles.settingValue}>{locationDisplay}</Text>
+            </TouchableOpacity>
+
+            <Divider />
+
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => router.push('/language-selector')}
+            >
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('profile.language')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('profile.languageDescription')}
+                </Text>
+              </View>
+              <Text style={styles.settingValue}>
+                {SUPPORTED_LANGUAGES.find((l) => l.code === language)?.name || language}
+              </Text>
+            </TouchableOpacity>
           </Card>
-          
-          {!userLocation && (
-            <Text style={[styles.locationHint, { color: theme.colors.textSecondary }]}>
-              Set your location to see stores that ship to your area
-            </Text>
-          )}
         </Animated.View>
 
-        {/* Preferences Section */}
-        <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>PREFERENCES</Text>
-          
-          <Card style={styles.card}>
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                setShowCurrencyModal(true);
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="dollarsign.circle"
-                  android_material_icon_name="attach-money"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Default Currency</Text>
-              </View>
-              <View style={styles.menuItemRight}>
-                <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>{currencyDisplayText}</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={theme.colors.textSecondary}
-                />
-              </View>
-            </PressableScale>
-
-            <Divider />
-
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/language-selector');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="globe"
-                  android_material_icon_name="language"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>{t('profile.language')}</Text>
-              </View>
-              <View style={styles.menuItemRight}>
-                <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>{languageDisplayText}</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={theme.colors.textSecondary}
-                />
-              </View>
-            </PressableScale>
-
-            <Divider />
-
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/alerts');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="bell"
-                  android_material_icon_name="notifications"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Price Drop Alerts</Text>
-              </View>
-              <View style={styles.menuItemRight}>
-                <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>
-                  {priceDropAlerts ? 'Enabled' : 'Disabled'}
+        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.notifications')}</Text>
+          <Card>
+            <View style={styles.settingRow}>
+              <View style={styles.settingLeft}>
+                <Text style={styles.settingLabel}>{t('profile.priceAlerts')}</Text>
+                <Text style={styles.settingDescription}>
+                  {t('profile.priceAlertsDescription')}
                 </Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={theme.colors.textSecondary}
-                />
-              </View>
-            </PressableScale>
-
-            <Divider />
-
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/quiet-hours');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="moon"
-                  android_material_icon_name="bedtime"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Quiet Hours</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
-
-            <Divider />
-
-            <View style={styles.menuItem}>
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="calendar"
-                  android_material_icon_name="calendar-today"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Weekly Deals Summary</Text>
               </View>
               <Switch
-                value={weeklyDigest}
-                onValueChange={(value) => {
-                  haptics.selection();
-                  setWeeklyDigest(value);
-                  updateSettings({ weeklyDigestEnabled: value });
-                }}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent + '80' }}
-                thumbColor={weeklyDigest ? theme.colors.accent : theme.colors.card}
+                value={priceDropAlertsEnabled}
+                onValueChange={handleTogglePriceAlerts}
+                trackColor={{ false: colors.border, true: colors.accent }}
+                thumbColor={colors.surface}
               />
             </View>
           </Card>
         </Animated.View>
 
-        {/* Engagement Section */}
-        <Animated.View entering={FadeInDown.delay(175).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>DEALS</Text>
-          
-          <Card style={styles.card}>
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/on-sale');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="tag"
-                  android_material_icon_name="local-offer"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>On Sale</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
-          </Card>
-        </Animated.View>
-
-        {/* Data Section */}
-        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>DATA</Text>
-          
-          <Card style={styles.card}>
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/export-data');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="download"
-                  android_material_icon_name="download"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Export My Data</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
-          </Card>
-        </Animated.View>
-
-        {/* Help Section */}
-        <Animated.View entering={FadeInDown.delay(225).springify()} style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>HELP</Text>
-          
-          <Card style={styles.card}>
-            <PressableScale
-              style={styles.menuItem}
-              onPress={handleContactSupport}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="envelope"
-                  android_material_icon_name="email"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Contact Support</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
+        <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
+          <Text style={styles.sectionTitle}>{t('profile.support')}</Text>
+          <Card>
+            <TouchableOpacity style={styles.linkButton} onPress={handleContactSupport}>
+              <Text style={styles.linkText}>{t('profile.contactSupport')}</Text>
+            </TouchableOpacity>
 
             <Divider />
 
-            <PressableScale
-              style={styles.menuItem}
-              onPress={handlePrivacyPolicy}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="lock.shield"
-                  android_material_icon_name="lock"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Privacy Policy</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
+            <TouchableOpacity style={styles.linkButton} onPress={handlePrivacyPolicy}>
+              <Text style={styles.linkText}>{t('profile.privacyPolicy')}</Text>
+            </TouchableOpacity>
 
             <Divider />
 
-            <PressableScale
-              style={styles.menuItem}
-              onPress={handleTerms}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="doc.text"
-                  android_material_icon_name="description"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Terms of Service</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
-
-            <Divider />
-
-            <PressableScale
-              style={styles.menuItem}
-              onPress={() => {
-                haptics.light();
-                router.push('/diagnostics');
-              }}
-              hapticFeedback="light"
-            >
-              <View style={styles.menuItemLeft}>
-                <IconSymbol
-                  ios_icon_name="wrench.and.screwdriver"
-                  android_material_icon_name="build"
-                  size={24}
-                  color={theme.colors.textSecondary}
-                />
-                <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Diagnostics</Text>
-              </View>
-              <IconSymbol
-                ios_icon_name="chevron.right"
-                android_material_icon_name="chevron-right"
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </PressableScale>
+            <TouchableOpacity style={styles.linkButton} onPress={handleTerms}>
+              <Text style={styles.linkText}>{t('profile.terms')}</Text>
+            </TouchableOpacity>
           </Card>
         </Animated.View>
 
-        <View style={styles.bottomPadding} />
+        <Button
+          title={t('profile.signOut')}
+          onPress={handleSignOut}
+          variant="destructive"
+          style={styles.signOutButton}
+        />
       </ScrollView>
 
       <CurrencyPicker
-        visible={showCurrencyModal}
-        onClose={() => setShowCurrencyModal(false)}
+        visible={currencyPickerVisible}
+        onClose={() => setCurrencyPickerVisible(false)}
         onSelect={handleSelectCurrency}
-        selectedCurrencyCode={defaultCurrency}
+        selectedCurrency={defaultCurrency}
       />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    ...containerStyles.screen,
-    paddingTop: Platform.OS === 'android' ? 48 : 0,
-  },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    ...typography.titleLarge,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    ...typography.labelMedium,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    letterSpacing: 0.5,
-  },
-  card: {
-    padding: 0,
-  },
-  profileHeader: {
-    ...containerStyles.row,
-    padding: spacing.md,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    ...containerStyles.center,
-  },
-  avatarText: {
-    ...typography.titleLarge,
-  },
-  profileInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  profileName: {
-    ...typography.titleMedium,
-    marginBottom: spacing.xs,
-  },
-  profileEmail: {
-    ...typography.bodyMedium,
-  },
-  menuItem: {
-    ...containerStyles.spaceBetween,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  menuItemLeft: {
-    ...containerStyles.row,
-    flex: 1,
-  },
-  menuItemRight: {
-    ...containerStyles.row,
-    gap: spacing.xs,
-  },
-  menuItemText: {
-    ...typography.bodyLarge,
-  },
-  logoutText: {
-    color: colors.error,
-  },
-  currencyValue: {
-    ...typography.bodyMedium,
-  },
-  locationInfo: {
-    flex: 1,
-  },
-  locationValue: {
-    ...typography.bodySmall,
-    marginTop: spacing.xs,
-  },
-  locationHint: {
-    ...typography.bodySmall,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    fontStyle: 'italic',
-  },
-  themeSection: {
-    padding: spacing.md,
-  },
-  themeSectionHeader: {
-    ...containerStyles.row,
-    marginBottom: spacing.md,
-  },
-  themeButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  themeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  themeButtonText: {
-    ...typography.bodyMedium,
-    fontWeight: '600',
-  },
-  bottomPadding: {
-    height: 100,
-  },
-});
