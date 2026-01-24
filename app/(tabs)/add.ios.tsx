@@ -6,6 +6,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import * as Clipboard from 'expo-clipboard';
 import {
   View,
   Text,
@@ -20,7 +21,7 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 
-type TabType = 'url' | 'manual';
+type TabType = 'url' | 'manual' | 'image';
 
 interface ExtractedItem {
   title: string;
@@ -57,7 +58,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   tabText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
   },
@@ -175,6 +176,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.accent,
   },
+  imageButtonsContainer: {
+    gap: 12,
+  },
+  imageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cardBackground,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  imageButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  identifyButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
 });
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -227,6 +254,11 @@ export default function AddItemScreen() {
   const [manualImageUri, setManualImageUri] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Image identification state
+  const [imageForIdentification, setImageForIdentification] = useState('');
+  const [imageUrlInput, setImageUrlInput] = useState('');
+  const [identifying, setIdentifying] = useState(false);
 
   useEffect(() => {
     console.log('AddItemScreen mounted with wishlistId:', wishlistId);
@@ -567,6 +599,79 @@ export default function AddItemScreen() {
     }
   };
 
+  const handleUploadImageForIdentification = async () => {
+    console.log('Opening image picker for identification');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setImageForIdentification(result.assets[0].uri);
+      console.log('Image selected for identification:', result.assets[0].uri);
+    }
+  };
+
+  const handlePasteImageUrl = async () => {
+    console.log('User tapped Paste Image URL');
+    const clipboardContent = await Clipboard.getStringAsync();
+    
+    if (clipboardContent && isValidUrl(clipboardContent)) {
+      setImageUrlInput(clipboardContent);
+      setImageForIdentification(clipboardContent);
+      console.log('Pasted image URL from clipboard:', clipboardContent);
+    } else {
+      Alert.alert('Paste Image URL', 'Please enter an image URL', [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'OK',
+          onPress: () => {
+            if (imageUrlInput && isValidUrl(imageUrlInput)) {
+              setImageForIdentification(imageUrlInput);
+            } else {
+              Alert.alert('Error', 'Please enter a valid image URL');
+            }
+          },
+        },
+      ]);
+    }
+  };
+
+  const handleIdentifyProduct = async () => {
+    if (!imageForIdentification) {
+      Alert.alert('Error', 'Please select or paste an image first');
+      return;
+    }
+
+    console.log('Identifying product from image:', imageForIdentification);
+    setIdentifying(true);
+
+    try {
+      // TODO: Backend Integration - POST /api/items/identify-from-image
+      // Body: { imageUrl?: string, imageBase64?: string }
+      // Returns: { bestGuessTitle, bestGuessCategory, keywords, confidence, suggestedProducts }
+      
+      // Navigate to confirmation screen with results
+      router.push({
+        pathname: '/confirm-product',
+        params: {
+          imageUrl: imageForIdentification,
+          wishlistId: wishlistId as string,
+        },
+      });
+    } catch (error: any) {
+      console.error('Failed to identify product:', error);
+      Alert.alert('Error', 'Failed to identify product. Please try again.');
+    } finally {
+      setIdentifying(false);
+    }
+  };
+
   const renderUrlTab = () => {
     if (extracting) {
       return (
@@ -822,6 +927,70 @@ export default function AddItemScreen() {
     );
   };
 
+  const renderImageTab = () => {
+    if (identifying) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Identifying product...</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View>
+        <Text style={styles.infoText}>
+          Upload an image or paste an image URL to identify the product
+        </Text>
+
+        <View style={styles.imageButtonsContainer}>
+          <TouchableOpacity
+            style={styles.imageButton}
+            onPress={handleUploadImageForIdentification}
+          >
+            <IconSymbol
+              ios_icon_name="photo"
+              android_material_icon_name="photo"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.imageButtonText}>Upload Image</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.imageButton}
+            onPress={handlePasteImageUrl}
+          >
+            <IconSymbol
+              ios_icon_name="link"
+              android_material_icon_name="link"
+              size={24}
+              color={colors.text}
+            />
+            <Text style={styles.imageButtonText}>Paste Image URL</Text>
+          </TouchableOpacity>
+        </View>
+
+        {imageForIdentification && (
+          <View style={styles.section}>
+            <Text style={styles.label}>Image Preview</Text>
+            <Image
+              source={resolveImageSource(imageForIdentification)}
+              style={styles.imagePreview}
+              resizeMode="cover"
+            />
+            <TouchableOpacity
+              style={styles.identifyButton}
+              onPress={handleIdentifyProduct}
+            >
+              <Text style={styles.buttonText}>Identify Product</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <>
       <Stack.Screen
@@ -862,12 +1031,22 @@ export default function AddItemScreen() {
             onPress={() => setActiveTab('manual')}
           >
             <Text style={[styles.tabText, activeTab === 'manual' && styles.activeTabText]}>
-              Manual Entry
+              Manual
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'image' && styles.activeTab]}
+            onPress={() => setActiveTab('image')}
+          >
+            <Text style={[styles.tabText, activeTab === 'image' && styles.activeTabText]}>
+              Image
             </Text>
           </TouchableOpacity>
         </View>
 
-        {activeTab === 'url' ? renderUrlTab() : renderManualTab()}
+        {activeTab === 'url' && renderUrlTab()}
+        {activeTab === 'manual' && renderManualTab()}
+        {activeTab === 'image' && renderImageTab()}
       </ScrollView>
     </>
   );
