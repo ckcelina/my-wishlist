@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Button } from '@/components/design-system/Button';
 import { Card } from '@/components/design-system/Card';
@@ -51,6 +52,7 @@ interface UserLocation {
 export default function ProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { theme, isDark, themePreference, setThemePreference } = useAppTheme();
   const haptics = useHaptics();
   
   const [priceDropAlerts, setPriceDropAlerts] = useState(false);
@@ -127,6 +129,12 @@ export default function ProfileScreen() {
     await updateSettings({ defaultCurrency: currencyCode });
   };
 
+  const handleThemeChange = async (preference: 'light' | 'dark' | 'system') => {
+    console.log('[ProfileScreen] User changed theme to:', preference);
+    haptics.selection();
+    await setThemePreference(preference);
+  };
+
   const handleSignOut = async () => {
     haptics.warning();
     Alert.alert(
@@ -199,16 +207,18 @@ export default function ProfileScreen() {
     ? `${userLocation.countryName}${userLocation.city ? `, ${userLocation.city}` : ''}`
     : 'Not set';
 
+  const themeDisplayText = themePreference === 'system' ? 'System' : themePreference === 'light' ? 'Light' : 'Dark';
+
   if (loading) {
     return (
       <>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.container}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Profile</Text>
+        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+          <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
           </View>
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={theme.colors.accent} />
           </View>
         </View>
       </>
@@ -218,24 +228,24 @@ export default function ProfileScreen() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Profile</Text>
+      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
         </View>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Account Section */}
           <Animated.View entering={FadeInDown.delay(0).springify()} style={styles.section}>
-            <Text style={styles.sectionTitle}>ACCOUNT</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>ACCOUNT</Text>
             
             <Card style={styles.card}>
               <View style={styles.profileHeader}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{userInitial}</Text>
+                <View style={[styles.avatar, { backgroundColor: theme.colors.accent }]}>
+                  <Text style={[styles.avatarText, { color: isDark ? theme.colors.text : '#FFFFFF' }]}>{userInitial}</Text>
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{userNameText}</Text>
-                  <Text style={styles.profileEmail}>{userEmailText}</Text>
+                  <Text style={[styles.profileName, { color: theme.colors.text }]}>{userNameText}</Text>
+                  <Text style={[styles.profileEmail, { color: theme.colors.textSecondary }]}>{userEmailText}</Text>
                 </View>
               </View>
 
@@ -259,9 +269,105 @@ export default function ProfileScreen() {
             </Card>
           </Animated.View>
 
-          {/* Shopping Location Section */}
+          {/* Appearance Section */}
           <Animated.View entering={FadeInDown.delay(50).springify()} style={styles.section}>
-            <Text style={styles.sectionTitle}>SHOPPING LOCATION</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>APPEARANCE</Text>
+            
+            <Card style={styles.card}>
+              <View style={styles.themeSection}>
+                <View style={styles.themeSectionHeader}>
+                  <IconSymbol
+                    ios_icon_name="paintbrush.fill"
+                    android_material_icon_name="palette"
+                    size={24}
+                    color={theme.colors.textSecondary}
+                  />
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Theme</Text>
+                </View>
+                
+                <View style={styles.themeButtons}>
+                  <PressableScale
+                    style={[
+                      styles.themeButton,
+                      { 
+                        backgroundColor: themePreference === 'light' ? theme.colors.accent : theme.colors.card,
+                        borderColor: theme.colors.border,
+                      }
+                    ]}
+                    onPress={() => handleThemeChange('light')}
+                    hapticFeedback="selection"
+                  >
+                    <IconSymbol
+                      ios_icon_name="sun.max.fill"
+                      android_material_icon_name="light-mode"
+                      size={20}
+                      color={themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.themeButtonText,
+                      { 
+                        color: themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                      }
+                    ]}>Light</Text>
+                  </PressableScale>
+
+                  <PressableScale
+                    style={[
+                      styles.themeButton,
+                      { 
+                        backgroundColor: themePreference === 'dark' ? theme.colors.accent : theme.colors.card,
+                        borderColor: theme.colors.border,
+                      }
+                    ]}
+                    onPress={() => handleThemeChange('dark')}
+                    hapticFeedback="selection"
+                  >
+                    <IconSymbol
+                      ios_icon_name="moon.fill"
+                      android_material_icon_name="dark-mode"
+                      size={20}
+                      color={themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.themeButtonText,
+                      { 
+                        color: themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                      }
+                    ]}>Dark</Text>
+                  </PressableScale>
+
+                  <PressableScale
+                    style={[
+                      styles.themeButton,
+                      { 
+                        backgroundColor: themePreference === 'system' ? theme.colors.accent : theme.colors.card,
+                        borderColor: theme.colors.border,
+                      }
+                    ]}
+                    onPress={() => handleThemeChange('system')}
+                    hapticFeedback="selection"
+                  >
+                    <IconSymbol
+                      ios_icon_name="gear"
+                      android_material_icon_name="settings"
+                      size={20}
+                      color={themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.themeButtonText,
+                      { 
+                        color: themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                      }
+                    ]}>System</Text>
+                  </PressableScale>
+                </View>
+              </View>
+            </Card>
+          </Animated.View>
+
+          {/* Shopping Location Section */}
+          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>SHOPPING LOCATION</Text>
             
             <Card style={styles.card}>
               <PressableScale
@@ -274,32 +380,32 @@ export default function ProfileScreen() {
                     ios_icon_name="location.fill"
                     android_material_icon_name="location-on"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
                   <View style={styles.locationInfo}>
-                    <Text style={styles.menuItemText}>Location</Text>
-                    <Text style={styles.locationValue}>{locationDisplayText}</Text>
+                    <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Location</Text>
+                    <Text style={[styles.locationValue, { color: theme.colors.textSecondary }]}>{locationDisplayText}</Text>
                   </View>
                 </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="chevron-right"
                   size={20}
-                  color={colors.textTertiary}
+                  color={theme.colors.textSecondary}
                 />
               </PressableScale>
             </Card>
             
             {!userLocation && (
-              <Text style={styles.locationHint}>
+              <Text style={[styles.locationHint, { color: theme.colors.textSecondary }]}>
                 Set your location to see stores that ship to your area
               </Text>
             )}
           </Animated.View>
 
           {/* Preferences Section */}
-          <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
-            <Text style={styles.sectionTitle}>PREFERENCES</Text>
+          <Animated.View entering={FadeInDown.delay(150).springify()} style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>PREFERENCES</Text>
             
             <Card style={styles.card}>
               <PressableScale
@@ -315,17 +421,17 @@ export default function ProfileScreen() {
                     ios_icon_name="dollarsign.circle.fill"
                     android_material_icon_name="attach-money"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
-                  <Text style={styles.menuItemText}>Default Currency</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Default Currency</Text>
                 </View>
                 <View style={styles.menuItemRight}>
-                  <Text style={styles.currencyValue}>{currencyDisplayText}</Text>
+                  <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>{currencyDisplayText}</Text>
                   <IconSymbol
                     ios_icon_name="chevron.right"
                     android_material_icon_name="chevron-right"
                     size={20}
-                    color={colors.textTertiary}
+                    color={theme.colors.textSecondary}
                   />
                 </View>
               </PressableScale>
@@ -345,19 +451,19 @@ export default function ProfileScreen() {
                     ios_icon_name="bell.fill"
                     android_material_icon_name="notifications"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
-                  <Text style={styles.menuItemText}>Price Drop Alerts</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Price Drop Alerts</Text>
                 </View>
                 <View style={styles.menuItemRight}>
-                  <Text style={styles.currencyValue}>
+                  <Text style={[styles.currencyValue, { color: theme.colors.textSecondary }]}>
                     {priceDropAlerts ? 'Enabled' : 'Disabled'}
                   </Text>
                   <IconSymbol
                     ios_icon_name="chevron.right"
                     android_material_icon_name="chevron-right"
                     size={20}
-                    color={colors.textTertiary}
+                    color={theme.colors.textSecondary}
                   />
                 </View>
               </PressableScale>
@@ -366,7 +472,7 @@ export default function ProfileScreen() {
 
           {/* Help Section */}
           <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
-            <Text style={styles.sectionTitle}>HELP</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>HELP</Text>
             
             <Card style={styles.card}>
               <PressableScale
@@ -379,15 +485,15 @@ export default function ProfileScreen() {
                     ios_icon_name="envelope.fill"
                     android_material_icon_name="email"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
-                  <Text style={styles.menuItemText}>Contact Support</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Contact Support</Text>
                 </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="chevron-right"
                   size={20}
-                  color={colors.textTertiary}
+                  color={theme.colors.textSecondary}
                 />
               </PressableScale>
 
@@ -403,15 +509,15 @@ export default function ProfileScreen() {
                     ios_icon_name="lock.shield.fill"
                     android_material_icon_name="lock"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
-                  <Text style={styles.menuItemText}>Privacy Policy</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Privacy Policy</Text>
                 </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="chevron-right"
                   size={20}
-                  color={colors.textTertiary}
+                  color={theme.colors.textSecondary}
                 />
               </PressableScale>
 
@@ -427,15 +533,15 @@ export default function ProfileScreen() {
                     ios_icon_name="doc.text.fill"
                     android_material_icon_name="description"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
-                  <Text style={styles.menuItemText}>Terms of Service</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Terms of Service</Text>
                 </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"
                   android_material_icon_name="chevron-right"
                   size={20}
-                  color={colors.textTertiary}
+                  color={theme.colors.textSecondary}
                 />
               </PressableScale>
             </Card>
@@ -458,9 +564,9 @@ export default function ProfileScreen() {
               setShowCurrencyModal(false);
             }}
           >
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Currency</Text>
+            <Pressable style={[styles.modalContent, { backgroundColor: theme.colors.card }]} onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.modalHeader, { borderBottomColor: theme.colors.border }]}>
+                <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Select Currency</Text>
                 <TouchableOpacity
                   onPress={() => {
                     haptics.light();
@@ -472,7 +578,7 @@ export default function ProfileScreen() {
                     ios_icon_name="xmark.circle.fill"
                     android_material_icon_name="close"
                     size={24}
-                    color={colors.textSecondary}
+                    color={theme.colors.textSecondary}
                   />
                 </TouchableOpacity>
               </View>
@@ -486,10 +592,10 @@ export default function ProfileScreen() {
                       hapticFeedback="selection"
                     >
                       <View style={styles.currencyItemLeft}>
-                        <Text style={styles.currencySymbol}>{currency.symbol}</Text>
+                        <Text style={[styles.currencySymbol, { color: theme.colors.textSecondary }]}>{currency.symbol}</Text>
                         <View>
-                          <Text style={styles.currencyCode}>{currency.code}</Text>
-                          <Text style={styles.currencyName}>{currency.name}</Text>
+                          <Text style={[styles.currencyCode, { color: theme.colors.text }]}>{currency.code}</Text>
+                          <Text style={[styles.currencyName, { color: theme.colors.textSecondary }]}>{currency.name}</Text>
                         </View>
                       </View>
                       {defaultCurrency === currency.code && (
@@ -497,7 +603,7 @@ export default function ProfileScreen() {
                           ios_icon_name="checkmark.circle.fill"
                           android_material_icon_name="check"
                           size={24}
-                          color={colors.primary}
+                          color={theme.colors.accent}
                         />
                       )}
                     </PressableScale>
@@ -521,7 +627,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   headerTitle: {
     ...typography.titleLarge,
@@ -541,7 +646,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...typography.labelMedium,
-    color: colors.textTertiary,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
     letterSpacing: 0.5,
@@ -557,12 +661,10 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
     ...containerStyles.center,
   },
   avatarText: {
     ...typography.titleLarge,
-    color: colors.textInverse,
   },
   profileInfo: {
     flex: 1,
@@ -574,7 +676,6 @@ const styles = StyleSheet.create({
   },
   profileEmail: {
     ...typography.bodyMedium,
-    color: colors.textSecondary,
   },
   menuItem: {
     ...containerStyles.spaceBetween,
@@ -597,22 +698,45 @@ const styles = StyleSheet.create({
   },
   currencyValue: {
     ...typography.bodyMedium,
-    color: colors.textSecondary,
   },
   locationInfo: {
     flex: 1,
   },
   locationValue: {
     ...typography.bodySmall,
-    color: colors.textTertiary,
     marginTop: spacing.xs,
   },
   locationHint: {
     ...typography.bodySmall,
-    color: colors.textTertiary,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.xs,
     fontStyle: 'italic',
+  },
+  themeSection: {
+    padding: spacing.md,
+  },
+  themeSectionHeader: {
+    ...containerStyles.row,
+    marginBottom: spacing.md,
+  },
+  themeButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  themeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  themeButtonText: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
   },
   bottomPadding: {
     height: 100,
@@ -623,7 +747,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '70%',
@@ -634,7 +757,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
   },
   modalTitle: {
     ...typography.titleMedium,
@@ -652,7 +774,6 @@ const styles = StyleSheet.create({
   },
   currencySymbol: {
     ...typography.titleMedium,
-    color: colors.textSecondary,
     width: 32,
     textAlign: 'center',
   },
@@ -662,6 +783,5 @@ const styles = StyleSheet.create({
   },
   currencyName: {
     ...typography.bodySmall,
-    color: colors.textSecondary,
   },
 });

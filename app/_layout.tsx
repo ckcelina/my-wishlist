@@ -18,9 +18,8 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ThemeProvider } from "@/contexts/ThemeContext";
+import { ThemeProvider, useAppTheme } from "@/contexts/ThemeContext";
 import { BACKEND_URL } from "@/utils/api";
-import { colors } from "@/styles/designSystem";
 import {
   PlayfairDisplay_400Regular,
   PlayfairDisplay_700Bold,
@@ -42,6 +41,7 @@ export const unstable_settings = {
 // AuthGate component that handles routing based on auth state
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const { theme } = useAppTheme();
   const segments = useSegments();
   const router = useRouter();
   const [isNavigationReady, setIsNavigationReady] = useState(false);
@@ -79,8 +79,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   // Show loading screen while checking auth
   if (loading || !isNavigationReady) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
@@ -89,7 +89,6 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function RootLayoutContent() {
-  const colorScheme = useColorScheme();
   const networkState = useNetworkState();
   const router = useRouter();
   
@@ -112,8 +111,7 @@ function RootLayoutContent() {
 
   useEffect(() => {
     console.log('[App] Backend URL configured:', BACKEND_URL);
-    console.log('[App] Current color scheme:', colorScheme);
-  }, [colorScheme]);
+  }, []);
 
   useEffect(() => {
     // Only set up notification handlers on native platforms (iOS/Android)
@@ -171,16 +169,80 @@ function RootLayoutContent() {
     return null;
   }
 
-  // Custom theme for My Wishlist
+  return (
+    <ThemeProvider>
+      <ThemedNavigationProvider>
+        <AuthProvider>
+          <AuthGate>
+            <WidgetProvider>
+              <GestureHandlerRootView>
+                <Stack>
+                  <Stack.Screen name="auth" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  
+                  <Stack.Screen 
+                    name="wishlist/[id]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Wishlist',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="item/[id]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Item Details',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="shared/[shareSlug]" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Shared Wishlist',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                  
+                  <Stack.Screen 
+                    name="alerts" 
+                    options={{ 
+                      headerShown: true,
+                      title: 'Alert Settings',
+                      headerBackTitle: 'Back'
+                    }} 
+                  />
+                </Stack>
+                <ThemedSystemBars />
+              </GestureHandlerRootView>
+            </WidgetProvider>
+          </AuthGate>
+        </AuthProvider>
+      </ThemedNavigationProvider>
+    </ThemeProvider>
+  );
+}
+
+// Themed Navigation Provider that uses the theme context
+function ThemedNavigationProvider({ children }: { children: React.ReactNode }) {
+  const { theme, isDark } = useAppTheme();
+
+  // Custom theme for My Wishlist based on current theme
   const CustomLightTheme: Theme = {
     ...DefaultTheme,
     dark: false,
     colors: {
-      primary: "#3b2a1f",
-      background: "#ede8e3",
-      card: "#ffffff",
-      text: "#3b2a1f",
-      border: "rgba(0,0,0,0.08)",
+      primary: theme.colors.accent,
+      background: theme.colors.background,
+      card: theme.colors.card,
+      text: theme.colors.text,
+      border: theme.colors.border,
       notification: "#FF3B30",
     },
   };
@@ -189,76 +251,30 @@ function RootLayoutContent() {
     ...DarkTheme,
     dark: true,
     colors: {
-      primary: "#FFFFFF",
-      background: "#765943",
-      card: "rgba(255,255,255,0.08)",
-      text: "#FFFFFF",
-      border: "rgba(255,255,255,0.15)",
+      primary: theme.colors.accent,
+      background: theme.colors.background,
+      card: theme.colors.card,
+      text: theme.colors.text,
+      border: theme.colors.border,
       notification: "#FF3B30",
     },
   };
 
   return (
+    <NavigationThemeProvider value={isDark ? CustomDarkTheme : CustomLightTheme}>
+      {children}
+    </NavigationThemeProvider>
+  );
+}
+
+// Themed System Bars that match the current theme
+function ThemedSystemBars() {
+  const { isDark } = useAppTheme();
+  
+  return (
     <>
-      <StatusBar style="auto" animated />
-      <NavigationThemeProvider
-        value={colorScheme === "dark" ? CustomDarkTheme : CustomLightTheme}
-      >
-        <ThemeProvider>
-          <AuthProvider>
-            <AuthGate>
-              <WidgetProvider>
-                <GestureHandlerRootView>
-                  <Stack>
-                    <Stack.Screen name="auth" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                    
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    
-                    <Stack.Screen 
-                      name="wishlist/[id]" 
-                      options={{ 
-                        headerShown: true,
-                        title: 'Wishlist',
-                        headerBackTitle: 'Back'
-                      }} 
-                    />
-                    
-                    <Stack.Screen 
-                      name="item/[id]" 
-                      options={{ 
-                        headerShown: true,
-                        title: 'Item Details',
-                        headerBackTitle: 'Back'
-                      }} 
-                    />
-                    
-                    <Stack.Screen 
-                      name="shared/[shareSlug]" 
-                      options={{ 
-                        headerShown: true,
-                        title: 'Shared Wishlist',
-                        headerBackTitle: 'Back'
-                      }} 
-                    />
-                    
-                    <Stack.Screen 
-                      name="alerts" 
-                      options={{ 
-                        headerShown: true,
-                        title: 'Alert Settings',
-                        headerBackTitle: 'Back'
-                      }} 
-                    />
-                  </Stack>
-                  <SystemBars style={"auto"} />
-                </GestureHandlerRootView>
-              </WidgetProvider>
-            </AuthGate>
-          </AuthProvider>
-        </ThemeProvider>
-      </NavigationThemeProvider>
+      <StatusBar style={isDark ? "light" : "dark"} animated />
+      <SystemBars style={isDark ? "light" : "dark"} />
     </>
   );
 }
