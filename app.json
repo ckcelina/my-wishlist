@@ -20,7 +20,8 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "associatedDomains": [
-        "applinks:mywishlist.app"
+        "applinks:mywishlist.app",
+        "applinks:dixgmnuayzblwpqyplsi.supabase.co"
       ]
     },
     "android": {
@@ -86,8 +87,8 @@
     "extra": {
       "router": {},
       "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
-      "supabaseUrl": "https://YOUR_PROJECT_REF.supabase.co",
-      "supabaseAnonKey": "YOUR_SUPABASE_ANON_KEY"
+      "supabaseUrl": "https://dixgmnuayzblwpqyplsi.supabase.co",
+      "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpeGdtbnVheXpibHdwcXlwbHNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzc3MzA1NzcsImV4cCI6MjA1MzMwNjU3N30.Ij-Ow0Ij-Ow0Ij-Ow0Ij-Ow0Ij-Ow0Ij-Ow0Ij-Ow0Ij-Ow0"
     }
   },
   "scheme": "mywishlist"

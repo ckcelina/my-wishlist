@@ -6,276 +6,195 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
-import { getDiagnosticLogs, clearDiagnosticLogs, formatDiagnostics } from '@/utils/observability';
-import { useI18n } from '@/contexts/I18nContext';
-import { useTranslation } from 'react-i18next';
-
-interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'warn' | 'error';
-  type: 'event' | 'error';
-  message: string;
-  data?: any;
-}
-
-function resolveImageSource(source: string | number | any | undefined): any {
-  if (!source) return { uri: '' };
-  if (typeof source === 'string') return { uri: source };
-  return source;
-}
+import { colors, typography, spacing } from '@/styles/designSystem';
+import { verifySupabaseConnection, getSupabaseConfig, testEdgeFunctions } from '@/utils/supabase-connection';
+import { useAuth } from '@/contexts/AuthContext';
+import Constants from 'expo-constants';
 
 export default function DiagnosticsScreen() {
   const router = useRouter();
-  const { t } = useTranslation();
-  const { translationDebugEnabled, toggleTranslationDebug, currentLanguage, isRTL } = useI18n();
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<any>(null);
+  const [edgeFunctionStatus, setEdgeFunctionStatus] = useState<any>(null);
 
   useEffect(() => {
-    loadLogs();
+    runDiagnostics();
   }, []);
 
-  async function loadLogs() {
+  const runDiagnostics = async () => {
+    console.log('[Diagnostics] Running diagnostics...');
     setLoading(true);
+    
     try {
-      const diagnosticLogs = await getDiagnosticLogs();
-      setLogs(diagnosticLogs);
+      const status = await verifySupabaseConnection();
+      setConnectionStatus(status);
+      
+      const edgeStatus = await testEdgeFunctions();
+      setEdgeFunctionStatus(edgeStatus);
     } catch (error) {
-      console.error('[Diagnostics] Failed to load logs:', error);
+      console.error('[Diagnostics] Error running diagnostics:', error);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleCopyDiagnostics() {
-    try {
-      const formatted = formatDiagnostics(logs);
-      await Clipboard.setStringAsync(formatted);
-      Alert.alert('Copied', 'Diagnostics copied to clipboard');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to copy diagnostics');
-    }
-  }
+  const config = getSupabaseConfig();
+  const backendUrl = Constants.expoConfig?.extra?.backendUrl;
 
-  async function handleClearLogs() {
-    Alert.alert(
-      'Clear Logs',
-      'Are you sure you want to clear all diagnostic logs?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear',
-          style: 'destructive',
-          onPress: async () => {
-            await clearDiagnosticLogs();
-            setLogs([]);
-          },
-        },
-      ]
-    );
-  }
-
-  async function handleToggleTranslationDebug() {
-    await toggleTranslationDebug();
-  }
-
-  function getLevelColor(level: string) {
-    switch (level) {
-      case 'error':
-        return colors.error;
-      case 'warn':
-        return colors.warning;
-      default:
-        return colors.textSecondary;
-    }
-  }
-
-  function getLevelIcon(level: string) {
-    switch (level) {
-      case 'error':
-        return 'error';
-      case 'warn':
-        return 'warning';
-      default:
-        return 'info';
-    }
-  }
-
-  const totalErrors = logs.filter(l => l.level === 'error').length;
-  const totalWarnings = logs.filter(l => l.level === 'warn').length;
-  const totalEvents = logs.filter(l => l.type === 'event').length;
-
-  const directionText = isRTL ? 'RTL' : 'LTR';
+  const statusIcon = connectionStatus?.connected ? 'check-circle' : 'error';
+  const statusColor = connectionStatus?.connected ? '#4CAF50' : '#F44336';
+  const statusText = connectionStatus?.connected ? 'Connected' : 'Not Connected';
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <>
       <Stack.Screen
         options={{
-          title: 'Diagnostics',
           headerShown: true,
+          title: 'Diagnostics',
+          headerBackTitle: 'Back',
         }}
       />
-
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Translation Debug</Text>
-          <Text style={styles.sectionDescription}>
-            Show missing translation keys in brackets with warning color
-          </Text>
-          
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Translation Debug Mode</Text>
-              <Text style={styles.settingDescription}>
-                {translationDebugEnabled ? 'Missing keys shown as [key_name]' : 'Normal mode'}
-              </Text>
-            </View>
-            <Switch
-              value={translationDebugEnabled}
-              onValueChange={handleToggleTranslationDebug}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={colors.background}
-            />
-          </View>
-
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Current Language:</Text>
-              <Text style={styles.infoValue}>{currentLanguage}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Text Direction:</Text>
-              <Text style={styles.infoValue}>{directionText}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Diagnostic Logs</Text>
-          
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{logs.length}</Text>
-              <Text style={styles.statLabel}>Total</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statValue, { color: colors.error }]}>{totalErrors}</Text>
-              <Text style={styles.statLabel}>Errors</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statValue, { color: colors.warning }]}>{totalWarnings}</Text>
-              <Text style={styles.statLabel}>Warnings</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{totalEvents}</Text>
-              <Text style={styles.statLabel}>Events</Text>
-            </View>
-          </View>
-
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.primaryButton]}
-              onPress={handleCopyDiagnostics}
-            >
-              <IconSymbol
-                ios_icon_name="doc.on.doc"
-                android_material_icon_name="content-copy"
-                size={18}
-                color={colors.textInverse}
-              />
-              <Text style={styles.primaryButtonText}>Copy</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.actionButton, styles.secondaryButton]}
-              onPress={handleClearLogs}
-            >
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={18}
-                color={colors.error}
-              />
-              <Text style={styles.secondaryButtonText}>Clear</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {loading ? (
-          <View style={containerStyles.center}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : logs.length === 0 ? (
-          <View style={styles.emptyState}>
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+          <View style={styles.header}>
             <IconSymbol
-              ios_icon_name="checkmark.circle"
-              android_material_icon_name="check-circle"
-              size={64}
-              color={colors.success}
+              ios_icon_name="stethoscope"
+              android_material_icon_name="medical-services"
+              size={48}
+              color={colors.primary}
             />
-            <Text style={styles.emptyTitle}>No logs yet</Text>
-            <Text style={styles.emptyDescription}>
-              Diagnostic logs will appear here as you use the app
-            </Text>
+            <Text style={styles.title}>System Diagnostics</Text>
+            <Text style={styles.subtitle}>Connection and configuration status</Text>
           </View>
-        ) : (
-          <View style={styles.logsList}>
-            {logs.map((log, index) => {
-              const isExpanded = expandedIndex === index;
-              const levelColor = getLevelColor(log.level);
-              const levelIcon = getLevelIcon(log.level);
-              const time = new Date(log.timestamp).toLocaleString();
 
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.logItem}
-                  onPress={() => setExpandedIndex(isExpanded ? null : index)}
-                >
-                  <View style={styles.logHeader}>
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Running diagnostics...</Text>
+            </View>
+          ) : (
+            <>
+              {/* Supabase Connection Status */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Supabase Connection</Text>
+                
+                <View style={[styles.statusCard, { borderColor: statusColor }]}>
+                  <View style={styles.statusHeader}>
                     <IconSymbol
-                      ios_icon_name={levelIcon}
-                      android_material_icon_name={levelIcon}
-                      size={20}
-                      color={levelColor}
+                      ios_icon_name="circle.fill"
+                      android_material_icon_name={statusIcon}
+                      size={24}
+                      color={statusColor}
                     />
-                    <View style={styles.logHeaderText}>
-                      <Text style={styles.logMessage} numberOfLines={isExpanded ? undefined : 1}>
-                        {log.message}
-                      </Text>
-                      <Text style={styles.logTime}>{time}</Text>
-                    </View>
-                    <View style={[styles.levelBadge, { backgroundColor: `${levelColor}20` }]}>
-                      <Text style={[styles.levelText, { color: levelColor }]}>
-                        {log.level.toUpperCase()}
-                      </Text>
-                    </View>
+                    <Text style={[styles.statusText, { color: statusColor }]}>
+                      {statusText}
+                    </Text>
                   </View>
-
-                  {isExpanded && log.data && (
-                    <View style={styles.logData}>
-                      <Text style={styles.logDataText}>
-                        {JSON.stringify(log.data, null, 2)}
-                      </Text>
-                    </View>
+                  
+                  {connectionStatus?.error && (
+                    <Text style={styles.errorText}>{connectionStatus.error}</Text>
                   )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+                </View>
+
+                <View style={styles.detailsCard}>
+                  <DetailRow label="URL" value={config.url} />
+                  <DetailRow label="Anon Key" value={config.hasAnonKey ? 'Configured' : 'Missing'} />
+                  <DetailRow 
+                    label="Auth" 
+                    value={connectionStatus?.authConfigured ? '✅ Working' : '❌ Failed'} 
+                  />
+                  <DetailRow 
+                    label="Database" 
+                    value={connectionStatus?.databaseAccessible ? '✅ Accessible' : '❌ Not Accessible'} 
+                  />
+                </View>
+              </View>
+
+              {/* Backend API Status */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Backend API</Text>
+                
+                <View style={styles.detailsCard}>
+                  <DetailRow label="URL" value={backendUrl || 'Not configured'} />
+                </View>
+              </View>
+
+              {/* Edge Functions Status */}
+              {edgeFunctionStatus && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Edge Functions</Text>
+                  
+                  <View style={styles.detailsCard}>
+                    <DetailRow 
+                      label="extract-item" 
+                      value={edgeFunctionStatus.extractItem ? '✅ Available' : '❌ Not Available'} 
+                    />
+                    <DetailRow 
+                      label="find-alternatives" 
+                      value={edgeFunctionStatus.findAlternatives ? '✅ Available' : '❌ Not Available'} 
+                    />
+                    <DetailRow 
+                      label="import-wishlist" 
+                      value={edgeFunctionStatus.importWishlist ? '✅ Available' : '❌ Not Available'} 
+                    />
+                    <DetailRow 
+                      label="identify-from-image" 
+                      value={edgeFunctionStatus.identifyFromImage ? '✅ Available' : '❌ Not Available'} 
+                    />
+                  </View>
+                </View>
+              )}
+
+              {/* User Status */}
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>User Status</Text>
+                
+                <View style={styles.detailsCard}>
+                  <DetailRow label="Authenticated" value={user ? 'Yes' : 'No'} />
+                  {user && (
+                    <>
+                      <DetailRow label="User ID" value={user.id} />
+                      <DetailRow label="Email" value={user.email} />
+                    </>
+                  )}
+                </View>
+              </View>
+
+              {/* Actions */}
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={runDiagnostics}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.clockwise"
+                  android_material_icon_name="refresh"
+                  size={20}
+                  color="#FFFFFF"
+                />
+                <Text style={styles.refreshButtonText}>Refresh Diagnostics</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={styles.detailValue} numberOfLines={1} ellipsizeMode="middle">
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -287,175 +206,97 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  content: {
+    padding: spacing.lg,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  title: {
+    ...typography.h2,
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  subtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl * 2,
+  },
+  loadingText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
   section: {
-    padding: spacing.md,
+    marginBottom: spacing.xl,
+  },
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  statusCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    borderWidth: 2,
+    marginBottom: spacing.md,
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusText: {
+    ...typography.h3,
+    marginLeft: spacing.sm,
+  },
+  errorText: {
+    ...typography.caption,
+    color: '#F44336',
+    marginTop: spacing.sm,
+  },
+  detailsCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  sectionTitle: {
-    ...typography.titleMedium,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  sectionDescription: {
-    ...typography.bodySmall,
+  detailLabel: {
+    ...typography.body,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 12,
-    marginBottom: spacing.md,
-  },
-  settingInfo: {
     flex: 1,
-    marginRight: spacing.md,
   },
-  settingLabel: {
-    ...typography.bodyMedium,
+  detailValue: {
+    ...typography.body,
     color: colors.text,
-    marginBottom: spacing.xs,
+    flex: 2,
+    textAlign: 'right',
   },
-  settingDescription: {
-    ...typography.labelSmall,
-    color: colors.textSecondary,
-  },
-  infoCard: {
-    backgroundColor: colors.backgroundAlt,
+  refreshButton: {
+    backgroundColor: colors.primary,
     borderRadius: 12,
     padding: spacing.md,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-  },
-  infoLabel: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-  },
-  infoValue: {
-    ...typography.bodyMedium,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.backgroundAlt,
-    padding: spacing.sm,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  statValue: {
-    ...typography.titleLarge,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  statLabel: {
-    ...typography.labelSmall,
-    color: colors.textSecondary,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    gap: spacing.xs,
+    marginTop: spacing.lg,
   },
-  primaryButton: {
-    backgroundColor: colors.primary,
-  },
-  secondaryButton: {
-    backgroundColor: colors.backgroundAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  primaryButtonText: {
-    ...typography.labelMedium,
-    color: colors.textInverse,
-    fontWeight: '600',
-  },
-  secondaryButtonText: {
-    ...typography.labelMedium,
-    color: colors.error,
-    fontWeight: '600',
-  },
-  logsList: {
-    paddingBottom: spacing.xl,
-  },
-  logItem: {
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  logHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-  },
-  logHeaderText: {
-    flex: 1,
-  },
-  logMessage: {
-    ...typography.bodyMedium,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  logTime: {
-    ...typography.labelSmall,
-    color: colors.textTertiary,
-  },
-  levelBadge: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  levelText: {
-    ...typography.labelSmall,
-    fontWeight: '700',
-    fontSize: 10,
-  },
-  logData: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.backgroundAlt,
-    borderRadius: 8,
-  },
-  logDataText: {
-    ...typography.bodySmall,
-    fontFamily: 'monospace',
-    color: colors.textSecondary,
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: spacing.xl,
-  },
-  emptyTitle: {
-    ...typography.titleMedium,
-    marginTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  emptyDescription: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    textAlign: 'center',
+  refreshButtonText: {
+    ...typography.button,
+    color: '#FFFFFF',
+    marginLeft: spacing.sm,
   },
 });
