@@ -189,7 +189,7 @@ export default function AuthScreen() {
     const titleText = isSignIn ? 'Welcome Back' : 'Create Account';
     const subtitleText = isSignIn
       ? 'Sign in to My Wishlist'
-      : 'Sign up to start saving your wishlist items';
+      : 'Sign up to My Wishlist';
     const buttonText = isSignIn ? 'Sign In' : 'Sign Up';
     const switchText = isSignIn
       ? "Don't have an account?"
