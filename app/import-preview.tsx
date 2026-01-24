@@ -17,6 +17,7 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
+import { Logo } from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
 import { BACKEND_URL, authenticatedPost, authenticatedGet } from '@/utils/api';
@@ -651,12 +652,7 @@ export default function ImportPreviewScreen() {
           <View style={styles.sourceCard}>
             <View style={styles.sourceHeader}>
               <View style={styles.sourceIcon}>
-                <IconSymbol
-                  ios_icon_name="bag"
-                  android_material_icon_name="shopping-bag"
-                  size={24}
-                  color={colors.accent}
-                />
+                <Logo size="small" style={styles.sourceLogoImage} />
               </View>
               <View style={styles.sourceInfo}>
                 <Text style={styles.sourceName}>{storeNameText}</Text>
@@ -1359,6 +1355,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
+  sourceLogoImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
   sourceInfo: {
     flex: 1,
