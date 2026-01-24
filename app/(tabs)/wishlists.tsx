@@ -196,6 +196,7 @@ export default function WishlistsScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [initializing, setInitializing] = useState(false);
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [renameModalVisible, setRenameModalVisible] = useState(false);
@@ -216,6 +217,34 @@ export default function WishlistsScreen() {
       fetchWishlistsFromNetwork(1, false);
     }
   }, [user]);
+
+  const initializeDefaultWishlist = async () => {
+    if (!user?.id || initializing) {
+      return;
+    }
+
+    setInitializing(true);
+    try {
+      console.log('[WishlistsScreen] Creating default wishlist for new user');
+      const newWishlist = await createWishlist({
+        user_id: user.id,
+        name: 'My Wishlist',
+      });
+
+      console.log('[WishlistsScreen] Default wishlist created:', newWishlist.id);
+      
+      // Refresh the list
+      await fetchWishlistsFromNetwork(1, false);
+      
+      // Navigate to the new wishlist
+      router.push(`/wishlist/${newWishlist.id}`);
+    } catch (err) {
+      console.error('[WishlistsScreen] Error creating default wishlist:', err);
+      Alert.alert('Error', 'Failed to create default wishlist');
+    } finally {
+      setInitializing(false);
+    }
+  };
 
   const fetchWishlistsFromNetwork = useCallback(async (pageNum: number, append: boolean) => {
     if (!user?.id) {
@@ -248,6 +277,13 @@ export default function WishlistsScreen() {
       } else {
         setWishlists(formattedWishlists);
         await setCachedData('wishlists', formattedWishlists);
+        
+        // If user has no wishlists, create a default one
+        if (formattedWishlists.length === 0 && !initializing) {
+          console.log('[WishlistsScreen] No wishlists found, creating default wishlist');
+          await initializeDefaultWishlist();
+          return;
+        }
       }
 
       setHasMore(formattedWishlists.length === PAGE_SIZE);
@@ -268,7 +304,7 @@ export default function WishlistsScreen() {
       setRefreshing(false);
       setLoadingMore(false);
     }
-  }, [user]);
+  }, [user, initializing]);
 
   const handleRefresh = useCallback(() => {
     console.log('[WishlistsScreen] User triggered refresh');

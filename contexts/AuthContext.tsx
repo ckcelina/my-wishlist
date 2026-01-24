@@ -203,12 +203,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (data.user) {
         console.log('[AuthContext] Sign in successful:', data.user.id);
-        setUser({
+        const newUser = {
           id: data.user.id,
           email: data.user.email || '',
           name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
           image: data.user.user_metadata?.avatar_url,
-        });
+        };
+        setUser(newUser);
+        
+        // Navigation will be handled by RootLayout based on auth state
+        console.log('[AuthContext] User state updated, navigation will be handled by RootLayout');
       }
     } catch (error) {
       console.error('[AuthContext] Email sign in failed:', error);
@@ -289,12 +293,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (data.user) {
         console.log('[AuthContext] Sign up successful:', data.user.id);
-        setUser({
+        const newUser = {
           id: data.user.id,
           email: data.user.email || '',
           name: data.user.user_metadata?.name || data.user.email?.split('@')[0],
           image: data.user.user_metadata?.avatar_url,
-        });
+        };
+        setUser(newUser);
         
         // Create default wishlist
         console.log('[AuthContext] Creating default wishlist for new user');
@@ -305,9 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { router } = await import('expo-router');
           router.replace(`/wishlist/${wishlistId}`);
         } else {
-          console.log('[AuthContext] No wishlist created, navigating to wishlists list');
-          const { router } = await import('expo-router');
-          router.replace('/(tabs)/wishlists');
+          console.log('[AuthContext] No wishlist created, navigation will be handled by RootLayout');
         }
       }
     } catch (error) {
@@ -334,6 +337,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('[AuthContext] Google OAuth initiated');
       // The auth state listener will handle the user update after OAuth completes
+      // Navigation will be handled by RootLayout based on auth state
     } catch (error) {
       console.error('[AuthContext] Google sign in failed:', error);
       throw error;
@@ -358,6 +362,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       console.log('[AuthContext] Apple OAuth initiated');
       // The auth state listener will handle the user update after OAuth completes
+      // Navigation will be handled by RootLayout based on auth state
     } catch (error) {
       console.error('[AuthContext] Apple sign in failed:', error);
       throw error;
@@ -379,9 +384,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       console.log('[AuthContext] Sign out complete');
       
-      // Navigate to auth screen
-      const { router } = await import('expo-router');
-      router.replace('/auth');
+      // Navigation will be handled by RootLayout based on auth state
+      console.log('[AuthContext] User state cleared, navigation will be handled by RootLayout');
     } catch (error) {
       console.error('[AuthContext] Sign out failed:', error);
       throw error;

@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/design-system/Button';
 import { Logo } from '@/components/Logo';
@@ -20,7 +19,6 @@ import { colors, typography, spacing, inputStyles, containerStyles } from '@/sty
 type Mode = 'signin' | 'signup' | 'forgot-password';
 
 export default function AuthScreen() {
-  const router = useRouter();
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, resetPassword } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -63,13 +61,11 @@ export default function AuthScreen() {
       if (mode === 'signin') {
         console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
         await signInWithEmail(trimmedEmail, trimmedPassword);
-        console.log('[AuthScreen] Sign in successful, navigating to wishlists');
-        router.replace('/(tabs)/wishlists');
+        console.log('[AuthScreen] Sign in successful, navigation will be handled by RootLayout');
       } else {
         console.log('[AuthScreen] User tapped Sign Up button with email:', trimmedEmail);
         await signUpWithEmail(trimmedEmail, trimmedPassword, trimmedName);
-        console.log('[AuthScreen] Sign up successful');
-        // Navigation is handled in AuthContext after creating default wishlist
+        console.log('[AuthScreen] Sign up successful, navigation will be handled by RootLayout or AuthContext');
       }
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
@@ -122,8 +118,7 @@ export default function AuthScreen() {
       } else if (provider === 'apple') {
         await signInWithApple();
       }
-      console.log(`[AuthScreen] ${provider} sign in successful, navigating to wishlists`);
-      router.replace('/(tabs)/wishlists');
+      console.log(`[AuthScreen] ${provider} sign in initiated, navigation will be handled by RootLayout`);
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
       const errorMessage = error.message || `${provider} sign in failed`;
