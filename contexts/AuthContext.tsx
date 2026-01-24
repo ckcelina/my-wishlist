@@ -19,7 +19,6 @@ interface AuthContextType {
   signUpWithEmail: (email: string, password: string, name?: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signInWithApple: () => Promise<void>;
-  signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
   fetchUser: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -196,7 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithSocial = async (provider: "google" | "apple" | "github") => {
+  const signInWithSocial = async (provider: "google" | "apple") => {
     try {
       console.log(`[AuthContext] Starting ${provider} OAuth flow`);
       
@@ -222,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = () => signInWithSocial("google");
   const signInWithApple = () => signInWithSocial("apple");
-  const signInWithGitHub = () => signInWithSocial("github");
 
   const signOut = async () => {
     try {
@@ -257,7 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUpWithEmail,
         signInWithGoogle,
         signInWithApple,
-        signInWithGitHub,
         signOut,
         fetchUser,
         resetPassword,

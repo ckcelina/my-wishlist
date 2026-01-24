@@ -21,7 +21,7 @@ type Mode = 'signin' | 'signup' | 'forgot-password';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, signInWithGitHub, resetPassword } = useAuth();
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, resetPassword } = useAuth();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,11 +46,12 @@ export default function AuthScreen() {
         console.log('[AuthScreen] User tapped Sign In button');
         await signInWithEmail(email, password);
         console.log('[AuthScreen] Sign in successful, navigating to wishlists');
-        router.replace('/wishlists');
+        router.replace('/(tabs)/wishlists');
       } else {
         console.log('[AuthScreen] User tapped Sign Up button');
         await signUpWithEmail(email, password, name);
         console.log('[AuthScreen] Sign up successful');
+        // Navigation is handled in AuthContext after creating default wishlist
       }
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
@@ -80,7 +81,7 @@ export default function AuthScreen() {
     }
   };
 
-  const handleSocialAuth = async (provider: 'google' | 'apple' | 'github') => {
+  const handleSocialAuth = async (provider: 'google' | 'apple') => {
     setLoading(true);
     try {
       console.log(`[AuthScreen] User tapped ${provider} sign in button`);
@@ -88,11 +89,9 @@ export default function AuthScreen() {
         await signInWithGoogle();
       } else if (provider === 'apple') {
         await signInWithApple();
-      } else {
-        await signInWithGitHub();
       }
       console.log(`[AuthScreen] ${provider} sign in successful, navigating to wishlists`);
-      router.replace('/wishlists');
+      router.replace('/(tabs)/wishlists');
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
       Alert.alert('Error', error.message || `${provider} sign in failed`);
@@ -161,7 +160,7 @@ export default function AuthScreen() {
     const isSignIn = mode === 'signin';
     const titleText = isSignIn ? 'Welcome Back' : 'Create Account';
     const subtitleText = isSignIn
-      ? 'Sign in to continue to your wishlists'
+      ? 'Sign in to My Wishlist'
       : 'Sign up to start saving your wishlist items';
     const buttonText = isSignIn ? 'Sign In' : 'Sign Up';
     const switchText = isSignIn
@@ -252,14 +251,6 @@ export default function AuthScreen() {
             style={styles.socialButton}
           />
         )}
-
-        <Button
-          title="Continue with GitHub"
-          onPress={() => handleSocialAuth('github')}
-          variant="secondary"
-          disabled={loading}
-          style={styles.socialButton}
-        />
 
         <View style={styles.switchModeContainer}>
           <Text style={styles.switchModeText}>{switchText}</Text>
