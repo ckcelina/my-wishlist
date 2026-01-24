@@ -91,11 +91,6 @@ const getLogServerUrl = (): string | null => {
 // Track if we've logged fetch errors to avoid spam
 let fetchErrorLogged = false;
 
-// Store original console methods at module level (before any overrides)
-let originalLog: typeof console.log | null = null;
-let originalWarn: typeof console.warn | null = null;
-let originalError: typeof console.error | null = null;
-
 // Flush the log queue to server
 const flushLogs = async () => {
   if (logQueue.length === 0) return;
@@ -118,10 +113,12 @@ const flushLogs = async () => {
         body: JSON.stringify(log),
       }).catch((e) => {
         // Log fetch errors only once to avoid spam
-        if (!fetchErrorLogged && originalLog) {
+        if (!fetchErrorLogged) {
           fetchErrorLogged = true;
-          // Use the original console.log to avoid recursion
-          originalLog('[Natively] Fetch error (will not repeat):', e.message || e);
+          // Use a different method to avoid recursion - write directly without going through our intercept
+          if (typeof window !== 'undefined' && window.console) {
+            (window.console as any).__proto__.log.call(console, '[Natively] Fetch error (will not repeat):', e.message || e);
+          }
         }
       });
     } catch (e) {
@@ -284,22 +281,20 @@ export const setupErrorLogging = () => {
   }
 
   // Store original console methods BEFORE any modifications
-  originalLog = console.log;
-  originalWarn = console.warn;
-  originalError = console.error;
+  const originalConsoleLog = console.log;
+  const originalConsoleWarn = console.warn;
+  const originalConsoleError = console.error;
 
   // Log initialization info using original console (not intercepted)
   const logServerUrl = getLogServerUrl();
-  originalLog('[Natively] Setting up error logging...');
-  originalLog('[Natively] Log server URL:', logServerUrl || 'NOT AVAILABLE');
-  originalLog('[Natively] Platform:', Platform.OS);
+  originalConsoleLog('[Natively] Setting up error logging...');
+  originalConsoleLog('[Natively] Log server URL:', logServerUrl || 'NOT AVAILABLE');
+  originalConsoleLog('[Natively] Platform:', Platform.OS);
 
   // Override console.log to capture and send to server
   console.log = (...args: any[]) => {
     // Always call original first
-    if (originalLog) {
-      originalLog.apply(console, args);
-    }
+    originalConsoleLog.apply(console, args);
 
     // Queue log for sending to server
     const message = stringifyArgs(args);
@@ -310,9 +305,7 @@ export const setupErrorLogging = () => {
   // Override console.warn to capture and send to server
   console.warn = (...args: any[]) => {
     // Always call original first
-    if (originalWarn) {
-      originalWarn.apply(console, args);
-    }
+    originalConsoleWarn.apply(console, args);
 
     // Queue log for sending to server (skip muted messages)
     const message = stringifyArgs(args);
@@ -329,9 +322,7 @@ export const setupErrorLogging = () => {
     if (shouldMuteMessage(message)) return;
 
     // Always call original first
-    if (originalError) {
-      originalError.apply(console, args);
-    }
+    originalConsoleError.apply(console, args);
 
     const source = getCallerInfo();
     queueLog('error', message, source);
