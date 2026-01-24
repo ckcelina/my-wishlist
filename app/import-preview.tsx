@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
-import { BACKEND_URL, authenticatedPost } from '@/utils/api';
+import { BACKEND_URL, authenticatedPost, authenticatedGet } from '@/utils/api';
 
 interface ImportedItem {
   tempId: string;
@@ -46,8 +46,17 @@ interface DuplicateGroup {
   reason: string;
 }
 
-type OrganizeMode = 'merge' | 'create' | 'split';
-type GroupByOption = 'store' | 'category' | 'person' | 'occasion' | 'price_range';
+interface AutoGroup {
+  groupId: string;
+  groupName: string;
+  memberTempIds: string[];
+  confidence: number;
+  collapsed: boolean;
+  proposedWishlistName: string;
+}
+
+type OrganizeMode = 'merge' | 'new' | 'split';
+type GroupByOption = 'store' | 'category' | 'person' | 'occasion' | 'price';
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
@@ -62,7 +71,7 @@ export default function ImportPreviewScreen() {
   
   const [items, setItems] = useState<ImportedItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [organizeMode, setOrganizeMode] = useState<OrganizeMode>('create');
+  const [organizeMode, setOrganizeMode] = useState<OrganizeMode>('new');
   const [newWishlistName, setNewWishlistName] = useState('');
   const [selectedWishlistId, setSelectedWishlistId] = useState('');
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -75,6 +84,10 @@ export default function ImportPreviewScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [showAutoGroupOptions, setShowAutoGroupOptions] = useState(false);
   const [autoGrouping, setAutoGrouping] = useState(false);
+  const [autoGroups, setAutoGroups] = useState<AutoGroup[]>([]);
+  const [groupedMode, setGroupedMode] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
   useEffect(() => {
     if (itemsParam && typeof itemsParam === 'string') {
@@ -114,7 +127,91 @@ export default function ImportPreviewScreen() {
 
   useEffect(() => {
     fetchWishlists();
+    fetchUserLocation();
   }, [user]);
+
+  const fetchUserLocation = async () => {
+    if (!user) return;
+
+    try {
+      console.log('[ImportPreview] Fetching user location');
+      const response = await authenticatedGet<{
+        id: string;
+        userId: string;
+        countryCode: string;
+        countryName: string;
+        city: string | null;
+        region: string | null;
+        postalCode: string | null;
+        updatedAt: string;
+      }>('/api/users/location');
+
+      if (response) {
+        const location = {
+          countryCode: response.countryCode,
+          city: response.city,
+        };
+        setUserLocation(location);
+        console.log('[ImportPreview] User location:', location);
+        checkItemsAvailability(location);
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error fetching user location:', error);
+      // Location is optional, continue without it
+    }
+  };
+
+  const checkItemsAvailability = async (location: { countryCode: string; city: string | null }) => {
+    if (items.length === 0) return;
+
+    console.log('[ImportPreview] Checking item availability for location:', location);
+    setCheckingAvailability(true);
+
+    try {
+      // Get unique source domains
+      const domains = [...new Set(items.map(item => item.sourceDomain).filter(Boolean))];
+
+      // Check availability for each domain
+      const availabilityChecks = await Promise.all(
+        domains.map(async (domain) => {
+          try {
+            const response = await authenticatedPost<{ available: boolean }>('/api/stores/check-availability', {
+              domain,
+              countryCode: location.countryCode,
+              city: location.city,
+            });
+            return { domain, available: response.available };
+          } catch (error) {
+            console.error('[ImportPreview] Error checking availability for:', domain, error);
+            return { domain, available: true }; // Default to available on error
+          }
+        })
+      );
+
+      // Update items with availability status
+      const availabilityMap = new Map(availabilityChecks.map(check => [check.domain, check.available]));
+      
+      const updatedItems = items.map(item => {
+        if (!item.sourceDomain) return item;
+        
+        const available = availabilityMap.get(item.sourceDomain);
+        if (available === false) {
+          return {
+            ...item,
+            status: 'unavailable' as const,
+          };
+        }
+        return item;
+      });
+
+      setItems(updatedItems);
+      console.log('[ImportPreview] Availability check completed');
+    } catch (error) {
+      console.error('[ImportPreview] Error checking items availability:', error);
+    } finally {
+      setCheckingAvailability(false);
+    }
+  };
 
   const fetchWishlists = async () => {
     if (!user) {
@@ -217,29 +314,51 @@ export default function ImportPreviewScreen() {
       const itemsForGrouping = items.map(item => ({
         tempId: item.tempId,
         title: item.title,
-        sourceDomain: item.sourceDomain || '',
-        price: item.price || 0,
+        imageUrl: item.imageUrl || undefined,
+        productUrl: item.productUrl,
+        sourceDomain: item.sourceDomain || undefined,
+        price: item.price || undefined,
         currency: item.currency || 'USD',
       }));
 
       console.log('[ImportPreview] Sending items for auto-grouping');
       const response = await authenticatedPost<{
-        groups: Array<{ groupId: string; label: string; items: string[] }>;
-      }>('/api/import-items/auto-group', {
+        groups: Array<{ groupName: string; memberTempIds: string[]; confidence: number }>;
+        autoMode?: string;
+      }>('/api/auto-group-import-items', {
         items: itemsForGrouping,
-        groupBy,
+        mode: groupBy,
       });
 
       console.log('[ImportPreview] Auto-grouped into:', response.groups.length, 'groups');
+      if (response.autoMode) {
+        console.log('[ImportPreview] Auto-selected mode:', response.autoMode);
+      }
+      
+      // Convert to AutoGroup format
+      const groups: AutoGroup[] = response.groups.map((group, index) => ({
+        groupId: `group_${Date.now()}_${index}`,
+        groupName: group.groupName,
+        memberTempIds: group.memberTempIds,
+        confidence: group.confidence,
+        collapsed: false,
+        proposedWishlistName: group.groupName,
+      }));
+
+      setAutoGroups(groups);
+      setGroupedMode(true);
+      
+      // Automatically switch to split mode when grouping is applied
+      setOrganizeMode('split');
       
       // Show results to user
-      const groupSummary = response.groups
-        .map(g => `${g.label}: ${g.items.length} items`)
+      const groupSummary = groups
+        .map(g => `${g.groupName}: ${g.memberTempIds.length} items`)
         .join('\n');
       
       Alert.alert(
         'Auto-Grouping Complete',
-        `Items grouped into ${response.groups.length} categories:\n\n${groupSummary}\n\nYou can now create separate wishlists for each group.`,
+        `Items grouped into ${groups.length} categories:\n\n${groupSummary}\n\nYou can now create separate wishlists for each group.`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -249,6 +368,43 @@ export default function ImportPreviewScreen() {
       setAutoGrouping(false);
       setShowAutoGroupOptions(false);
     }
+  };
+
+  const toggleGroupCollapse = (groupId: string) => {
+    console.log('[ImportPreview] Toggling group collapse:', groupId);
+    setAutoGroups(prevGroups =>
+      prevGroups.map(group =>
+        group.groupId === groupId ? { ...group, collapsed: !group.collapsed } : group
+      )
+    );
+  };
+
+  const updateGroupName = (groupId: string, newName: string) => {
+    console.log('[ImportPreview] Updating group name:', groupId, newName);
+    setAutoGroups(prevGroups =>
+      prevGroups.map(group =>
+        group.groupId === groupId ? { ...group, proposedWishlistName: newName } : group
+      )
+    );
+  };
+
+  const moveItemToGroup = (tempId: string, targetGroupId: string) => {
+    console.log('[ImportPreview] Moving item to group:', tempId, targetGroupId);
+    
+    setAutoGroups(prevGroups => {
+      // Remove item from all groups
+      const groupsWithoutItem = prevGroups.map(group => ({
+        ...group,
+        memberTempIds: group.memberTempIds.filter(id => id !== tempId),
+      }));
+
+      // Add item to target group
+      return groupsWithoutItem.map(group =>
+        group.groupId === targetGroupId
+          ? { ...group, memberTempIds: [...group.memberTempIds, tempId] }
+          : group
+      );
+    });
   };
 
   const handleEditItem = (item: ImportedItem) => {
@@ -303,8 +459,13 @@ export default function ImportPreviewScreen() {
       return;
     }
 
-    if (organizeMode === 'create' && !newWishlistName.trim()) {
+    if (organizeMode === 'new' && !newWishlistName.trim()) {
       Alert.alert('Invalid Name', 'Please enter a name for the new wishlist');
+      return;
+    }
+
+    if (organizeMode === 'split' && autoGroups.length === 0) {
+      Alert.alert('No Groups', 'Please use Auto-group to organize items before splitting');
       return;
     }
 
@@ -312,24 +473,13 @@ export default function ImportPreviewScreen() {
     setLoading(true);
 
     try {
-      let targetWishlistId = selectedWishlistId;
-
-      if (organizeMode === 'create') {
-        console.log('[ImportPreview] Creating new wishlist:', newWishlistName);
-        const newWishlist = await authenticatedPost<{ id: string; name: string }>(
-          '/api/wishlists/create',
-          { name: newWishlistName.trim() }
-        );
-        targetWishlistId = newWishlist.id;
-        console.log('[ImportPreview] New wishlist created:', targetWishlistId);
-      }
-
       // Get selected items
       const selectedItemsArray = items.filter(item => selectedItems.has(item.tempId));
       console.log('[ImportPreview] Importing items:', selectedItemsArray.length);
 
-      // Prepare items for batch import
+      // Prepare items for import
       const itemsForImport = selectedItemsArray.map(item => ({
+        tempId: item.tempId,
         title: item.title,
         imageUrl: item.imageUrl || undefined,
         productUrl: item.productUrl,
@@ -338,34 +488,106 @@ export default function ImportPreviewScreen() {
         sourceDomain: item.sourceDomain || undefined,
       }));
 
-      // Use batch import endpoint
+      // Prepare import request based on mode
+      const importRequest: any = {
+        mode: organizeMode,
+        items: itemsForImport,
+      };
+
+      // Add user location if available
+      if (userLocation) {
+        importRequest.countryCode = userLocation.countryCode;
+        importRequest.city = userLocation.city;
+      }
+
+      if (organizeMode === 'merge') {
+        importRequest.wishlistId = selectedWishlistId;
+      } else if (organizeMode === 'new') {
+        importRequest.wishlistName = newWishlistName.trim();
+      } else if (organizeMode === 'split') {
+        // Prepare groups for split mode
+        importRequest.groups = autoGroups.map(group => ({
+          groupName: group.proposedWishlistName.trim(),
+          memberTempIds: group.memberTempIds.filter(id => selectedItems.has(id)),
+        }));
+      }
+
+      console.log('[ImportPreview] Executing import with mode:', organizeMode);
       const result = await authenticatedPost<{
         success: boolean;
         createdCount: number;
+        destinationWishlists: Array<{ id: string; name: string }>;
+        itemAvailability?: Array<{
+          tempId: string;
+          sourceDomain: string;
+          available: boolean;
+          reason?: string;
+        }>;
         warnings: string[];
-      }>('/api/import-items/batch', {
-        wishlistId: targetWishlistId,
-        items: itemsForImport,
-      });
+      }>('/api/import-execute', importRequest);
 
       console.log('[ImportPreview] Import completed:', result.createdCount, 'items created');
 
-      if (result.warnings && result.warnings.length > 0) {
-        console.warn('[ImportPreview] Import warnings:', result.warnings);
+      // Log availability information if present
+      if (result.itemAvailability && result.itemAvailability.length > 0) {
+        const unavailableItems = result.itemAvailability.filter(item => !item.available);
+        if (unavailableItems.length > 0) {
+          console.log('[ImportPreview] Items with availability issues:', unavailableItems.length);
+        }
       }
 
-      Alert.alert(
-        'Success',
-        `Successfully imported ${result.createdCount} item${result.createdCount !== 1 ? 's' : ''}`,
-        [
-          {
-            text: 'View Wishlist',
-            onPress: () => {
-              router.replace(`/wishlist/${targetWishlistId}`);
-            },
+      if (organizeMode === 'split') {
+        // Navigate to import summary screen for split mode
+        // Calculate item counts per wishlist from groups
+        const wishlistItemCounts = new Map<string, number>();
+        autoGroups.forEach(group => {
+          const selectedInGroup = group.memberTempIds.filter(id => selectedItems.has(id)).length;
+          const wishlist = result.destinationWishlists.find(w => 
+            w.name === group.proposedWishlistName.trim()
+          );
+          if (wishlist) {
+            wishlistItemCounts.set(wishlist.id, selectedInGroup);
+          }
+        });
+
+        const createdWishlists = result.destinationWishlists.map(w => ({
+          id: w.id,
+          name: w.name,
+          itemCount: wishlistItemCounts.get(w.id) || 0,
+        }));
+
+        router.replace({
+          pathname: '/import-summary',
+          params: {
+            wishlists: JSON.stringify(createdWishlists),
+            failedItems: JSON.stringify(result.warnings || []),
           },
-        ]
-      );
+        });
+      } else {
+        // For merge/create mode, show success and navigate to wishlist
+        const targetWishlistId = result.destinationWishlists[0]?.id;
+        
+        if (result.warnings && result.warnings.length > 0) {
+          console.warn('[ImportPreview] Import warnings:', result.warnings);
+        }
+
+        Alert.alert(
+          'Success',
+          `Successfully imported ${result.createdCount} item${result.createdCount !== 1 ? 's' : ''}`,
+          [
+            {
+              text: 'View Wishlist',
+              onPress: () => {
+                if (targetWishlistId) {
+                  router.replace(`/wishlist/${targetWishlistId}`);
+                } else {
+                  router.replace('/(tabs)/wishlists');
+                }
+              },
+            },
+          ]
+        );
+      }
     } catch (error: any) {
       console.error('[ImportPreview] Error importing items:', error);
       Alert.alert('Import Failed', error.message || 'Failed to import items. Please try again.');
@@ -398,6 +620,10 @@ export default function ImportPreviewScreen() {
   const storeNameText = storeName || 'Store';
   const selectedCountText = `${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} selected`;
   const sourceDomain = items.length > 0 && items[0].sourceDomain ? items[0].sourceDomain : '';
+  
+  const importButtonText = organizeMode === 'split' 
+    ? `Import & Organize (${autoGroups.length} wishlists)`
+    : `Import ${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'}`;
 
   return (
     <>
@@ -486,16 +712,16 @@ export default function ImportPreviewScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.radioOption, organizeMode === 'create' && styles.radioOptionSelected]}
-              onPress={() => setOrganizeMode('create')}
+              style={[styles.radioOption, organizeMode === 'new' && styles.radioOptionSelected]}
+              onPress={() => setOrganizeMode('new')}
               activeOpacity={0.7}
             >
               <View style={styles.radioButton}>
-                {organizeMode === 'create' && <View style={styles.radioButtonInner} />}
+                {organizeMode === 'new' && <View style={styles.radioButtonInner} />}
               </View>
               <View style={styles.radioContent}>
                 <Text style={styles.radioLabel}>Create a new wishlist</Text>
-                {organizeMode === 'create' && (
+                {organizeMode === 'new' && (
                   <TextInput
                     style={styles.nameInput}
                     placeholder="Wishlist name"
@@ -503,6 +729,44 @@ export default function ImportPreviewScreen() {
                     value={newWishlistName}
                     onChangeText={setNewWishlistName}
                   />
+                )}
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.radioOption, organizeMode === 'split' && styles.radioOptionSelected]}
+              onPress={() => {
+                if (autoGroups.length === 0) {
+                  Alert.alert(
+                    'Auto-group Required',
+                    'Please use the Auto-group feature to organize items before splitting into multiple wishlists.'
+                  );
+                } else {
+                  setOrganizeMode('split');
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.radioButton}>
+                {organizeMode === 'split' && <View style={styles.radioButtonInner} />}
+              </View>
+              <View style={styles.radioContent}>
+                <Text style={styles.radioLabel}>Split into multiple wishlists</Text>
+                <Text style={styles.radioSubtext}>
+                  Use Auto-group to organize items first
+                </Text>
+                {organizeMode === 'split' && autoGroups.length > 0 && (
+                  <View style={styles.splitInfo}>
+                    <IconSymbol
+                      ios_icon_name="info.circle"
+                      android_material_icon_name="info"
+                      size={16}
+                      color={colors.accent}
+                    />
+                    <Text style={styles.splitInfoText}>
+                      {autoGroups.length} wishlists will be created
+                    </Text>
+                  </View>
                 )}
               </View>
             </TouchableOpacity>
@@ -595,7 +859,7 @@ export default function ImportPreviewScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('price_range')}
+                    onPress={() => handleAutoGroup('price')}
                     disabled={autoGrouping}
                   >
                     <Text style={styles.autoGroupChipText}>By Price Range</Text>
@@ -612,80 +876,206 @@ export default function ImportPreviewScreen() {
               <Text style={styles.selectedCount}>{selectedCountText}</Text>
             </View>
 
-            {items.map((item) => {
-              const isSelected = selectedItems.has(item.tempId);
-              const priceDisplay = formatPrice(item.price, item.currency);
-              const showCheckbox = selectionMode || organizeMode === 'split';
-              const isDuplicate = item.status === 'duplicate';
+            {groupedMode && organizeMode === 'split' ? (
+              // Grouped view with collapsible sections
+              <>
+                {autoGroups.map((group) => {
+                  const groupItems = items.filter(item => group.memberTempIds.includes(item.tempId));
+                  const selectedInGroup = groupItems.filter(item => selectedItems.has(item.tempId)).length;
+                  const groupSelectedText = `${selectedInGroup}/${groupItems.length} selected`;
 
-              return (
-                <React.Fragment key={item.tempId}>
-                  <TouchableOpacity
-                    style={[styles.itemCard, isSelected && styles.itemCardSelected]}
-                    onPress={() => {
-                      if (showCheckbox) {
-                        toggleItemSelection(item.tempId);
-                      } else {
-                        handleEditItem(item);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    {showCheckbox && (
-                      <View style={styles.checkbox}>
-                        {isSelected && (
+                  return (
+                    <Fragment key={group.groupId}>
+                      <View style={styles.groupHeader}>
+                        <TouchableOpacity
+                          style={styles.groupHeaderLeft}
+                          onPress={() => toggleGroupCollapse(group.groupId)}
+                          activeOpacity={0.7}
+                        >
                           <IconSymbol
-                            ios_icon_name="check"
-                            android_material_icon_name="check"
-                            size={18}
-                            color={colors.accent}
+                            ios_icon_name={group.collapsed ? 'chevron.right' : 'chevron.down'}
+                            android_material_icon_name={group.collapsed ? 'chevron-right' : 'expand-more'}
+                            size={20}
+                            color={colors.textPrimary}
                           />
-                        )}
+                          <View style={styles.groupHeaderInfo}>
+                            <TextInput
+                              style={styles.groupNameInput}
+                              value={group.proposedWishlistName}
+                              onChangeText={(text) => updateGroupName(group.groupId, text)}
+                              placeholder="Wishlist name"
+                              placeholderTextColor={colors.textTertiary}
+                            />
+                            <Text style={styles.groupSubtext}>{groupSelectedText}</Text>
+                          </View>
+                        </TouchableOpacity>
                       </View>
-                    )}
 
-                    {item.imageUrl && (
-                      <Image
-                        source={resolveImageSource(item.imageUrl)}
-                        style={styles.itemImage}
-                        resizeMode="cover"
-                      />
-                    )}
+                      {!group.collapsed && groupItems.map((item) => {
+                        const isSelected = selectedItems.has(item.tempId);
+                        const priceDisplay = formatPrice(item.price, item.currency);
+                        const isDuplicate = item.status === 'duplicate';
 
-                    <View style={styles.itemInfo}>
-                      <Text style={styles.itemTitle} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                      <View style={styles.itemMeta}>
-                        <Text style={styles.itemPrice}>{priceDisplay}</Text>
-                        {item.sourceDomain && (
-                          <View style={styles.storeTag}>
-                            <Text style={styles.storeTagText}>{item.sourceDomain}</Text>
+                        return (
+                          <Fragment key={item.tempId}>
+                            <TouchableOpacity
+                              style={[styles.itemCard, styles.itemCardGrouped, isSelected && styles.itemCardSelected]}
+                              onPress={() => toggleItemSelection(item.tempId)}
+                              onLongPress={() => handleEditItem(item)}
+                              activeOpacity={0.7}
+                            >
+                              <View style={styles.checkbox}>
+                                {isSelected && (
+                                  <IconSymbol
+                                    ios_icon_name="check"
+                                    android_material_icon_name="check"
+                                    size={18}
+                                    color={colors.accent}
+                                  />
+                                )}
+                              </View>
+
+                              {item.imageUrl && (
+                                <Image
+                                  source={resolveImageSource(item.imageUrl)}
+                                  style={styles.itemImage}
+                                  resizeMode="cover"
+                                />
+                              )}
+
+                              <View style={styles.itemInfo}>
+                                <Text style={styles.itemTitle} numberOfLines={2}>
+                                  {item.title}
+                                </Text>
+                                <View style={styles.itemMeta}>
+                                  <Text style={styles.itemPrice}>{priceDisplay}</Text>
+                                  {item.sourceDomain && (
+                                    <View style={styles.storeTag}>
+                                      <Text style={styles.storeTagText}>{item.sourceDomain}</Text>
+                                    </View>
+                                  )}
+                                </View>
+                                {isDuplicate && (
+                                  <View style={styles.statusChip}>
+                                    <Text style={styles.statusChipText}>Possible duplicate</Text>
+                                  </View>
+                                )}
+                                {item.status === 'unavailable' && (
+                                  <TouchableOpacity
+                                    style={[styles.statusChip, styles.statusChipWarning]}
+                                    onPress={() => {
+                                      Alert.alert(
+                                        'Delivery Not Available',
+                                        'This store may not deliver to your location. You can still save it, and we\'ll find alternatives that do deliver.',
+                                        [{ text: 'OK' }]
+                                      );
+                                    }}
+                                    activeOpacity={0.7}
+                                  >
+                                    <IconSymbol
+                                      ios_icon_name="info.circle"
+                                      android_material_icon_name="info"
+                                      size={12}
+                                      color={colors.error}
+                                    />
+                                    <Text style={styles.statusChipText}>May not deliver to your location</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+
+                              <IconSymbol
+                                ios_icon_name="ellipsis"
+                                android_material_icon_name="more-vert"
+                                size={20}
+                                color={colors.textTertiary}
+                              />
+                            </TouchableOpacity>
+                          </Fragment>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+              </>
+            ) : (
+              // Flat list view
+              <>
+                {items.map((item) => {
+                  const isSelected = selectedItems.has(item.tempId);
+                  const priceDisplay = formatPrice(item.price, item.currency);
+                  const showCheckbox = selectionMode || organizeMode === 'split';
+                  const isDuplicate = item.status === 'duplicate';
+
+                  return (
+                    <Fragment key={item.tempId}>
+                      <TouchableOpacity
+                        style={[styles.itemCard, isSelected && styles.itemCardSelected]}
+                        onPress={() => {
+                          if (showCheckbox) {
+                            toggleItemSelection(item.tempId);
+                          } else {
+                            handleEditItem(item);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        {showCheckbox && (
+                          <View style={styles.checkbox}>
+                            {isSelected && (
+                              <IconSymbol
+                                ios_icon_name="check"
+                                android_material_icon_name="check"
+                                size={18}
+                                color={colors.accent}
+                              />
+                            )}
                           </View>
                         )}
-                      </View>
-                      {isDuplicate && (
-                        <View style={styles.statusChip}>
-                          <Text style={styles.statusChipText}>Possible duplicate</Text>
-                        </View>
-                      )}
-                      {item.status === 'unavailable' && (
-                        <View style={[styles.statusChip, styles.statusChipWarning]}>
-                          <Text style={styles.statusChipText}>Unavailable in your location</Text>
-                        </View>
-                      )}
-                    </View>
 
-                    <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron-right"
-                      size={20}
-                      color={colors.textTertiary}
-                    />
-                  </TouchableOpacity>
-                </React.Fragment>
-              );
-            })}
+                        {item.imageUrl && (
+                          <Image
+                            source={resolveImageSource(item.imageUrl)}
+                            style={styles.itemImage}
+                            resizeMode="cover"
+                          />
+                        )}
+
+                        <View style={styles.itemInfo}>
+                          <Text style={styles.itemTitle} numberOfLines={2}>
+                            {item.title}
+                          </Text>
+                          <View style={styles.itemMeta}>
+                            <Text style={styles.itemPrice}>{priceDisplay}</Text>
+                            {item.sourceDomain && (
+                              <View style={styles.storeTag}>
+                                <Text style={styles.storeTagText}>{item.sourceDomain}</Text>
+                              </View>
+                            )}
+                          </View>
+                          {isDuplicate && (
+                            <View style={styles.statusChip}>
+                              <Text style={styles.statusChipText}>Possible duplicate</Text>
+                            </View>
+                          )}
+                          {item.status === 'unavailable' && (
+                            <View style={[styles.statusChip, styles.statusChipWarning]}>
+                              <Text style={styles.statusChipText}>May not deliver to your location</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        <IconSymbol
+                          ios_icon_name="chevron.right"
+                          android_material_icon_name="chevron-right"
+                          size={20}
+                          color={colors.textTertiary}
+                        />
+                      </TouchableOpacity>
+                    </Fragment>
+                  );
+                })}
+              </>
+            )}
           </View>
         </ScrollView>
 
@@ -718,7 +1108,7 @@ export default function ImportPreviewScreen() {
               {loading ? (
                 <ActivityIndicator size="small" color={colors.textInverse} />
               ) : (
-                <Text style={styles.importButtonText}>Import Items</Text>
+                <Text style={styles.importButtonText}>{importButtonText}</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -735,7 +1125,7 @@ export default function ImportPreviewScreen() {
               <Text style={styles.modalTitle}>Select Wishlist</Text>
               <ScrollView style={styles.wishlistList}>
                 {wishlists.map((wishlist, index) => (
-                  <React.Fragment key={index}>
+                  <Fragment key={index}>
                     <TouchableOpacity
                       style={[
                         styles.wishlistOption,
@@ -756,7 +1146,7 @@ export default function ImportPreviewScreen() {
                         />
                       )}
                     </TouchableOpacity>
-                  </React.Fragment>
+                  </Fragment>
                 ))}
               </ScrollView>
             </Pressable>
@@ -1043,6 +1433,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: spacing.xs,
   },
+  radioSubtext: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  splitInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    gap: spacing.xs,
+    backgroundColor: colors.accentLight,
+    borderRadius: 8,
+    padding: spacing.xs,
+  },
+  splitInfoText: {
+    ...typography.bodySmall,
+    color: colors.accent,
+    fontWeight: '500',
+  },
   dropdownButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1072,6 +1481,37 @@ const styles = StyleSheet.create({
     ...typography.bodyMedium,
     color: colors.textSecondary,
   },
+  groupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  groupHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  groupHeaderInfo: {
+    flex: 1,
+  },
+  groupNameInput: {
+    ...typography.bodyLarge,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    padding: 0,
+    marginBottom: spacing.xs,
+  },
+  groupSubtext: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+  },
   itemCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1081,6 +1521,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     borderWidth: 2,
     borderColor: colors.border,
+  },
+  itemCardGrouped: {
+    marginLeft: spacing.lg,
+    borderWidth: 1,
   },
   itemCardSelected: {
     borderColor: colors.accent,
@@ -1133,6 +1577,9 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
   },
   statusChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs / 2,
     backgroundColor: colors.warningLight,
     borderRadius: 4,
     paddingVertical: 2,
