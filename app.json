@@ -1,4 +1,3 @@
-
 {
   "expo": {
     "name": "My Wishlist",
@@ -91,7 +90,7 @@
       "nativelyEnvironment": "supabase",
       "nativelyPrimaryDataSource": "supabase",
       "nativelyExclusiveProvider": true,
-      "backendUrl": "http://localhost:8082"
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
     }
   },
   "scheme": "My Wishlist"
