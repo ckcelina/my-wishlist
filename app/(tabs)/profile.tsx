@@ -474,6 +474,33 @@ export default function ProfileScreen() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
+          <Text style={styles.sectionTitle}>Developer Tools</Text>
+          <Card>
+            <TouchableOpacity 
+              style={styles.linkButton} 
+              onPress={() => {
+                triggerHaptic('light');
+                router.push('/diagnostics-enhanced');
+              }}
+            >
+              <Text style={styles.linkText}>System Diagnostics</Text>
+            </TouchableOpacity>
+
+            <Divider />
+
+            <TouchableOpacity 
+              style={styles.linkButton} 
+              onPress={() => {
+                triggerHaptic('light');
+                router.push('/e2e-test');
+              }}
+            >
+              <Text style={styles.linkText}>End-to-End Tests</Text>
+            </TouchableOpacity>
+          </Card>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(600)} style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.support')}</Text>
           <Card>
             <TouchableOpacity style={styles.linkButton} onPress={handleContactSupport}>
