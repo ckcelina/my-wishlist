@@ -21,12 +21,23 @@ const API_URL = Constants.expoConfig?.extra?.backendUrl || '';
 
 export const BACKEND_URL = API_URL;
 
+console.log('[API] ═══════════════════════════════════════════════════');
+console.log('[API] 🔌 APP CONFIGURATION: SUPABASE-ONLY MODE');
+console.log('[API] ═══════════════════════════════════════════════════');
+console.log('[API] ✅ Primary Data Source: Supabase');
+console.log('[API] ✅ Authentication: Supabase Auth');
+console.log('[API] ✅ Database: Supabase PostgreSQL');
+console.log('[API] ✅ Storage: Supabase Storage');
+console.log('[API] ✅ Edge Functions: Supabase Edge Functions');
+console.log('[API] ═══════════════════════════════════════════════════');
+
 if (API_URL) {
-  console.log('[API] ⚠️ WARNING: Legacy backend URL configured:', BACKEND_URL);
-  console.log('[API] ⚠️ This app now uses Supabase as the primary data source');
-  console.log('[API] ⚠️ Backend folder endpoints are for backward compatibility only');
+  console.log('[API] ⚠️ WARNING: Legacy backend URL found:', BACKEND_URL);
+  console.log('[API] ⚠️ This URL is deprecated and should be removed from app.json');
+  console.log('[API] ⚠️ The app now uses Supabase exclusively');
 } else {
-  console.log('[API] ✅ No legacy backend URL configured (Supabase-only mode)');
+  console.log('[API] ✅ No legacy backend URL configured');
+  console.log('[API] ✅ App is correctly configured for Supabase-only mode');
 }
 
 const BEARER_TOKEN_KEY = 'wishzen_bearer_token';
