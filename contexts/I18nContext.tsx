@@ -78,10 +78,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const loadUserPreferences = async () => {
     try {
-      const response = await authenticatedGet<{
-        languageMode: 'system' | 'manual';
-        languageCode: string;
-      }>('/api/users/language-preferences');
+      if (!user?.id) {
+        console.log('[I18nContext] No user ID, skipping preferences load');
+        return;
+      }
+      
+      const { fetchLanguagePreferences } = await import('@/lib/supabase-helpers');
+      const response = await fetchLanguagePreferences(user.id);
       
       if (response) {
         console.log('[I18nContext] Loaded user preferences:', response);
@@ -120,9 +123,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       }
       
       // Sync to backend if user is logged in
-      if (user) {
+      if (user?.id) {
         try {
-          await authenticatedPut('/api/users/language-preferences', {
+          const { updateLanguagePreferences } = await import('@/lib/supabase-helpers');
+          await updateLanguagePreferences(user.id, {
             languageMode: mode,
             languageCode: languageCode,
           });

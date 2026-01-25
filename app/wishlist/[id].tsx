@@ -114,42 +114,50 @@ export default function WishlistDetailScreen() {
     try {
       setLoading(true);
       setError(null);
-      const { authenticatedGet } = await import('@/utils/api');
       
-      const wishlistData = await authenticatedGet<Wishlist>(`/api/wishlists/${id}`);
+      const { fetchWishlistById, fetchWishlistItems } = await import('@/lib/supabase-helpers');
+      
+      const wishlistData = await fetchWishlistById(id as string);
       console.log('WishlistDetailScreen: Fetched wishlist:', wishlistData.name);
-      setWishlist(wishlistData);
-      setNewName(wishlistData.name);
+      
+      const mappedWishlist: Wishlist = {
+        id: wishlistData.id,
+        name: wishlistData.name,
+        isDefault: false,
+        itemCount: 0,
+        createdAt: wishlistData.created_at,
+        allowReservations: false,
+        hideReservedItems: false,
+        showReserverNames: false,
+      };
+      
+      setWishlist(mappedWishlist);
+      setNewName(mappedWishlist.name);
       
       // Set reservation settings from wishlist data
-      setAllowReservations(wishlistData.allowReservations || false);
-      setHideReservedItems(wishlistData.hideReservedItems || false);
-      setShowReserverNames(wishlistData.showReserverNames || false);
+      setAllowReservations(mappedWishlist.allowReservations || false);
+      setHideReservedItems(mappedWishlist.hideReservedItems || false);
+      setShowReserverNames(mappedWishlist.showReserverNames || false);
       
-      const itemsData = await authenticatedGet<Item[]>(`/api/wishlists/${id}/items`);
+      const itemsData = await fetchWishlistItems(id as string);
       console.log('WishlistDetailScreen: Fetched items:', itemsData.length);
-      setItems(itemsData);
+      
+      const mappedItems: Item[] = itemsData.map(item => ({
+        id: item.id,
+        title: item.title,
+        imageUrl: item.image_url || '',
+        currentPrice: item.current_price ? parseFloat(item.current_price) : null,
+        currency: item.currency,
+        originalUrl: item.original_url,
+        createdAt: item.created_at,
+        lastCheckedAt: item.last_checked_at,
+      }));
+      
+      setItems(mappedItems);
 
-      const priceDropData: PriceDropInfo = {};
-      await Promise.all(
-        itemsData.map(async (item) => {
-          try {
-            const dropInfo = await authenticatedGet<{
-              priceDropped: boolean;
-              originalPrice: number | null;
-              currentPrice: number | null;
-              percentageChange: number | null;
-            }>(`/api/items/${item.id}/price-dropped`);
-            priceDropData[item.id] = {
-              priceDropped: dropInfo.priceDropped,
-              percentageChange: dropInfo.percentageChange,
-            };
-          } catch (error) {
-            console.error('WishlistDetailScreen: Error fetching price drop info for item:', item.id, error);
-          }
-        })
-      );
-      setPriceDropInfo(priceDropData);
+      // Price drop info - for now, we'll skip this since it requires backend API
+      // This can be added later when price tracking is implemented
+      setPriceDropInfo({});
     } catch (error) {
       console.error('WishlistDetailScreen: Error fetching data:', error);
       setError('Failed to load wishlist. Please check your connection and try again.');
@@ -235,12 +243,24 @@ export default function WishlistDetailScreen() {
     }
 
     try {
-      const { authenticatedPut } = await import('@/utils/api');
-      const updated = await authenticatedPut<Wishlist>(`/api/wishlists/${id}`, {
+      const { updateWishlist } = await import('@/lib/supabase-helpers');
+      const updated = await updateWishlist(id as string, {
         name: newName.trim(),
       });
       console.log('WishlistDetailScreen: Wishlist renamed successfully');
-      setWishlist(updated);
+      
+      const mappedWishlist: Wishlist = {
+        id: updated.id,
+        name: updated.name,
+        isDefault: wishlist?.isDefault || false,
+        itemCount: wishlist?.itemCount || 0,
+        createdAt: updated.created_at,
+        allowReservations: wishlist?.allowReservations || false,
+        hideReservedItems: wishlist?.hideReservedItems || false,
+        showReserverNames: wishlist?.showReserverNames || false,
+      };
+      
+      setWishlist(mappedWishlist);
       setShowRenameModal(false);
       setShowMenu(false);
     } catch (error) {
@@ -259,8 +279,8 @@ export default function WishlistDetailScreen() {
     }
 
     try {
-      const { authenticatedDelete } = await import('@/utils/api');
-      await authenticatedDelete(`/api/wishlists/${id}`);
+      const { deleteWishlist } = await import('@/lib/supabase-helpers');
+      await deleteWishlist(id as string);
       console.log('WishlistDetailScreen: Wishlist deleted successfully');
       setShowDeleteConfirm(false);
       router.back();
@@ -281,19 +301,16 @@ export default function WishlistDetailScreen() {
     setShowMenu(false);
     
     try {
-      const { authenticatedGet } = await import('@/utils/api');
-      const shareData = await authenticatedGet<{
-        shareSlug: string | null;
-        visibility: string | null;
-      }>(`/api/wishlists/${id}/share`);
+      const { fetchSharedWishlistByWishlistId } = await import('@/lib/supabase-helpers');
+      const shareData = await fetchSharedWishlistByWishlistId(id as string);
       
-      if (shareData.shareSlug) {
-        console.log('WishlistDetailScreen: Existing share found:', shareData.shareSlug);
-        setExistingShareSlug(shareData.shareSlug);
+      if (shareData) {
+        console.log('WishlistDetailScreen: Existing share found:', shareData.share_slug);
+        setExistingShareSlug(shareData.share_slug);
         setShareVisibility((shareData.visibility as 'public' | 'unlisted') || 'public');
         
-        const baseUrl = 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev';
-        const url = `${baseUrl}/shared/${shareData.shareSlug}`;
+        const baseUrl = 'https://mywishlist.app';
+        const url = `${baseUrl}/shared/${shareData.share_slug}`;
         setShareUrl(url);
       } else {
         console.log('WishlistDetailScreen: No existing share found');
@@ -315,11 +332,10 @@ export default function WishlistDetailScreen() {
     setLoadingReservations(true);
     
     try {
-      const { authenticatedGet } = await import('@/utils/api');
-      const reservationsData = await authenticatedGet<Reservation[]>(`/api/wishlists/${id}/reservations`);
-      
-      console.log('WishlistDetailScreen: Fetched reservations:', reservationsData.length);
-      setReservations(reservationsData);
+      // For now, reservations are not implemented in Supabase
+      // This can be added later when the backend adds reservation support
+      console.log('WishlistDetailScreen: Reservations not yet implemented');
+      setReservations([]);
     } catch (error) {
       console.error('WishlistDetailScreen: Error fetching reservations:', error);
       setReservations([]);
@@ -341,31 +357,21 @@ export default function WishlistDetailScreen() {
     setSavingReservationSettings(true);
     
     try {
-      const { authenticatedPut } = await import('@/utils/api');
-      
-      const response = await authenticatedPut<{
-        allowReservations: boolean;
-        hideReservedItems: boolean;
-        showReserverNames: boolean;
-      }>(`/api/wishlists/${id}/reservation-settings`, {
-        allowReservations,
-        hideReservedItems,
-        showReserverNames,
-      });
-      
-      console.log('WishlistDetailScreen: Reservation settings saved:', response);
+      // For now, reservation settings are not implemented in Supabase
+      // This can be added later when the backend adds reservation support
+      console.log('WishlistDetailScreen: Reservation settings not yet implemented');
       
       // Update local wishlist state
       if (wishlist) {
         setWishlist({
           ...wishlist,
-          allowReservations: response.allowReservations,
-          hideReservedItems: response.hideReservedItems,
-          showReserverNames: response.showReserverNames,
+          allowReservations,
+          hideReservedItems,
+          showReserverNames,
         });
       }
       
-      Alert.alert('Success', 'Reservation settings updated');
+      Alert.alert('Success', 'Reservation settings updated (local only)');
     } catch (error) {
       console.error('WishlistDetailScreen: Error saving reservation settings:', error);
       Alert.alert('Error', 'Failed to save reservation settings');
@@ -396,23 +402,33 @@ export default function WishlistDetailScreen() {
     setShareLoading(true);
     
     try {
-      const { authenticatedPost } = await import('@/utils/api');
+      const { createSharedWishlist, updateSharedWishlist, generateShareSlug } = await import('@/lib/supabase-helpers');
       
-      const response = await authenticatedPost<{
-        shareSlug: string;
-        visibility: string;
-        shareUrl: string;
-      }>(`/api/wishlists/${id}/share`, {
-        visibility: shareVisibility,
-      });
-      
-      console.log('WishlistDetailScreen: Share created/updated:', response.shareSlug);
-      
-      setExistingShareSlug(response.shareSlug);
-      setShareUrl(response.shareUrl);
-      
-      const messageText = existingShareSlug ? 'Visibility updated successfully!' : 'Share link created successfully!';
-      Alert.alert('Success', messageText);
+      if (existingShareSlug) {
+        // Update existing share
+        await updateSharedWishlist(id as string, {
+          visibility: shareVisibility,
+        });
+        console.log('WishlistDetailScreen: Share updated');
+        Alert.alert('Success', 'Visibility updated successfully!');
+      } else {
+        // Create new share
+        const shareSlug = generateShareSlug();
+        await createSharedWishlist({
+          wishlist_id: id as string,
+          share_slug: shareSlug,
+          visibility: shareVisibility,
+        });
+        
+        console.log('WishlistDetailScreen: Share created:', shareSlug);
+        setExistingShareSlug(shareSlug);
+        
+        const baseUrl = 'https://mywishlist.app';
+        const url = `${baseUrl}/shared/${shareSlug}`;
+        setShareUrl(url);
+        
+        Alert.alert('Success', 'Share link created successfully!');
+      }
     } catch (error) {
       console.error('WishlistDetailScreen: Error creating share link:', error);
       Alert.alert('Error', 'Failed to create share link');
@@ -440,19 +456,26 @@ export default function WishlistDetailScreen() {
           onPress: async () => {
             setShareLoading(true);
             try {
-              const { authenticatedPost } = await import('@/utils/api');
+              const { deleteSharedWishlist, createSharedWishlist, generateShareSlug } = await import('@/lib/supabase-helpers');
               
-              const response = await authenticatedPost<{
-                shareSlug: string;
-                visibility: string;
-                shareUrl: string;
-              }>(`/api/wishlists/${id}/regenerate-share`, {});
+              // Delete old share
+              await deleteSharedWishlist(id as string);
               
-              console.log('WishlistDetailScreen: Share regenerated:', response.shareSlug);
+              // Create new share
+              const shareSlug = generateShareSlug();
+              await createSharedWishlist({
+                wishlist_id: id as string,
+                share_slug: shareSlug,
+                visibility: shareVisibility,
+              });
               
-              setExistingShareSlug(response.shareSlug);
-              setShareUrl(response.shareUrl);
-              setShareVisibility((response.visibility as 'public' | 'unlisted') || 'public');
+              console.log('WishlistDetailScreen: Share regenerated:', shareSlug);
+              
+              setExistingShareSlug(shareSlug);
+              
+              const baseUrl = 'https://mywishlist.app';
+              const url = `${baseUrl}/shared/${shareSlug}`;
+              setShareUrl(url);
               
               Alert.alert('Success', 'New share link generated!');
             } catch (error) {
@@ -511,8 +534,8 @@ export default function WishlistDetailScreen() {
 
     setShareLoading(true);
     try {
-      const { authenticatedDelete } = await import('@/utils/api');
-      await authenticatedDelete(`/api/wishlists/${id}/share`);
+      const { deleteSharedWishlist } = await import('@/lib/supabase-helpers');
+      await deleteSharedWishlist(id as string);
       
       console.log('WishlistDetailScreen: Sharing stopped');
       setExistingShareSlug(null);
@@ -540,47 +563,15 @@ export default function WishlistDetailScreen() {
     setRefreshingPrices(true);
     
     try {
-      const { authenticatedPost } = await import('@/utils/api');
+      // For now, price refresh is not implemented in Supabase
+      // This can be added later when the backend adds price tracking support
+      console.log('WishlistDetailScreen: Price refresh not yet implemented');
       
-      const response = await authenticatedPost<{
-        success: boolean;
-        itemsChecked: number;
-        itemsUpdated: number;
-        priceDrops: {
-          itemId: string;
-          oldPrice: number;
-          newPrice: number;
-          percentageChange: number;
-        }[];
-      }>(`/api/wishlists/${id}/refresh-prices`, {});
-      
-      console.log('WishlistDetailScreen: Price refresh complete:', response);
-      
-      const itemsCheckedText = `${response.itemsChecked} ${response.itemsChecked === 1 ? 'item' : 'items'}`;
-      const itemsUpdatedText = `${response.itemsUpdated} ${response.itemsUpdated === 1 ? 'price' : 'prices'}`;
-      
-      if (response.priceDrops.length > 0) {
-        const priceDropsText = response.priceDrops.length === 1 
-          ? '1 price drop detected!' 
-          : `${response.priceDrops.length} price drops detected!`;
-        Alert.alert(
-          'Prices Updated',
-          `Checked ${itemsCheckedText}. Updated ${itemsUpdatedText}.\n\n${priceDropsText}`,
-          [{ text: 'OK' }]
-        );
-      } else if (response.itemsUpdated > 0) {
-        Alert.alert(
-          'Prices Updated',
-          `Checked ${itemsCheckedText}. Updated ${itemsUpdatedText}.`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          'Prices Checked',
-          `Checked ${itemsCheckedText}. No price changes detected.`,
-          [{ text: 'OK' }]
-        );
-      }
+      Alert.alert(
+        'Coming Soon',
+        'Price refresh feature will be available soon!',
+        [{ text: 'OK' }]
+      );
       
       await fetchWishlistAndItems();
     } catch (error) {

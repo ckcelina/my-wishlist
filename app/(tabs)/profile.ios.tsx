@@ -59,11 +59,13 @@ export default function ProfileScreen() {
   const fetchSettings = useCallback(async () => {
     console.log('[ProfileScreen] Fetching user settings');
     try {
-      const data = await authenticatedGet<{
-        priceDropAlertsEnabled: boolean;
-        weeklyDigestEnabled: boolean;
-        defaultCurrency: string;
-      }>('/api/users/settings');
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, skipping settings fetch');
+        return;
+      }
+      
+      const { fetchUserSettings } = await import('@/lib/supabase-helpers');
+      const data = await fetchUserSettings(user.id);
       
       console.log('[ProfileScreen] Settings fetched:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);
@@ -72,18 +74,24 @@ export default function ProfileScreen() {
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
     }
-  }, []);
+  }, [user]);
 
   const fetchLocation = useCallback(async () => {
     console.log('[ProfileScreen] Fetching user location');
     try {
-      const data = await authenticatedGet<UserLocation | null>('/api/users/location');
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, skipping location fetch');
+        return;
+      }
+      
+      const { fetchUserLocation } = await import('@/lib/supabase-helpers');
+      const data = await fetchUserLocation(user.id);
       console.log('[ProfileScreen] Location fetched:', data);
       setUserLocation(data);
     } catch (error) {
       console.error('[ProfileScreen] Error fetching location:', error);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -96,11 +104,13 @@ export default function ProfileScreen() {
   const updateSettings = async (updates: { priceDropAlertsEnabled?: boolean; weeklyDigestEnabled?: boolean; defaultCurrency?: string }) => {
     console.log('[ProfileScreen] Updating settings:', updates);
     try {
-      const data = await authenticatedPut<{
-        priceDropAlertsEnabled: boolean;
-        weeklyDigestEnabled: boolean;
-        defaultCurrency: string;
-      }>('/api/users/settings', updates);
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, cannot update settings');
+        return;
+      }
+      
+      const { updateUserSettings } = await import('@/lib/supabase-helpers');
+      const data = await updateUserSettings(user.id, updates);
       
       console.log('[ProfileScreen] Settings updated:', data);
       setPriceDropAlerts(data.priceDropAlertsEnabled || false);

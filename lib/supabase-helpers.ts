@@ -373,3 +373,125 @@ export function generateShareSlug(): string {
   }
   return slug;
 }
+
+// ============================================================================
+// USER SETTINGS
+// ============================================================================
+
+export interface UserSettings {
+  priceDropAlertsEnabled: boolean;
+  weeklyDigestEnabled: boolean;
+  defaultCurrency: string;
+}
+
+export async function fetchUserSettings(userId: string): Promise<UserSettings> {
+  console.log('[Supabase] Fetching user settings for:', userId);
+  
+  // For now, return default settings since we don't have a user_settings table yet
+  // This can be extended when the backend adds user settings support
+  return {
+    priceDropAlertsEnabled: false,
+    weeklyDigestEnabled: false,
+    defaultCurrency: 'USD',
+  };
+}
+
+export async function updateUserSettings(userId: string, settings: Partial<UserSettings>): Promise<UserSettings> {
+  console.log('[Supabase] Updating user settings for:', userId, settings);
+  
+  // For now, just return the updated settings
+  // This can be extended when the backend adds user settings support
+  const currentSettings = await fetchUserSettings(userId);
+  return {
+    ...currentSettings,
+    ...settings,
+  };
+}
+
+// ============================================================================
+// USER LOCATION
+// ============================================================================
+
+export interface UserLocation {
+  id: string;
+  userId: string;
+  countryCode: string;
+  countryName: string;
+  city: string | null;
+  region: string | null;
+  postalCode: string | null;
+  updatedAt: string;
+}
+
+export async function fetchUserLocation(userId: string): Promise<UserLocation | null> {
+  console.log('[Supabase] Fetching user location for:', userId);
+  
+  // For now, return null since we don't have a user_locations table yet
+  // This can be extended when the backend adds location support
+  return null;
+}
+
+export async function updateUserLocation(userId: string, location: Partial<UserLocation>): Promise<UserLocation> {
+  console.log('[Supabase] Updating user location for:', userId, location);
+  
+  // For now, just return a mock location
+  // This can be extended when the backend adds location support
+  return {
+    id: 'mock-id',
+    userId,
+    countryCode: location.countryCode || 'US',
+    countryName: location.countryName || 'United States',
+    city: location.city || null,
+    region: location.region || null,
+    postalCode: location.postalCode || null,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+// ============================================================================
+// PREMIUM STATUS
+// ============================================================================
+
+export interface PremiumStatus {
+  isPremium: boolean;
+  planName: string | null;
+}
+
+export async function fetchPremiumStatus(userId: string): Promise<PremiumStatus> {
+  console.log('[Supabase] Fetching premium status for:', userId);
+  
+  // For now, return free tier
+  // This can be extended when the backend adds premium support
+  return {
+    isPremium: false,
+    planName: null,
+  };
+}
+
+// ============================================================================
+// LANGUAGE PREFERENCES
+// ============================================================================
+
+export interface LanguagePreferences {
+  languageMode: 'system' | 'manual';
+  languageCode: string;
+}
+
+export async function fetchLanguagePreferences(userId: string): Promise<LanguagePreferences> {
+  console.log('[Supabase] Fetching language preferences for:', userId);
+  
+  // For now, return system default
+  // This can be extended when the backend adds language preferences support
+  return {
+    languageMode: 'system',
+    languageCode: 'en',
+  };
+}
+
+export async function updateLanguagePreferences(userId: string, preferences: LanguagePreferences): Promise<LanguagePreferences> {
+  console.log('[Supabase] Updating language preferences for:', userId, preferences);
+  
+  // For now, just return the preferences
+  // This can be extended when the backend adds language preferences support
+  return preferences;
+}

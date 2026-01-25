@@ -174,41 +174,44 @@ export default function ProfileScreen() {
   const fetchSettings = useCallback(async () => {
     try {
       console.log('[ProfileScreen] Fetching user settings');
-      const response = await authenticatedGet('/api/users/settings');
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[ProfileScreen] Settings fetched:', data);
-        
-        setPriceDropAlertsEnabled(data.priceDropAlertsEnabled ?? false);
-        setWeeklyDigestEnabled(data.weeklyDigestEnabled ?? false);
-        setDefaultCurrency(data.defaultCurrency ?? 'USD');
-      } else {
-        console.error('[ProfileScreen] Failed to fetch settings:', response.status);
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, skipping settings fetch');
+        setLoading(false);
+        return;
       }
+      
+      const { fetchUserSettings } = await import('@/lib/supabase-helpers');
+      const data = await fetchUserSettings(user.id);
+      console.log('[ProfileScreen] Settings fetched:', data);
+      
+      setPriceDropAlertsEnabled(data.priceDropAlertsEnabled ?? false);
+      setWeeklyDigestEnabled(data.weeklyDigestEnabled ?? false);
+      setDefaultCurrency(data.defaultCurrency ?? 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   const fetchLocation = useCallback(async () => {
     try {
       console.log('[ProfileScreen] Fetching user location');
-      const response = await authenticatedGet('/api/users/location');
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[ProfileScreen] Location fetched:', data);
-        setLocation(data);
-      } else {
-        console.log('[ProfileScreen] No location set');
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, skipping location fetch');
+        return;
       }
+      
+      const { fetchUserLocation } = await import('@/lib/supabase-helpers');
+      const data = await fetchUserLocation(user.id);
+      console.log('[ProfileScreen] Location fetched:', data);
+      setLocation(data);
     } catch (error) {
       console.error('[ProfileScreen] Error fetching location:', error);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -224,11 +227,14 @@ export default function ProfileScreen() {
   }) => {
     try {
       console.log('[ProfileScreen] Updating settings:', updates);
-      const response = await authenticatedPut('/api/users/settings', updates);
       
-      if (!response.ok) {
-        throw new Error('Failed to update settings');
+      if (!user?.id) {
+        console.log('[ProfileScreen] No user ID, cannot update settings');
+        return;
       }
+      
+      const { updateUserSettings } = await import('@/lib/supabase-helpers');
+      await updateUserSettings(user.id, updates);
       
       console.log('[ProfileScreen] Settings updated successfully');
     } catch (error) {
