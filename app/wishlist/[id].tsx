@@ -111,6 +111,15 @@ export default function WishlistDetailScreen() {
 
   const fetchWishlistAndItems = useCallback(async () => {
     console.log('WishlistDetailScreen: Fetching wishlist and items for:', id);
+    
+    if (!user) {
+      console.log('WishlistDetailScreen: No user authenticated, cannot fetch wishlist');
+      setError('Please sign in to view your wishlists.');
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -158,14 +167,22 @@ export default function WishlistDetailScreen() {
       // Price drop info - for now, we'll skip this since it requires backend API
       // This can be added later when price tracking is implemented
       setPriceDropInfo({});
-    } catch (error) {
+    } catch (error: any) {
       console.error('WishlistDetailScreen: Error fetching data:', error);
-      setError('Failed to load wishlist. Please check your connection and try again.');
+      
+      // Provide more specific error messages
+      if (error.message?.includes('JWT') || error.message?.includes('auth')) {
+        setError('Your session has expired. Please sign in again.');
+      } else if (!isOnline) {
+        setError('You are offline. Please check your internet connection and try again.');
+      } else {
+        setError('Failed to load wishlist. Please try again.');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [id]);
+  }, [id, user, isOnline]);
 
   useEffect(() => {
     console.log('WishlistDetailScreen: Component mounted, wishlist ID:', id);
@@ -616,6 +633,8 @@ export default function WishlistDetailScreen() {
   }
 
   if (error) {
+    const isAuthError = error.includes('sign in') || error.includes('session has expired');
+    
     return (
       <>
         <Stack.Screen
@@ -629,8 +648,18 @@ export default function WishlistDetailScreen() {
           <OfflineNotice />
           <ErrorState
             message={error}
-            onRetry={fetchWishlistAndItems}
+            onRetry={isAuthError ? undefined : fetchWishlistAndItems}
           />
+          {isAuthError && (
+            <View style={{ paddingHorizontal: 20, paddingBottom: 20 }}>
+              <TouchableOpacity
+                style={[styles.button, styles.saveButton, { width: '100%' }]}
+                onPress={() => router.replace('/auth')}
+              >
+                <Text style={styles.saveButtonText}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
       </>
     );
