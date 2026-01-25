@@ -16,6 +16,7 @@ import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-co
 import { runNativelySupabaseVerification, logNativelyConnectionStatus } from '@/utils/natively-supabase-verification';
 import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
 import { createColors } from '@/styles/designSystem';
+import { logAppVersionToSupabase, getVersionInfo, displayVersionInfo } from '@/utils/versionTracking';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -89,6 +90,17 @@ export default function RootLayout() {
     console.log('[App] ═══════════════════════════════════════════════════');
     console.log('[App] 🚀 MY WISHLIST APP STARTING');
     console.log('[App] ═══════════════════════════════════════════════════');
+    
+    // Display and log version information
+    getVersionInfo().then((versionInfo) => {
+      displayVersionInfo(versionInfo);
+      
+      // Log version to Supabase (without user ID on app start)
+      logAppVersionToSupabase().catch((error) => {
+        console.error('[App] Error logging version on app start:', error);
+      });
+    });
+    
     console.log('[App] 🔌 Verifying Supabase connection for Natively.dev...');
     console.log('[App] ═══════════════════════════════════════════════════');
     

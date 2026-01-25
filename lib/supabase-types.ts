@@ -116,6 +116,50 @@ export interface Database {
           created_at?: string;
         };
       };
+      app_versions: {
+        Row: {
+          id: string;
+          user_id: string | null;
+          app_version: string | null;
+          build_version: string | null;
+          platform: 'ios' | 'android' | 'web';
+          platform_version: string | null;
+          bundle_id: string | null;
+          app_name: string | null;
+          expo_version: string | null;
+          environment: 'development' | 'production';
+          logged_at: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id?: string | null;
+          app_version?: string | null;
+          build_version?: string | null;
+          platform: 'ios' | 'android' | 'web';
+          platform_version?: string | null;
+          bundle_id?: string | null;
+          app_name?: string | null;
+          expo_version?: string | null;
+          environment: 'development' | 'production';
+          logged_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string | null;
+          app_version?: string | null;
+          build_version?: string | null;
+          platform?: 'ios' | 'android' | 'web';
+          platform_version?: string | null;
+          bundle_id?: string | null;
+          app_name?: string | null;
+          expo_version?: string | null;
+          environment?: 'development' | 'production';
+          logged_at?: string;
+          created_at?: string;
+        };
+      };
     };
   };
 }
@@ -136,3 +180,7 @@ export type PriceHistoryUpdate = Database['public']['Tables']['price_history']['
 export type SharedWishlist = Database['public']['Tables']['shared_wishlists']['Row'];
 export type SharedWishlistInsert = Database['public']['Tables']['shared_wishlists']['Insert'];
 export type SharedWishlistUpdate = Database['public']['Tables']['shared_wishlists']['Update'];
+
+export type AppVersion = Database['public']['Tables']['app_versions']['Row'];
+export type AppVersionInsert = Database['public']['Tables']['app_versions']['Insert'];
+export type AppVersionUpdate = Database['public']['Tables']['app_versions']['Update'];
