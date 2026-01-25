@@ -16,6 +16,7 @@ import { Button } from '@/components/design-system/Button';
 import { Logo } from '@/components/Logo';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { IconSymbol } from '@/components/IconSymbol';
 
 type Mode = 'signin' | 'signup' | 'forgot-password';
 
@@ -184,6 +185,10 @@ export default function AuthScreen() {
       color: theme.mode === 'dark' ? colors.background : colors.background,
       fontWeight: '600',
     },
+    iconContainer: {
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
   }), [colors, typography, theme]);
 
   const handleEmailAuth = async () => {
@@ -233,6 +238,13 @@ export default function AuthScreen() {
         setRateLimitError(true);
       } else if (error.code === 'email_confirmation_required') {
         setConfirmationEmailSent(true);
+      } else if (error.code === 'email_not_confirmed') {
+        // Show a helpful message for email not confirmed error
+        Alert.alert(
+          'Email Not Confirmed',
+          'Please check your email and click the confirmation link before signing in. Check your spam folder if you don\'t see it.',
+          [{ text: 'OK' }]
+        );
       } else {
         const errorMessage = error.message || 'Authentication failed';
         Alert.alert('Error', errorMessage);
@@ -418,9 +430,20 @@ export default function AuthScreen() {
 
         {confirmationEmailSent && !rateLimitError && (
           <View style={styles.infoMessage}>
+            <View style={styles.iconContainer}>
+              <IconSymbol
+                ios_icon_name="envelope.fill"
+                android_material_icon_name="email"
+                size={48}
+                color={colors.accent}
+              />
+            </View>
             <Text style={styles.infoMessageTitle}>Check Your Email</Text>
             <Text style={styles.infoMessageText}>
               We sent a confirmation link to {email}. Please click the link to verify your account, then return here to sign in.
+            </Text>
+            <Text style={[styles.infoMessageText, { marginTop: spacing.sm, fontWeight: '600' }]}>
+              Don't forget to check your spam folder!
             </Text>
             <TouchableOpacity
               style={styles.dismissButton}

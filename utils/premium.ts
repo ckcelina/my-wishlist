@@ -1,5 +1,5 @@
 
-import { authenticatedGet, authenticatedPost } from './api';
+import { supabase } from '@/lib/supabase';
 import { logEvent, logError } from './observability';
 import { getCachedData, setCachedData } from './cache';
 
@@ -37,8 +37,28 @@ export async function getPremiumStatus(forceRefresh = false): Promise<PremiumSta
   }
   
   try {
-    console.log('[Premium] Fetching premium status from API');
-    const status = await authenticatedGet<PremiumStatus>('/api/premium/status');
+    console.log('[Premium] Fetching premium status from Supabase');
+    
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    
+    if (userError || !user) {
+      console.log('[Premium] No user found, returning free status');
+      const fallbackStatus: PremiumStatus = {
+        isPremium: false,
+        planName: null,
+        updatedAt: new Date().toISOString(),
+      };
+      return fallbackStatus;
+    }
+    
+    // For now, premium status is not implemented in Supabase
+    // This can be added later when premium features are implemented
+    const status: PremiumStatus = {
+      isPremium: false,
+      planName: null,
+      updatedAt: new Date().toISOString(),
+    };
     
     premiumStatusCache = status;
     lastFetchTime = now;
@@ -74,15 +94,21 @@ export async function upgradeToPremium(planName: string): Promise<PremiumStatus>
   try {
     logEvent('premium_upgrade_clicked', { planName });
     
-    const status = await authenticatedPost<PremiumStatus>('/api/premium/upgrade', {
-      planName,
-    });
+    // For now, premium upgrade is not implemented in Supabase
+    // This can be added later when premium features are implemented
+    console.log('[Premium] Premium upgrade not yet implemented');
+    
+    const status: PremiumStatus = {
+      isPremium: false,
+      planName: null,
+      updatedAt: new Date().toISOString(),
+    };
     
     premiumStatusCache = status;
     lastFetchTime = Date.now();
     await setCachedData(PREMIUM_CACHE_KEY, status);
     
-    console.log('[Premium] Upgrade successful:', status);
+    console.log('[Premium] Upgrade not available yet');
     return status;
   } catch (error) {
     console.error('[Premium] Upgrade failed:', error);
@@ -100,13 +126,21 @@ export async function restorePremium(): Promise<PremiumStatus> {
   try {
     logEvent('premium_restore_clicked');
     
-    const status = await authenticatedPost<PremiumStatus>('/api/premium/restore', {});
+    // For now, premium restore is not implemented in Supabase
+    // This can be added later when premium features are implemented
+    console.log('[Premium] Premium restore not yet implemented');
+    
+    const status: PremiumStatus = {
+      isPremium: false,
+      planName: null,
+      updatedAt: new Date().toISOString(),
+    };
     
     premiumStatusCache = status;
     lastFetchTime = Date.now();
     await setCachedData(PREMIUM_CACHE_KEY, status);
     
-    console.log('[Premium] Restore successful:', status);
+    console.log('[Premium] Restore not available yet');
     return status;
   } catch (error) {
     console.error('[Premium] Restore failed:', error);

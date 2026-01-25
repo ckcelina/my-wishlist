@@ -56,7 +56,7 @@ function formatAuthError(error: AuthError): AuthApiError {
   }
   
   if (error.message.includes('Email not confirmed')) {
-    return new AuthApiError('Please verify your email address', 'email_not_confirmed');
+    return new AuthApiError('Please check your email and click the confirmation link before signing in', 'email_not_confirmed');
   }
   
   if (error.message.includes('User already registered')) {
@@ -149,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (sessionError) {
         console.error('[AuthContext] Error getting session:', sessionError);
         setUser(null);
-        setError(sessionError.message);
+        setError(null); // Don't show error on initial load
         setLoading(false);
         return;
       }
@@ -171,7 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('[AuthContext] Failed to initialize auth:', err);
       setUser(null);
-      setError(err instanceof Error ? err.message : 'Failed to initialize auth');
+      setError(null); // Don't show error on initial load
     } finally {
       setLoading(false);
       console.log('[AuthContext] Auth initialization complete');
@@ -187,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (userError) {
         console.error('[AuthContext] Get user error:', userError);
         setUser(null);
-        setError(userError.message);
+        setError(null); // Don't show error for background fetch
         return;
       }
       
@@ -207,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('[AuthContext] Failed to fetch user:', err);
       setUser(null);
-      setError(err instanceof Error ? err.message : 'Failed to fetch user');
+      setError(null); // Don't show error for background fetch
     }
   };
 
