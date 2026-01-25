@@ -72,7 +72,7 @@ export interface Theme {
 }
 
 // ═══════════════════════════════════════════════════════
-// 🌙 DARK MODE THEME
+// 🌙 DARK MODE THEME - POLISHED & PREMIUM
 // ═══════════════════════════════════════════════════════
 
 export const darkTheme: Theme = {
@@ -84,13 +84,16 @@ export const darkTheme: Theme = {
     text: '#FFFFFF',
     textSecondary: 'rgba(255,255,255,0.75)',
     
-    card: 'rgba(255,255,255,0.08)',
+    // Increased contrast for better readability
+    card: 'rgba(255,255,255,0.10)',
     
-    border: 'rgba(255,255,255,0.15)',
-    divider: 'rgba(255,255,255,0.15)',
+    // Subtle borders for definition
+    border: 'rgba(255,255,255,0.14)',
+    divider: 'rgba(255,255,255,0.14)',
     
+    // Prominent white accent for dark mode
     accent: '#FFFFFF',
-    accentLight: 'rgba(255,255,255,0.2)',
+    accentLight: 'rgba(255,255,255,0.12)',
     
     success: '#34C759',
     warning: '#FF9500',
@@ -287,21 +290,29 @@ export const createTypography = (theme: Theme) => ({
 // ═══════════════════════════════════════════════════════
 
 export const createComponentStyles = (theme: Theme) => ({
-  // Card styles
+  // Card styles - consistent radius and surface color
   card: {
     backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.lg,
+    borderRadius: 16, // Consistent 16px radius
     padding: theme.spacing.md,
-    ...(theme.mode === 'light' && {
-      shadowColor: theme.colors.shadow,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 1,
-      shadowRadius: 8,
-      elevation: 2,
-    }),
+    ...(theme.mode === 'dark' 
+      ? {
+          // Dark mode: subtle border instead of shadow
+          borderWidth: 1,
+          borderColor: theme.colors.divider,
+        }
+      : {
+          // Light mode: shadow
+          shadowColor: theme.colors.shadow,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 1,
+          shadowRadius: 8,
+          elevation: 2,
+        }
+    ),
   },
   
-  // Button styles
+  // Button styles - prominent in dark mode
   button: {
     backgroundColor: theme.colors.accent,
     borderRadius: theme.radius.md,
@@ -319,7 +330,9 @@ export const createComponentStyles = (theme: Theme) => ({
   },
   
   buttonSecondary: {
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.mode === 'dark' 
+      ? 'rgba(255,255,255,0.12)' 
+      : theme.colors.card,
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
@@ -329,7 +342,7 @@ export const createComponentStyles = (theme: Theme) => ({
     borderColor: theme.colors.border,
   },
   
-  // Input styles
+  // Input styles - visible placeholders
   input: {
     backgroundColor: theme.colors.card,
     borderRadius: theme.radius.md,

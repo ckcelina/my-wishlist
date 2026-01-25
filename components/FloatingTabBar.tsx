@@ -9,7 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
 import { useAppTheme } from '@/contexts/ThemeContext';
@@ -51,6 +51,7 @@ export default function FloatingTabBar({
   const { theme } = useAppTheme();
   const colors = createColors(theme);
   const animatedValue = useSharedValue(0);
+  const insets = useSafeAreaInsets();
 
   const activeTabIndex = React.useMemo(() => {
     let bestMatch = -1;
@@ -110,16 +111,27 @@ export default function FloatingTabBar({
     };
   });
 
+  // Calculate bottom margin with safe area
+  const calculatedBottomMargin = bottomMargin ?? Math.max(insets.bottom, 20);
+
   const dynamicStyles = {
+    container: {
+      ...styles.container,
+      width: containerWidth,
+      marginBottom: calculatedBottomMargin,
+    },
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
-      borderColor: colors.border,
+      borderColor: theme.mode === 'dark' 
+        ? 'rgba(255,255,255,0.14)' 
+        : colors.border,
+      borderRadius,
       ...Platform.select({
         ios: {
           backgroundColor: theme.mode === 'dark'
-            ? 'rgba(118, 89, 67, 0.8)'
-            : 'rgba(237, 232, 227, 0.8)',
+            ? 'rgba(118, 89, 67, 0.85)'
+            : 'rgba(237, 232, 227, 0.85)',
         },
         android: {
           backgroundColor: theme.mode === 'dark'
@@ -147,17 +159,11 @@ export default function FloatingTabBar({
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <View style={[
-        styles.container,
-        {
-          width: containerWidth,
-          marginBottom: bottomMargin ?? 20
-        }
-      ]}>
+    <View style={[styles.safeArea, { paddingBottom: insets.bottom }]}>
+      <View style={dynamicStyles.container}>
         <BlurView
           intensity={80}
-          style={[dynamicStyles.blurContainer, { borderRadius }]}
+          style={dynamicStyles.blurContainer}
         >
           <View style={dynamicStyles.background} />
           <Animated.View style={[dynamicStyles.indicator, indicatorStyle]} />
@@ -167,7 +173,9 @@ export default function FloatingTabBar({
               const isEmphasized = tab.emphasized === true;
 
               const iconSize = isEmphasized ? 28 : 24;
-              const iconColor = isActive ? colors.accent : colors.textSecondary;
+              const iconColor = isActive 
+                ? (theme.mode === 'dark' ? '#FFFFFF' : colors.accent)
+                : colors.textSecondary;
 
               return (
                 <React.Fragment key={index}>
@@ -188,7 +196,7 @@ export default function FloatingTabBar({
                         styles.tabLabel,
                         { color: colors.textSecondary },
                         isActive && { 
-                          color: colors.accent, 
+                          color: theme.mode === 'dark' ? '#FFFFFF' : colors.accent, 
                           fontWeight: '600' 
                         },
                       ]}
@@ -203,7 +211,7 @@ export default function FloatingTabBar({
           </View>
         </BlurView>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

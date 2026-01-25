@@ -1,8 +1,7 @@
 
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import * as Linking from 'expo-linking';
-import React, { useState, useEffect } from 'react';
-import { colors } from '@/styles/commonStyles';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -24,6 +23,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage } from '@/utils/supabase-edge-functions';
 import { createWishlistItem } from '@/lib/supabase-helpers';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { StatusBar } from 'expo-status-bar';
 
 type TabType = 'url' | 'manual' | 'image';
 
@@ -35,160 +37,6 @@ interface ExtractedItem {
   originalUrl: string;
   sourceDomain: string;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
-  tabText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    marginBottom: 16,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: colors.border,
-  },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  previewCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  previewImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  previewTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  previewPrice: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  previewUrl: {
-    fontSize: 12,
-    color: colors.textSecondary,
-  },
-  imagePickerButton: {
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 40,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  imagePickerText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  selectedImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 20,
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-});
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
@@ -215,6 +63,10 @@ export default function AddItemScreen() {
   const { wishlistId, sharedUrl } = useLocalSearchParams<{ wishlistId?: string; sharedUrl?: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { theme, isDark } = useAppTheme();
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
+  
   const [activeTab, setActiveTab] = useState<TabType>('url');
 
   // URL tab state
@@ -233,6 +85,174 @@ export default function AddItemScreen() {
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [identifyingImage, setIdentifyingImage] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    tabActive: {
+      borderBottomWidth: 2,
+      borderBottomColor: colors.accent,
+    },
+    tabText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    tabTextActive: {
+      color: colors.accent,
+      fontWeight: '600',
+    },
+    content: {
+      flex: 1,
+      padding: spacing.lg,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      padding: spacing.md,
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: colors.card,
+      marginBottom: spacing.md,
+      // Improved placeholder visibility in dark mode
+      ...(theme.mode === 'dark' && {
+        placeholderTextColor: 'rgba(255,255,255,0.5)',
+      }),
+    },
+    textArea: {
+      height: 100,
+      textAlignVertical: 'top',
+    },
+    button: {
+      backgroundColor: colors.accent,
+      padding: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginTop: spacing.sm,
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 4,
+        elevation: 2,
+      }),
+    },
+    buttonDisabled: {
+      opacity: 0.5,
+    },
+    buttonText: {
+      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    secondaryButton: {
+      backgroundColor: theme.mode === 'dark' 
+        ? 'rgba(255,255,255,0.12)' 
+        : colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginTop: spacing.sm,
+    },
+    secondaryButtonText: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    previewCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+      borderWidth: 1,
+      borderColor: theme.mode === 'dark' ? colors.divider : colors.border,
+    },
+    previewImage: {
+      width: '100%',
+      height: 200,
+      borderRadius: 12,
+      marginBottom: spacing.md,
+    },
+    previewTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    previewPrice: {
+      fontSize: 16,
+      color: colors.accent,
+      fontWeight: '600',
+      marginBottom: spacing.xs,
+    },
+    previewUrl: {
+      fontSize: 12,
+      color: colors.textSecondary,
+    },
+    imagePickerButton: {
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      borderRadius: 12,
+      padding: 40,
+      alignItems: 'center',
+      marginBottom: spacing.md,
+      backgroundColor: colors.card,
+    },
+    imagePickerText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: spacing.sm,
+    },
+    selectedImage: {
+      width: '100%',
+      height: 200,
+      borderRadius: 12,
+      marginBottom: spacing.md,
+    },
+    removeImageButton: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      borderRadius: 20,
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    loadingContainer: {
+      padding: 40,
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginTop: spacing.md,
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+  }), [colors, typography, theme]);
 
   useEffect(() => {
     if (sharedUrl) {
@@ -515,6 +535,7 @@ export default function AddItemScreen() {
   const renderUrlTab = () => {
     const canExtract = urlInput.trim().length > 0 && !extracting;
     const canSave = extractedItem !== null && !savingManual;
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
 
     return (
       <View style={styles.content}>
@@ -522,7 +543,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="https://example.com/product"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={urlInput}
           onChangeText={setUrlInput}
           autoCapitalize="none"
@@ -537,7 +558,7 @@ export default function AddItemScreen() {
           disabled={!canExtract}
         >
           {extracting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
           ) : (
             <Text style={styles.buttonText}>Extract Item Details</Text>
           )}
@@ -575,7 +596,7 @@ export default function AddItemScreen() {
                   setExtractedItem({ ...extractedItem, title: text })
                 }
                 placeholder="Item title"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={placeholderColor}
               />
 
               <Text style={styles.label}>Price</Text>
@@ -586,7 +607,7 @@ export default function AddItemScreen() {
                   setExtractedItem({ ...extractedItem, price: text })
                 }
                 placeholder="0.00"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={placeholderColor}
                 keyboardType="decimal-pad"
               />
 
@@ -606,7 +627,7 @@ export default function AddItemScreen() {
               disabled={!canSave}
             >
               {savingManual ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
                 <Text style={styles.buttonText}>Add to Wishlist</Text>
               )}
@@ -619,6 +640,7 @@ export default function AddItemScreen() {
 
   const renderManualTab = () => {
     const canSave = manualTitle.trim().length > 0 && !savingManual;
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
 
     return (
       <View style={styles.content}>
@@ -626,7 +648,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="Item name"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualTitle}
           onChangeText={setManualTitle}
         />
@@ -635,7 +657,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="0.00"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualPrice}
           onChangeText={setManualPrice}
           keyboardType="decimal-pad"
@@ -677,7 +699,7 @@ export default function AddItemScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Add any notes about this item"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualNotes}
           onChangeText={setManualNotes}
           multiline
@@ -689,7 +711,7 @@ export default function AddItemScreen() {
           disabled={!canSave}
         >
           {savingManual ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
           ) : (
             <Text style={styles.buttonText}>Add to Wishlist</Text>
           )}
@@ -699,6 +721,8 @@ export default function AddItemScreen() {
   };
 
   const renderImageTab = () => {
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
+
     return (
       <View style={styles.content}>
         <Text style={styles.label}>Upload or Paste Image</Text>
@@ -750,7 +774,7 @@ export default function AddItemScreen() {
             disabled={identifyingImage}
           >
             {identifyingImage ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
               <Text style={styles.buttonText}>Identify Product</Text>
             )}
@@ -759,7 +783,7 @@ export default function AddItemScreen() {
 
         {identifyingImage && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={colors.accent} />
             <Text style={styles.loadingText}>Analyzing image...</Text>
           </View>
         )}
@@ -768,39 +792,42 @@ export default function AddItemScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'url' && styles.tabActive]}
-          onPress={() => setActiveTab('url')}
-        >
-          <Text style={[styles.tabText, activeTab === 'url' && styles.tabTextActive]}>
-            From URL
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'manual' && styles.tabActive]}
-          onPress={() => setActiveTab('manual')}
-        >
-          <Text style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}>
-            Manual
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'image' && styles.tabActive]}
-          onPress={() => setActiveTab('image')}
-        >
-          <Text style={[styles.tabText, activeTab === 'image' && styles.tabTextActive]}>
-            From Image
-          </Text>
-        </TouchableOpacity>
-      </View>
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'url' && styles.tabActive]}
+            onPress={() => setActiveTab('url')}
+          >
+            <Text style={[styles.tabText, activeTab === 'url' && styles.tabTextActive]}>
+              From URL
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'manual' && styles.tabActive]}
+            onPress={() => setActiveTab('manual')}
+          >
+            <Text style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}>
+              Manual
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'image' && styles.tabActive]}
+            onPress={() => setActiveTab('image')}
+          >
+            <Text style={[styles.tabText, activeTab === 'image' && styles.tabTextActive]}>
+              From Image
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      <ScrollView style={styles.container}>
-        {activeTab === 'url' && renderUrlTab()}
-        {activeTab === 'manual' && renderManualTab()}
-        {activeTab === 'image' && renderImageTab()}
-      </ScrollView>
-    </SafeAreaView>
+        <ScrollView style={styles.container}>
+          {activeTab === 'url' && renderUrlTab()}
+          {activeTab === 'manual' && renderManualTab()}
+          {activeTab === 'image' && renderImageTab()}
+        </ScrollView>
+      </SafeAreaView>
+    </>
   );
 }
