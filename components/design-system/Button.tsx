@@ -2,7 +2,7 @@
 import React from 'react';
 import { Pressable, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { createComponentStyles, createTypography } from '@/styles/theme';
+import { createColors, createTypography } from '@/styles/designSystem';
 
 interface ButtonProps {
   title: string;
@@ -24,24 +24,87 @@ export function Button({
   textStyle,
 }: ButtonProps) {
   const { theme } = useAppTheme();
-  const componentStyles = createComponentStyles(theme);
+  const colors = createColors(theme);
   const typography = createTypography(theme);
   
   const isDisabled = disabled || loading;
   
+  const getButtonStyle = () => {
+    const baseStyle = {
+      borderRadius: 12,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      flexDirection: 'row' as const,
+      gap: 8,
+    };
+
+    switch (variant) {
+      case 'primary':
+        return {
+          ...baseStyle,
+          backgroundColor: colors.accent,
+          ...(theme.mode === 'light' && {
+            shadowColor: colors.shadowMedium,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2,
+          }),
+        };
+      case 'secondary':
+        return {
+          ...baseStyle,
+          backgroundColor: colors.surface,
+          borderWidth: 1.5,
+          borderColor: colors.border,
+        };
+      case 'destructive':
+        return {
+          ...baseStyle,
+          backgroundColor: colors.error,
+          ...(theme.mode === 'light' && {
+            shadowColor: colors.shadowMedium,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 1,
+            shadowRadius: 4,
+            elevation: 2,
+          }),
+        };
+      case 'ghost':
+        return {
+          ...baseStyle,
+          backgroundColor: 'transparent',
+        };
+      default:
+        return baseStyle;
+    }
+  };
+
+  const getTextColor = () => {
+    switch (variant) {
+      case 'primary':
+        return theme.mode === 'dark' ? colors.background : colors.background;
+      case 'secondary':
+        return colors.text;
+      case 'destructive':
+        return '#FFFFFF';
+      case 'ghost':
+        return colors.accent;
+      default:
+        return colors.text;
+    }
+  };
+  
   const buttonStyle = [
-    componentStyles.button,
-    variant === 'secondary' && componentStyles.buttonSecondary,
+    getButtonStyle(),
     style,
   ];
   
-  const textColor = variant === 'primary' || variant === 'destructive' 
-    ? theme.colors.background 
-    : theme.colors.text;
-  
   const buttonTextStyle = [
-    typography.button,
-    { color: textColor },
+    typography.buttonMedium,
+    { color: getTextColor() },
     textStyle,
   ];
   
@@ -56,7 +119,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={textColor} />
+        <ActivityIndicator color={getTextColor()} />
       ) : (
         <Text style={buttonTextStyle}>{title}</Text>
       )}

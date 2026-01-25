@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, Pressable } from 'react-native';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { createComponentStyles } from '@/styles/theme';
+import { createColors } from '@/styles/designSystem';
 
 interface CardProps {
   children: React.ReactNode;
@@ -15,10 +15,25 @@ interface CardProps {
 
 export function Card({ children, style, elevated = false, flat = false, interactive = false, onPress }: CardProps) {
   const { theme } = useAppTheme();
-  const componentStyles = createComponentStyles(theme);
+  const colors = createColors(theme);
+  
+  const baseCardStyle = {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...(theme.mode === 'light' && !flat && {
+      shadowColor: colors.shadowLight,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 1,
+      shadowRadius: 8,
+      elevation: 2,
+    }),
+  };
   
   const cardStyle = [
-    componentStyles.card,
+    baseCardStyle,
     elevated && styles.elevated,
     flat && styles.flat,
     style,

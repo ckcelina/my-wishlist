@@ -12,7 +12,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { BlurView } from 'expo-blur';
-import { useTheme } from '@react-navigation/native';
+import { useAppTheme } from '@/contexts/ThemeContext';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,6 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
+import { createColors } from '@/styles/designSystem';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -29,7 +30,7 @@ export interface TabBarItem {
   route: Href;
   icon: keyof typeof MaterialIcons.glyphMap;
   label: string;
-  emphasized?: boolean; // Mark tab as primary CTA
+  emphasized?: boolean;
 }
 
 interface FloatingTabBarProps {
@@ -47,32 +48,24 @@ export default function FloatingTabBar({
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const theme = useTheme();
+  const { theme } = useAppTheme();
+  const colors = createColors(theme);
   const animatedValue = useSharedValue(0);
 
-  // Improved active tab detection with better path matching
   const activeTabIndex = React.useMemo(() => {
-    // Find the best matching tab based on the current pathname
     let bestMatch = -1;
     let bestMatchScore = 0;
 
     tabs.forEach((tab, index) => {
       let score = 0;
 
-      // Exact route match gets highest score
       if (pathname === tab.route) {
         score = 100;
-      }
-      // Check if pathname starts with tab route (for nested routes)
-      else if (pathname.startsWith(tab.route as string)) {
+      } else if (pathname.startsWith(tab.route as string)) {
         score = 80;
-      }
-      // Check if pathname contains the tab name
-      else if (pathname.includes(tab.name)) {
+      } else if (pathname.includes(tab.name)) {
         score = 60;
-      }
-      // Check for partial matches in the route
-      else if (tab.route.includes('/(tabs)/') && pathname.includes(tab.route.split('/(tabs)/')[1])) {
+      } else if (tab.route.includes('/(tabs)/') && pathname.includes(tab.route.split('/(tabs)/')[1])) {
         score = 40;
       }
 
@@ -82,7 +75,6 @@ export default function FloatingTabBar({
       }
     });
 
-    // Default to first tab if no match found
     return bestMatch >= 0 ? bestMatch : 0;
   }, [pathname, tabs]);
 
@@ -104,7 +96,7 @@ export default function FloatingTabBar({
   const tabWidthPercent = ((100 / tabs.length) - 1).toFixed(2);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    const tabWidth = (containerWidth - 8) / tabs.length; // Account for container padding (4px on each side)
+    const tabWidth = (containerWidth - 8) / tabs.length;
     return {
       transform: [
         {
@@ -118,29 +110,24 @@ export default function FloatingTabBar({
     };
   });
 
-  // Brand colors from design system
-  const brandColor = theme.dark ? '#765943' : '#ede8e3';
-  const accentColor = theme.dark ? '#FFFFFF' : '#3b2a1f';
-
-  // Dynamic styles based on theme
   const dynamicStyles = {
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
-      borderColor: theme.dark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(59, 42, 31, 0.15)',
+      borderColor: colors.border,
       ...Platform.select({
         ios: {
-          backgroundColor: theme.dark
+          backgroundColor: theme.mode === 'dark'
             ? 'rgba(118, 89, 67, 0.8)'
             : 'rgba(237, 232, 227, 0.8)',
         },
         android: {
-          backgroundColor: theme.dark
+          backgroundColor: theme.mode === 'dark'
             ? 'rgba(118, 89, 67, 0.95)'
             : 'rgba(237, 232, 227, 0.95)',
         },
         web: {
-          backgroundColor: theme.dark
+          backgroundColor: theme.mode === 'dark'
             ? 'rgba(118, 89, 67, 0.95)'
             : 'rgba(237, 232, 227, 0.95)',
           backdropFilter: 'blur(10px)',
@@ -152,10 +139,10 @@ export default function FloatingTabBar({
     },
     indicator: {
       ...styles.indicator,
-      backgroundColor: theme.dark
-        ? 'rgba(255, 255, 255, 0.12)' // Subtle white overlay in dark mode
-        : 'rgba(59, 42, 31, 0.08)', // Subtle dark overlay in light mode
-      width: `${tabWidthPercent}%` as `${number}%`, // Dynamic width based on number of tabs
+      backgroundColor: theme.mode === 'dark'
+        ? 'rgba(255, 255, 255, 0.12)'
+        : 'rgba(59, 42, 31, 0.08)',
+      width: `${tabWidthPercent}%` as `${number}%`,
     },
   };
 
@@ -179,13 +166,8 @@ export default function FloatingTabBar({
               const isActive = activeTabIndex === index;
               const isEmphasized = tab.emphasized === true;
 
-              // Icon size - larger for emphasized tab
               const iconSize = isEmphasized ? 28 : 24;
-              
-              // Icon color - brand color for active, muted for inactive
-              const iconColor = isActive 
-                ? accentColor 
-                : (theme.dark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(59, 42, 31, 0.6)');
+              const iconColor = isActive ? colors.accent : colors.textSecondary;
 
               return (
                 <React.Fragment key={index}>
@@ -204,13 +186,9 @@ export default function FloatingTabBar({
                     <Text
                       style={[
                         styles.tabLabel,
-                        { 
-                          color: theme.dark 
-                            ? 'rgba(255, 255, 255, 0.6)' 
-                            : 'rgba(59, 42, 31, 0.6)' 
-                        },
+                        { color: colors.textSecondary },
                         isActive && { 
-                          color: accentColor, 
+                          color: colors.accent, 
                           fontWeight: '600' 
                         },
                       ]}
@@ -236,20 +214,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
-    alignItems: 'center', // Center the content
+    alignItems: 'center',
   },
   container: {
     marginHorizontal: 20,
     alignSelf: 'center',
-    // width and marginBottom handled dynamically via props
   },
   blurContainer: {
     overflow: 'hidden',
-    // borderRadius and other styling applied dynamically
   },
   background: {
     ...StyleSheet.absoluteFillObject,
-    // Dynamic styling applied in component
   },
   indicator: {
     position: 'absolute',
@@ -257,8 +232,7 @@ const styles = StyleSheet.create({
     left: 2,
     bottom: 4,
     borderRadius: 27,
-    width: `${(100 / 2) - 1}%`, // Default for 2 tabs, will be overridden by dynamic styles
-    // Dynamic styling applied in component
+    width: `${(100 / 2) - 1}%`,
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -281,6 +255,5 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
-    // Dynamic styling applied in component
   },
 });

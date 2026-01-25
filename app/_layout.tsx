@@ -4,26 +4,36 @@ import { useFonts } from 'expo-font';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
+import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-connection';
 import { runNativelySupabaseVerification, logNativelyConnectionStatus } from '@/utils/natively-supabase-verification';
 import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
-import { colors } from '@/styles/designSystem';
+import { createColors } from '@/styles/designSystem';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 function RootLayoutNav() {
   const { user, loading } = useAuth();
+  const { theme } = useAppTheme();
+  const colors = useMemo(() => createColors(theme), [theme]);
   const segments = useSegments();
   const router = useRouter();
+
+  const styles = useMemo(() => StyleSheet.create({
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: colors.background,
+    },
+  }), [colors]);
 
   useEffect(() => {
     if (loading) {
@@ -36,21 +46,18 @@ function RootLayoutNav() {
     console.log('[RootLayout] Auth state changed - User:', user?.id, 'In auth group:', inAuthGroup);
 
     if (!user && !inAuthGroup) {
-      // User is not logged in and not on auth screen, redirect to auth
       console.log('[RootLayout] User not authenticated, redirecting to auth screen');
       router.replace('/auth');
     } else if (user && inAuthGroup) {
-      // User is logged in but on auth screen, redirect to wishlists
       console.log('[RootLayout] User authenticated, redirecting to wishlists');
       router.replace('/(tabs)/wishlists');
     }
   }, [user, loading, segments, router]);
 
-  // Show loading screen while checking session
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
@@ -79,22 +86,18 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    // Verify Supabase connection on app start for Natively.dev
     console.log('[App] ═══════════════════════════════════════════════════');
     console.log('[App] 🚀 MY WISHLIST APP STARTING');
     console.log('[App] ═══════════════════════════════════════════════════');
     console.log('[App] 🔌 Verifying Supabase connection for Natively.dev...');
     console.log('[App] ═══════════════════════════════════════════════════');
     
-    // Log connection status immediately
     logNativelyConnectionStatus();
     
-    // Get and log configuration
     const config = getSupabaseConfig();
     console.log('[App] 📋 Supabase Config:', config);
     console.log('[App] 📊 Supabase Connection Status:', SUPABASE_CONNECTION_STATUS);
     
-    // Run comprehensive verification
     runNativelySupabaseVerification().then((status) => {
       console.log('[App] ═══════════════════════════════════════════════════');
       if (status.verified) {
@@ -122,7 +125,6 @@ export default function RootLayout() {
       console.error('[App] ❌ Verification failed with error:', error);
     });
     
-    // Also run legacy verification for backwards compatibility
     verifySupabaseConnection().then((legacyStatus) => {
       console.log('[App] 📋 Legacy verification result:', legacyStatus);
     });
@@ -147,12 +149,3 @@ export default function RootLayout() {
     </ErrorBoundary>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
-});

@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,17 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/design-system/Button';
 import { Logo } from '@/components/Logo';
-import { colors, typography, spacing, inputStyles, containerStyles } from '@/styles/designSystem';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { useAppTheme } from '@/contexts/ThemeContext';
 
 type Mode = 'signin' | 'signup' | 'forgot-password';
 
 export default function AuthScreen() {
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, resetPassword } = useAuth();
+  const { theme } = useAppTheme();
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
+  
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,8 +34,159 @@ export default function AuthScreen() {
   const [confirmationEmailSent, setConfirmationEmailSent] = useState(false);
   const [rateLimitError, setRateLimitError] = useState(false);
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    logoContainer: {
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    title: {
+      ...typography.displayLarge,
+      color: colors.text,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    subtitle: {
+      ...typography.bodyLarge,
+      color: colors.textSecondary,
+      marginBottom: spacing.xl,
+      textAlign: 'center',
+    },
+    input: {
+      backgroundColor: colors.surface,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      fontSize: 16,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    button: {
+      marginBottom: spacing.md,
+    },
+    socialButton: {
+      marginBottom: spacing.sm,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: spacing.lg,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.divider,
+    },
+    dividerText: {
+      ...typography.bodySmall,
+      color: colors.textSecondary,
+      paddingHorizontal: spacing.md,
+    },
+    switchModeContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginTop: spacing.md,
+    },
+    switchModeText: {
+      ...typography.bodyMedium,
+      color: colors.textSecondary,
+    },
+    switchModeButton: {
+      ...typography.bodyMedium,
+      color: colors.accent,
+      fontWeight: '600',
+      marginLeft: spacing.xs,
+    },
+    forgotPasswordButton: {
+      alignSelf: 'center',
+      marginTop: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    forgotPasswordText: {
+      ...typography.bodyMedium,
+      color: colors.accent,
+    },
+    backButton: {
+      alignSelf: 'center',
+      marginTop: spacing.md,
+    },
+    backButtonText: {
+      ...typography.bodyMedium,
+      color: colors.accent,
+    },
+    successMessage: {
+      backgroundColor: colors.successLight,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    successMessageText: {
+      ...typography.bodyMedium,
+      color: colors.success,
+      textAlign: 'center',
+    },
+    infoMessage: {
+      backgroundColor: colors.accentLight,
+      borderRadius: 12,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+    },
+    infoMessageTitle: {
+      ...typography.titleMedium,
+      color: colors.accent,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    infoMessageText: {
+      ...typography.bodyMedium,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+    warningMessage: {
+      backgroundColor: colors.warningLight,
+      borderRadius: 12,
+      padding: spacing.lg,
+      marginBottom: spacing.lg,
+    },
+    warningMessageTitle: {
+      ...typography.titleMedium,
+      color: colors.warning,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    warningMessageText: {
+      ...typography.bodyMedium,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+    dismissButton: {
+      marginTop: spacing.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.accent,
+      borderRadius: 8,
+      alignSelf: 'center',
+    },
+    dismissButtonText: {
+      ...typography.bodyMedium,
+      color: theme.mode === 'dark' ? colors.background : colors.background,
+      fontWeight: '600',
+    },
+  }), [colors, typography, theme]);
+
   const handleEmailAuth = async () => {
-    // Validate inputs
     const trimmedEmail = email.trim();
     const trimmedPassword = password.trim();
     const trimmedName = name.trim();
@@ -45,14 +201,12 @@ export default function AuthScreen() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
       Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
-    // Password length validation
     if (trimmedPassword.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
@@ -66,25 +220,20 @@ export default function AuthScreen() {
       if (mode === 'signin') {
         console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
         await signInWithEmail(trimmedEmail, trimmedPassword);
-        console.log('[AuthScreen] Sign in successful, navigation will be handled by RootLayout');
+        console.log('[AuthScreen] Sign in successful');
       } else {
         console.log('[AuthScreen] User tapped Sign Up button with email:', trimmedEmail);
         await signUpWithEmail(trimmedEmail, trimmedPassword, trimmedName);
-        console.log('[AuthScreen] Sign up successful, navigation will be handled by RootLayout or AuthContext');
+        console.log('[AuthScreen] Sign up successful');
       }
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
       
-      // Check if this is a rate limit error
       if (error.code === 'rate_limit_exceeded') {
         setRateLimitError(true);
-        // Don't show alert, show inline message instead
       } else if (error.code === 'email_confirmation_required') {
-        // Check if this is an email confirmation required error
         setConfirmationEmailSent(true);
-        // Don't show alert, show inline message instead
       } else {
-        // Use the error message from the formatted error
         const errorMessage = error.message || 'Authentication failed';
         Alert.alert('Error', errorMessage);
       }
@@ -101,7 +250,6 @@ export default function AuthScreen() {
       return;
     }
 
-    // Basic email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(trimmedEmail)) {
       Alert.alert('Error', 'Please enter a valid email address');
@@ -142,7 +290,7 @@ export default function AuthScreen() {
       } else if (provider === 'apple') {
         await signInWithApple();
       }
-      console.log(`[AuthScreen] ${provider} sign in initiated, navigation will be handled by RootLayout`);
+      console.log(`[AuthScreen] ${provider} sign in initiated`);
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
       
@@ -198,7 +346,7 @@ export default function AuthScreen() {
         <TextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={colors.textSecondary}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -257,7 +405,7 @@ export default function AuthScreen() {
           <View style={styles.warningMessage}>
             <Text style={styles.warningMessageTitle}>Too Many Attempts</Text>
             <Text style={styles.warningMessageText}>
-              You've made too many authentication attempts. Please wait a few minutes before trying again. This is a security measure to protect your account.
+              You've made too many authentication attempts. Please wait a few minutes before trying again.
             </Text>
             <TouchableOpacity
               style={styles.dismissButton}
@@ -290,7 +438,7 @@ export default function AuthScreen() {
           <TextInput
             style={styles.input}
             placeholder="Name"
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={colors.textSecondary}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -302,7 +450,7 @@ export default function AuthScreen() {
         <TextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={colors.textSecondary}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -314,7 +462,7 @@ export default function AuthScreen() {
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={colors.textSecondary}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -399,146 +547,3 @@ export default function AuthScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    ...containerStyles.screen,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  title: {
-    ...typography.displayLarge,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  subtitle: {
-    ...typography.bodyLarge,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-    textAlign: 'center',
-  },
-  input: {
-    ...inputStyles.base,
-    marginBottom: spacing.md,
-  },
-  button: {
-    marginBottom: spacing.md,
-  },
-  socialButton: {
-    marginBottom: spacing.sm,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: spacing.lg,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.divider,
-  },
-  dividerText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    paddingHorizontal: spacing.md,
-  },
-  switchModeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: spacing.md,
-  },
-  switchModeText: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-  },
-  switchModeButton: {
-    ...typography.bodyMedium,
-    color: colors.primary,
-    fontWeight: '600',
-    marginLeft: spacing.xs,
-  },
-  forgotPasswordButton: {
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  forgotPasswordText: {
-    ...typography.bodyMedium,
-    color: colors.primary,
-  },
-  backButton: {
-    alignSelf: 'center',
-    marginTop: spacing.md,
-  },
-  backButtonText: {
-    ...typography.bodyMedium,
-    color: colors.primary,
-  },
-  successMessage: {
-    backgroundColor: colors.successLight,
-    borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  successMessageText: {
-    ...typography.bodyMedium,
-    color: colors.success,
-    textAlign: 'center',
-  },
-  infoMessage: {
-    backgroundColor: colors.primaryLight,
-    borderRadius: 12,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  infoMessageTitle: {
-    ...typography.titleMedium,
-    color: colors.primary,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  infoMessageText: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  warningMessage: {
-    backgroundColor: colors.warningLight,
-    borderRadius: 12,
-    padding: spacing.lg,
-    marginBottom: spacing.lg,
-  },
-  warningMessageTitle: {
-    ...typography.titleMedium,
-    color: colors.warning,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  warningMessageText: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  dismissButton: {
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    alignSelf: 'center',
-  },
-  dismissButtonText: {
-    ...typography.bodyMedium,
-    color: colors.white,
-    fontWeight: '600',
-  },
-});
