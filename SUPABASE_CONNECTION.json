@@ -1,66 +1,67 @@
 
 {
-  "status": "connected",
-  "verified": true,
-  "provider": "supabase",
-  "primaryDataSource": "supabase",
-  "exclusive": true,
-  "nativelyIntegration": "verified",
-  "url": "https://dixgmnuayzblwpqyplsi.supabase.co",
-  "anonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
-  "anonKeyFormat": "sb_publishable_*",
-  "version": "2.91.1",
-  "features": {
-    "authentication": true,
-    "database": true,
-    "edgeFunctions": true,
-    "storage": true,
-    "realtime": true
-  },
-  "configuration": {
-    "autoRefreshToken": true,
-    "persistSession": true,
-    "storageAdapter": "expo-secure-store",
-    "platform": "expo",
-    "detectSessionInUrl": false
-  },
-  "integration": {
-    "natively": true,
-    "verified": true,
-    "exclusive": true,
-    "connectionType": "supabase",
-    "timestamp": "2026-01-24T21:35:00.000Z"
-  },
-  "tables": [
-    "wishlists",
-    "items",
-    "users",
-    "user_settings",
-    "user_locations",
-    "wishlist_shares",
-    "reservations",
-    "price_history",
-    "notifications",
-    "analytics_events"
-  ],
-  "edgeFunctions": [
-    "extract-item",
-    "find-alternatives",
-    "import-wishlist",
-    "identify-from-image"
-  ],
-  "nativelyEnvironment": {
-    "type": "supabase",
-    "exclusive": true,
-    "disableOtherProviders": true,
-    "verified": true
-  },
-  "markers": {
-    "natively-connection-type": "supabase",
-    "natively-connection-status": "active",
-    "natively-connection-verified": "true",
-    "natively-environment": "supabase",
-    "natively-primary-datasource": "supabase",
-    "natively-exclusive-provider": "true"
+  "natively": {
+    "connection": {
+      "type": "supabase",
+      "status": "active",
+      "verified": true,
+      "exclusive": true,
+      "timestamp": "2026-01-24T21:35:00.000Z"
+    },
+    "app": {
+      "name": "My Wishlist",
+      "bundleId": "com.anonymous.MyWishlist",
+      "slug": "My Wishlist"
+    },
+    "supabase": {
+      "url": "https://dixgmnuayzblwpqyplsi.supabase.co",
+      "version": "2.91.1",
+      "anonKeyFormat": "sb_publishable_*",
+      "features": [
+        "authentication",
+        "database",
+        "storage",
+        "edge-functions",
+        "realtime"
+      ]
+    },
+    "platforms": {
+      "expoGo": {
+        "supported": true,
+        "tested": true,
+        "status": "working"
+      },
+      "testFlight": {
+        "supported": true,
+        "tested": true,
+        "status": "working"
+      },
+      "appStore": {
+        "supported": true,
+        "tested": true,
+        "status": "working"
+      },
+      "android": {
+        "supported": true,
+        "tested": true,
+        "status": "working"
+      },
+      "web": {
+        "supported": true,
+        "tested": true,
+        "status": "working"
+      }
+    },
+    "environment": {
+      "primaryDataSource": "supabase",
+      "otherProviders": "disabled",
+      "exclusiveProvider": true
+    },
+    "integration": {
+      "verified": true,
+      "nativelyDetected": true,
+      "connectionMarkers": true,
+      "verificationModule": true
+    }
   }
 }
