@@ -13,6 +13,7 @@ import { I18nProvider } from '@/contexts/I18nContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-connection';
+import { runNativelySupabaseVerification, logNativelyConnectionStatus } from '@/utils/natively-supabase-verification';
 import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
 import { colors } from '@/styles/designSystem';
 
@@ -78,31 +79,52 @@ export default function RootLayout() {
   }, [loaded]);
 
   useEffect(() => {
-    // Verify Supabase connection on app start
+    // Verify Supabase connection on app start for Natively.dev
     console.log('[App] ═══════════════════════════════════════════════════');
     console.log('[App] 🚀 MY WISHLIST APP STARTING');
     console.log('[App] ═══════════════════════════════════════════════════');
-    console.log('[App] Verifying Supabase connection...');
+    console.log('[App] 🔌 Verifying Supabase connection for Natively.dev...');
+    console.log('[App] ═══════════════════════════════════════════════════');
     
+    // Log connection status immediately
+    logNativelyConnectionStatus();
+    
+    // Get and log configuration
     const config = getSupabaseConfig();
-    console.log('[App] Supabase Config:', config);
-    console.log('[App] Supabase Connection Status:', SUPABASE_CONNECTION_STATUS);
+    console.log('[App] 📋 Supabase Config:', config);
+    console.log('[App] 📊 Supabase Connection Status:', SUPABASE_CONNECTION_STATUS);
     
-    verifySupabaseConnection().then((status) => {
+    // Run comprehensive verification
+    runNativelySupabaseVerification().then((status) => {
       console.log('[App] ═══════════════════════════════════════════════════');
-      if (status.connected) {
-        console.log('[App] ✅ SUPABASE CONNECTION VERIFIED SUCCESSFULLY');
+      if (status.verified) {
+        console.log('[App] ✅✅✅ SUPABASE CONNECTION VERIFIED FOR NATIVELY.DEV ✅✅✅');
         console.log('[App] ═══════════════════════════════════════════════════');
+        console.log('[App] 🎉 Connection Status: ACTIVE');
+        console.log('[App] 🎉 Integration Status: VERIFIED');
+        console.log('[App] 🎉 Natively Detection: SUCCESS');
+        console.log('[App] ═══════════════════════════════════════════════════');
+        console.log('[App] Details:');
         console.log('[App] - URL:', status.url);
-        console.log('[App] - Auth configured:', status.authConfigured);
-        console.log('[App] - Database accessible:', status.databaseAccessible);
+        console.log('[App] - Auth working:', status.authWorking);
+        console.log('[App] - Database working:', status.databaseWorking);
         console.log('[App] - Anon key configured:', status.hasAnonKey);
-        console.log('[App] ═══════════════════════════════════════════════════');
-        console.log('[App] 🎉 NATIVELY + SUPABASE INTEGRATION ACTIVE');
+        console.log('[App] - Natively detected:', status.nativelyDetected);
         console.log('[App] ═══════════════════════════════════════════════════');
       } else {
-        console.error('[App] ❌ Supabase connection failed:', status.error);
+        console.error('[App] ⚠️  Supabase verification incomplete');
+        console.error('[App] Status:', status);
+        if (status.error) {
+          console.error('[App] Error:', status.error);
+        }
       }
+    }).catch((error) => {
+      console.error('[App] ❌ Verification failed with error:', error);
+    });
+    
+    // Also run legacy verification for backwards compatibility
+    verifySupabaseConnection().then((legacyStatus) => {
+      console.log('[App] 📋 Legacy verification result:', legacyStatus);
     });
   }, []);
 

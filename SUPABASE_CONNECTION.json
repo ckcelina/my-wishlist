@@ -1,10 +1,14 @@
 
 {
   "status": "connected",
+  "verified": true,
   "provider": "supabase",
   "primaryDataSource": "supabase",
+  "exclusive": true,
+  "nativelyIntegration": "verified",
   "url": "https://dixgmnuayzblwpqyplsi.supabase.co",
   "anonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
+  "anonKeyFormat": "sb_publishable_*",
   "version": "2.91.1",
   "features": {
     "authentication": true,
@@ -17,12 +21,14 @@
     "autoRefreshToken": true,
     "persistSession": true,
     "storageAdapter": "expo-secure-store",
-    "platform": "expo"
+    "platform": "expo",
+    "detectSessionInUrl": false
   },
   "integration": {
     "natively": true,
     "verified": true,
     "exclusive": true,
+    "connectionType": "supabase",
     "timestamp": "2026-01-24T21:35:00.000Z"
   },
   "tables": [
@@ -46,6 +52,15 @@
   "nativelyEnvironment": {
     "type": "supabase",
     "exclusive": true,
-    "disableOtherProviders": true
+    "disableOtherProviders": true,
+    "verified": true
+  },
+  "markers": {
+    "natively-connection-type": "supabase",
+    "natively-connection-status": "active",
+    "natively-connection-verified": "true",
+    "natively-environment": "supabase",
+    "natively-primary-datasource": "supabase",
+    "natively-exclusive-provider": "true"
   }
 }

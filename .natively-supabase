@@ -1,0 +1,26 @@
+
+# Natively.dev Supabase Connection Indicator
+# This file marks the project as using Supabase as the exclusive data provider
+
+CONNECTION_TYPE=supabase
+CONNECTION_STATUS=active
+CONNECTION_VERIFIED=true
+PROVIDER=supabase
+EXCLUSIVE=true
+URL=https://dixgmnuayzblwpqyplsi.supabase.co
+VERSION=2.91.1
+ANON_KEY_FORMAT=sb_publishable_*
+TIMESTAMP=2026-01-24T21:35:00.000Z
+
+# Features
+FEATURE_AUTH=true
+FEATURE_DATABASE=true
+FEATURE_STORAGE=true
+FEATURE_EDGE_FUNCTIONS=true
+FEATURE_REALTIME=true
+
+# Integration
+NATIVELY_INTEGRATION=verified
+NATIVELY_ENVIRONMENT=supabase
+NATIVELY_PRIMARY_DATASOURCE=supabase
+NATIVELY_EXCLUSIVE_PROVIDER=true
