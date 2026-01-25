@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "My Wishlist",
@@ -89,7 +90,8 @@
       "supabaseAnonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
       "nativelyEnvironment": "supabase",
       "nativelyPrimaryDataSource": "supabase",
-      "nativelyExclusiveProvider": true
+      "nativelyExclusiveProvider": true,
+      "backendUrl": "http://localhost:8082"
     }
   },
   "scheme": "My Wishlist"
