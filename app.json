@@ -97,6 +97,12 @@
       "nativelyEnvironment": "supabase",
       "nativelyPrimaryDataSource": "supabase",
       "nativelyExclusiveProvider": true
+    },
+    "updates": {
+      "url": "https://u.expo.dev/YOUR_PROJECT_ID"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   },
   "scheme": "My Wishlist"

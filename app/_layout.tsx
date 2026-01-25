@@ -16,7 +16,12 @@ import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-co
 import { runNativelySupabaseVerification, logNativelyConnectionStatus } from '@/utils/natively-supabase-verification';
 import { SUPABASE_CONNECTION_STATUS } from '@/lib/supabase';
 import { createColors } from '@/styles/designSystem';
-import { logAppVersionToSupabase, getVersionInfo, displayVersionInfo } from '@/utils/versionTracking';
+import { 
+  logAppVersionToSupabase, 
+  getVersionInfo, 
+  displayVersionInfo,
+  checkForUpdatesAndLog 
+} from '@/utils/versionTracking';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -54,6 +59,16 @@ function RootLayoutNav() {
       router.replace('/(tabs)/wishlists');
     }
   }, [user, loading, segments, router]);
+
+  // Check for updates and log version when user is authenticated
+  useEffect(() => {
+    if (user && !loading) {
+      console.log('[RootLayout] User authenticated, checking for EAS updates...');
+      checkForUpdatesAndLog(user.id).catch((error) => {
+        console.error('[RootLayout] Error checking for updates:', error);
+      });
+    }
+  }, [user, loading]);
 
   if (loading) {
     return (
@@ -96,6 +111,7 @@ export default function RootLayout() {
       displayVersionInfo(versionInfo);
       
       // Log version to Supabase (without user ID on app start)
+      // This will track every app launch and deployment
       logAppVersionToSupabase().catch((error) => {
         console.error('[App] Error logging version on app start:', error);
       });

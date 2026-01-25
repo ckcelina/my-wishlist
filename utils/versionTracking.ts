@@ -2,15 +2,17 @@
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 import { supabase } from '@/lib/supabase';
 
 /**
  * Version Tracking Utility
  * 
  * This utility automatically tracks app version information in Supabase
- * whenever the app is deployed or started. It logs:
+ * whenever the app is deployed through EAS or started. It logs:
  * - App version (from app.json)
  * - Build number (native build version)
+ * - EAS Update ID (for OTA updates)
  * - Platform (iOS, Android, Web)
  * - Device information
  * - Deployment timestamp
@@ -27,6 +29,9 @@ interface VersionInfo {
   appName: string | null;
   isDevice: boolean;
   expoVersion: string | null;
+  updateId: string | null;
+  channel: string | null;
+  runtimeVersion: string | null;
 }
 
 interface DeploymentLog {
@@ -37,12 +42,16 @@ interface DeploymentLog {
   bundleId: string | null;
   appName: string | null;
   expoVersion: string | null;
+  updateId: string | null;
+  channel: string | null;
+  runtimeVersion: string | null;
   deployedAt: string;
   environment: 'development' | 'production';
 }
 
 /**
  * Get comprehensive version information about the current app
+ * including EAS Update information
  */
 export async function getVersionInfo(): Promise<VersionInfo> {
   console.log('[VersionTracking] Gathering version information...');
@@ -51,6 +60,28 @@ export async function getVersionInfo(): Promise<VersionInfo> {
   const buildVersion = Application.nativeBuildVersion;
   const bundleId = Application.applicationId;
   const appName = Application.applicationName;
+
+  // Get EAS Update information
+  let updateId: string | null = null;
+  let channel: string | null = null;
+  let runtimeVersion: string | null = null;
+
+  try {
+    if (Updates.isEnabled) {
+      updateId = Updates.updateId || null;
+      channel = Updates.channel || null;
+      runtimeVersion = Updates.runtimeVersion || null;
+      
+      console.log('[VersionTracking] EAS Updates enabled');
+      console.log('[VersionTracking] Update ID:', updateId);
+      console.log('[VersionTracking] Channel:', channel);
+      console.log('[VersionTracking] Runtime Version:', runtimeVersion);
+    } else {
+      console.log('[VersionTracking] EAS Updates not enabled (development mode)');
+    }
+  } catch (error) {
+    console.log('[VersionTracking] Could not get EAS Update info:', error);
+  }
 
   console.log('[VersionTracking] App Version:', appVersion);
   console.log('[VersionTracking] Build Version:', buildVersion);
@@ -68,8 +99,11 @@ export async function getVersionInfo(): Promise<VersionInfo> {
     deviceName: Constants.deviceName || null,
     bundleId,
     appName,
-    isDevice: !Constants.isDevice,
+    isDevice: Constants.isDevice,
     expoVersion: Constants.expoVersion || null,
+    updateId,
+    channel,
+    runtimeVersion,
   };
 
   return versionInfo;
@@ -77,7 +111,7 @@ export async function getVersionInfo(): Promise<VersionInfo> {
 
 /**
  * Log the current app version to Supabase
- * This is called automatically when the app starts
+ * This is called automatically when the app starts or when deployed via EAS
  */
 export async function logAppVersionToSupabase(userId?: string): Promise<void> {
   try {
@@ -95,6 +129,9 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
       bundleId: versionInfo.bundleId,
       appName: versionInfo.appName,
       expoVersion: versionInfo.expoVersion,
+      updateId: versionInfo.updateId,
+      channel: versionInfo.channel,
+      runtimeVersion: versionInfo.runtimeVersion,
       deployedAt: new Date().toISOString(),
       environment: __DEV__ ? 'development' : 'production',
     };
@@ -113,6 +150,9 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
         bundle_id: deploymentLog.bundleId,
         app_name: deploymentLog.appName,
         expo_version: deploymentLog.expoVersion,
+        update_id: deploymentLog.updateId,
+        channel: deploymentLog.channel,
+        runtime_version: deploymentLog.runtimeVersion,
         environment: deploymentLog.environment,
         logged_at: deploymentLog.deployedAt,
       });
@@ -126,26 +166,7 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
         console.log('[VersionTracking] ═══════════════════════════════════════════════════');
         console.log('[VersionTracking] ⚠️  TABLE NOT FOUND: app_versions');
         console.log('[VersionTracking] ═══════════════════════════════════════════════════');
-        console.log('[VersionTracking] Please create the table in Supabase with this SQL:');
-        console.log('[VersionTracking]');
-        console.log('[VersionTracking] CREATE TABLE app_versions (');
-        console.log('[VersionTracking]   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),');
-        console.log('[VersionTracking]   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,');
-        console.log('[VersionTracking]   app_version TEXT,');
-        console.log('[VersionTracking]   build_version TEXT,');
-        console.log('[VersionTracking]   platform TEXT NOT NULL,');
-        console.log('[VersionTracking]   platform_version TEXT,');
-        console.log('[VersionTracking]   bundle_id TEXT,');
-        console.log('[VersionTracking]   app_name TEXT,');
-        console.log('[VersionTracking]   expo_version TEXT,');
-        console.log('[VersionTracking]   environment TEXT NOT NULL,');
-        console.log('[VersionTracking]   logged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),');
-        console.log('[VersionTracking]   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
-        console.log('[VersionTracking] );');
-        console.log('[VersionTracking]');
-        console.log('[VersionTracking] CREATE INDEX idx_app_versions_user_id ON app_versions(user_id);');
-        console.log('[VersionTracking] CREATE INDEX idx_app_versions_logged_at ON app_versions(logged_at DESC);');
-        console.log('[VersionTracking] CREATE INDEX idx_app_versions_platform ON app_versions(platform);');
+        console.log('[VersionTracking] Please run the migration in supabase/migrations/');
         console.log('[VersionTracking] ═══════════════════════════════════════════════════');
       }
       return;
@@ -156,6 +177,51 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
     console.log('[VersionTracking] ═══════════════════════════════════════════════════');
   } catch (error) {
     console.error('[VersionTracking] ❌ Unexpected error logging version:', error);
+  }
+}
+
+/**
+ * Check for EAS Updates and log new deployments
+ * This should be called on app start to detect new OTA updates
+ */
+export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
+  try {
+    if (!Updates.isEnabled) {
+      console.log('[VersionTracking] EAS Updates not enabled, skipping update check');
+      return;
+    }
+
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] 🔄 CHECKING FOR EAS UPDATES');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
+
+    const update = await Updates.checkForUpdateAsync();
+
+    if (update.isAvailable) {
+      console.log('[VersionTracking] ✅ New update available!');
+      console.log('[VersionTracking] Fetching and applying update...');
+
+      await Updates.fetchUpdateAsync();
+      
+      // Log the new version before reloading
+      await logAppVersionToSupabase(userId);
+      
+      console.log('[VersionTracking] Update downloaded, reloading app...');
+      await Updates.reloadAsync();
+    } else {
+      console.log('[VersionTracking] No new updates available');
+      console.log('[VersionTracking] Current update ID:', Updates.updateId);
+      
+      // Still log the current version
+      await logAppVersionToSupabase(userId);
+    }
+
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
+  } catch (error) {
+    console.error('[VersionTracking] Error checking for updates:', error);
+    
+    // Still try to log the current version even if update check fails
+    await logAppVersionToSupabase(userId);
   }
 }
 
@@ -207,6 +273,26 @@ export async function getUserAppVersions(userId: string): Promise<DeploymentLog[
 }
 
 /**
+ * Get deployment statistics from Supabase
+ */
+export async function getDeploymentStatistics(): Promise<any> {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_version_statistics');
+
+    if (error) {
+      console.error('[VersionTracking] Error fetching deployment statistics:', error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('[VersionTracking] Error fetching deployment statistics:', error);
+    return null;
+  }
+}
+
+/**
  * Check if the current app version is outdated
  */
 export async function isAppVersionOutdated(): Promise<boolean> {
@@ -218,7 +304,7 @@ export async function isAppVersionOutdated(): Promise<boolean> {
       return false;
     }
 
-    // Simple version comparison (you can make this more sophisticated)
+    // Compare version strings
     return currentVersion.appVersion !== latestVersion.appVersion;
   } catch (error) {
     console.error('[VersionTracking] Error checking version:', error);
@@ -242,5 +328,14 @@ export function displayVersionInfo(versionInfo: VersionInfo): void {
   console.log('[VersionTracking] Device Model:', versionInfo.deviceModel);
   console.log('[VersionTracking] Expo Version:', versionInfo.expoVersion);
   console.log('[VersionTracking] Environment:', __DEV__ ? 'Development' : 'Production');
+  
+  if (versionInfo.updateId) {
+    console.log('[VersionTracking] ─────────────────────────────────────────────────────');
+    console.log('[VersionTracking] 🚀 EAS UPDATE INFORMATION');
+    console.log('[VersionTracking] Update ID:', versionInfo.updateId);
+    console.log('[VersionTracking] Channel:', versionInfo.channel);
+    console.log('[VersionTracking] Runtime Version:', versionInfo.runtimeVersion);
+  }
+  
   console.log('[VersionTracking] ═══════════════════════════════════════════════════');
 }

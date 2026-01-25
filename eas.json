@@ -7,20 +7,23 @@
       "autoIncrement": true,
       "ios": {
         "simulator": false
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
       "autoIncrement": true,
       "ios": {
         "simulator": false
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "ios": {
         "simulator": false
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
