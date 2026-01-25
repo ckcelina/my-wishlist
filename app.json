@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "My Wishlist",
@@ -21,7 +22,13 @@
       "associatedDomains": [
         "applinks:mywishlist.app",
         "applinks:https://dixgmnuayzblwpqyplsi.supabase.co"
-      ]
+      ],
+      "entitlements": {
+        "com.apple.developer.associated-domains": [
+          "applinks:mywishlist.app",
+          "applinks:https://dixgmnuayzblwpqyplsi.supabase.co"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
