@@ -126,18 +126,18 @@ export default function AddItemScreen() {
       marginBottom: spacing.sm,
     },
     input: {
-      borderWidth: 1,
-      borderColor: colors.border,
+      borderWidth: 1.5,
+      borderColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : colors.border,
       borderRadius: 12,
       padding: spacing.md,
       fontSize: 16,
       color: colors.text,
-      backgroundColor: colors.card,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.card,
       marginBottom: spacing.md,
-      // Improved placeholder visibility in dark mode
-      ...(theme.mode === 'dark' && {
-        placeholderTextColor: 'rgba(255,255,255,0.5)',
-      }),
+    },
+    inputFocused: {
+      borderColor: colors.accent,
+      borderWidth: 2,
     },
     textArea: {
       height: 100,
@@ -149,6 +149,8 @@ export default function AddItemScreen() {
       borderRadius: 12,
       alignItems: 'center',
       marginTop: spacing.sm,
+      minHeight: 48,
+      justifyContent: 'center',
       ...(theme.mode === 'light' && {
         shadowColor: colors.shadow,
         shadowOffset: { width: 0, height: 2 },
@@ -158,7 +160,8 @@ export default function AddItemScreen() {
       }),
     },
     buttonDisabled: {
-      opacity: 0.5,
+      opacity: 0.4,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : colors.border,
     },
     buttonText: {
       color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
@@ -533,9 +536,11 @@ export default function AddItemScreen() {
   };
 
   const renderUrlTab = () => {
-    const canExtract = urlInput.trim().length > 0 && !extracting;
+    const urlTrimmed = urlInput.trim();
+    const isValidHttpUrl = urlTrimmed.startsWith('http://') || urlTrimmed.startsWith('https://');
+    const canExtract = isValidHttpUrl && !extracting;
     const canSave = extractedItem !== null && !savingManual;
-    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
 
     return (
       <View style={styles.content}>
@@ -640,7 +645,7 @@ export default function AddItemScreen() {
 
   const renderManualTab = () => {
     const canSave = manualTitle.trim().length > 0 && !savingManual;
-    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
 
     return (
       <View style={styles.content}>
@@ -721,7 +726,7 @@ export default function AddItemScreen() {
   };
 
   const renderImageTab = () => {
-    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : colors.textSecondary;
+    const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
 
     return (
       <View style={styles.content}>

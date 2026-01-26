@@ -74,13 +74,13 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.2)',
     borderRadius: 8,
     padding: 12,
     fontSize: 16,
-    color: colors.text,
-    backgroundColor: colors.surface,
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(255,255,255,0.08)',
     marginBottom: 16,
   },
   textArea: {
@@ -88,17 +88,20 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   button: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FFFFFF',
     padding: 16,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   buttonDisabled: {
-    backgroundColor: colors.border,
+    opacity: 0.4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: '#3b2a1f',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -508,8 +511,11 @@ export default function AddItemScreen() {
   };
 
   const renderUrlTab = () => {
-    const canExtract = urlInput.trim().length > 0 && !extracting;
+    const urlTrimmed = urlInput.trim();
+    const isValidHttpUrl = urlTrimmed.startsWith('http://') || urlTrimmed.startsWith('https://');
+    const canExtract = isValidHttpUrl && !extracting;
     const canSave = extractedItem !== null && !savingManual;
+    const placeholderColor = 'rgba(255,255,255,0.55)';
 
     return (
       <View style={styles.content}>
@@ -517,7 +523,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="https://example.com/product"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={urlInput}
           onChangeText={setUrlInput}
           autoCapitalize="none"
@@ -532,7 +538,7 @@ export default function AddItemScreen() {
           disabled={!canExtract}
         >
           {extracting ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color="#3b2a1f" />
           ) : (
             <Text style={styles.buttonText}>Extract Item Details</Text>
           )}
@@ -570,7 +576,7 @@ export default function AddItemScreen() {
                   setExtractedItem({ ...extractedItem, title: text })
                 }
                 placeholder="Item title"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor="rgba(255,255,255,0.55)"
               />
 
               <Text style={styles.label}>Price</Text>
@@ -581,7 +587,7 @@ export default function AddItemScreen() {
                   setExtractedItem({ ...extractedItem, price: text })
                 }
                 placeholder="0.00"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor="rgba(255,255,255,0.55)"
                 keyboardType="decimal-pad"
               />
 
@@ -601,7 +607,7 @@ export default function AddItemScreen() {
               disabled={!canSave}
             >
               {savingManual ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color="#3b2a1f" />
               ) : (
                 <Text style={styles.buttonText}>Add to Wishlist</Text>
               )}
@@ -614,6 +620,7 @@ export default function AddItemScreen() {
 
   const renderManualTab = () => {
     const canSave = manualTitle.trim().length > 0 && !savingManual;
+    const placeholderColor = 'rgba(255,255,255,0.55)';
 
     return (
       <View style={styles.content}>
@@ -621,7 +628,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="Item name"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualTitle}
           onChangeText={setManualTitle}
         />
@@ -630,7 +637,7 @@ export default function AddItemScreen() {
         <TextInput
           style={styles.input}
           placeholder="0.00"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualPrice}
           onChangeText={setManualPrice}
           keyboardType="decimal-pad"
@@ -672,7 +679,7 @@ export default function AddItemScreen() {
         <TextInput
           style={[styles.input, styles.textArea]}
           placeholder="Add any notes about this item"
-          placeholderTextColor={colors.textSecondary}
+          placeholderTextColor={placeholderColor}
           value={manualNotes}
           onChangeText={setManualNotes}
           multiline
@@ -684,7 +691,7 @@ export default function AddItemScreen() {
           disabled={!canSave}
         >
           {savingManual ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color="#3b2a1f" />
           ) : (
             <Text style={styles.buttonText}>Add to Wishlist</Text>
           )}
@@ -745,7 +752,7 @@ export default function AddItemScreen() {
             disabled={identifyingImage}
           >
             {identifyingImage ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color="#3b2a1f" />
             ) : (
               <Text style={styles.buttonText}>Identify Product</Text>
             )}
