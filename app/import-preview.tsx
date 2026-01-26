@@ -21,6 +21,7 @@ import { Logo } from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
 import { BACKEND_URL, authenticatedPost, authenticatedGet } from '@/utils/api';
+import { dedupeById } from '@/utils/deduplication';
 
 interface ImportedItem {
   tempId: string;
@@ -110,8 +111,11 @@ export default function ImportPreviewScreen() {
             status: 'new' as const,
           };
         });
-        setItems(itemsWithIds);
-        const allIds = new Set(itemsWithIds.map((item: ImportedItem) => item.tempId));
+        
+        // Apply deduplication to prevent duplicate items
+        const deduplicatedItems = dedupeById(itemsWithIds, 'tempId');
+        setItems(deduplicatedItems);
+        const allIds = new Set(deduplicatedItems.map((item: ImportedItem) => item.tempId));
         setSelectedItems(allIds);
       } catch (error) {
         console.error('[ImportPreview] Error parsing items:', error);
@@ -207,7 +211,9 @@ export default function ImportPreviewScreen() {
         return item;
       });
 
-      setItems(updatedItems);
+      // Apply deduplication after updating availability
+      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
+      setItems(deduplicatedItems);
       console.log('[ImportPreview] Availability check completed');
     } catch (error) {
       console.error('[ImportPreview] Error checking items availability:', error);
@@ -291,7 +297,10 @@ export default function ImportPreviewScreen() {
         }
         return item;
       });
-      setItems(updatedItems);
+      
+      // Apply deduplication after marking duplicates
+      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
+      setItems(deduplicatedItems);
 
       if (response.groups.length > 0) {
         Alert.alert(
@@ -433,7 +442,10 @@ export default function ImportPreviewScreen() {
       const updatedItems = items.map(item =>
         item.tempId === updatedItem.tempId ? updatedItem : item
       );
-      setItems(updatedItems);
+      
+      // Apply deduplication after update
+      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
+      setItems(deduplicatedItems);
       setShowItemDetails(false);
       setSelectedItemForEdit(null);
     } catch (error) {

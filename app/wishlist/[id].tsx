@@ -29,6 +29,7 @@ import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
 import { EmptyState } from '@/components/design-system/EmptyState';
 import { OfflineNotice } from '@/components/design-system/OfflineNotice';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
+import { dedupeById, normalizeList } from '@/utils/deduplication';
 
 interface Item {
   id: string;
@@ -162,7 +163,9 @@ export default function WishlistDetailScreen() {
         lastCheckedAt: item.last_checked_at,
       }));
       
-      setItems(mappedItems);
+      // Apply deduplication to prevent duplicate items
+      const deduplicatedItems = dedupeById(mappedItems, 'id');
+      setItems(deduplicatedItems);
 
       // Price drop info - for now, we'll skip this since it requires backend API
       // This can be added later when price tracking is implemented

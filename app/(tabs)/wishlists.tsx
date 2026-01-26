@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { supabase } from '@/lib/supabase';
 import { getWishlistWithItemCount, createWishlist, updateWishlist, deleteWishlist } from '@/lib/supabase-helpers';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { OfflineNotice } from '@/components/design-system/OfflineNotice';
 import { ErrorState } from '@/components/design-system/ErrorState';
@@ -18,6 +18,7 @@ import { Logo } from '@/components/Logo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/design-system/Card';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { dedupeById, normalizeList } from '@/utils/deduplication';
 import {
   View,
   Text,
@@ -70,6 +71,11 @@ export default function WishlistsScreen() {
   
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
+
+  // Refs to prevent duplicate subscriptions and fetches
+  const subscriptionRef = useRef<any>(null);
+  const isFetchingRef = useRef(false);
+  const hasInitializedRef = useRef(false);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -245,7 +251,7 @@ export default function WishlistsScreen() {
       console.log('[WishlistsScreen] Default wishlist created successfully:', newWishlist.id);
       
       // Refresh the list
-      await fetchWishlistsFromNetwork(1, false);
+      await fetchWishlistsFromNetwork(false);
       
       // Navigate to the new wishlist
       router.push(`/wishlist/${newWishlist.id}`);
@@ -260,11 +266,19 @@ export default function WishlistsScreen() {
     }
   }, [user, initializing, router]);
 
-  const fetchWishlistsFromNetwork = useCallback(async (pageNum: number, append: boolean) => {
+  const fetchWishlistsFromNetwork = useCallback(async (append: boolean) => {
     if (!user?.id) {
       console.log('[WishlistsScreen] No user ID, skipping fetch');
       return;
     }
+
+    // Prevent duplicate fetches
+    if (isFetchingRef.current) {
+      console.log('[WishlistsScreen] Fetch already in progress, skipping');
+      return;
+    }
+
+    isFetchingRef.current = true;
 
     try {
       if (append) {
@@ -286,14 +300,20 @@ export default function WishlistsScreen() {
         updatedAt: w.updatedAt,
       }));
 
+      // Apply deduplication and normalization
+      const normalizedWishlists = normalizeList(formattedWishlists, 'id', 'updatedAt');
+
       if (append) {
-        setWishlists((prev) => [...prev, ...formattedWishlists]);
+        setWishlists((prev) => {
+          const combined = [...prev, ...normalizedWishlists];
+          return dedupeById(combined, 'id');
+        });
       } else {
-        setWishlists(formattedWishlists);
-        await setCachedData('wishlists', formattedWishlists);
+        setWishlists(normalizedWishlists);
+        await setCachedData('wishlists', normalizedWishlists);
         
         // If user has no wishlists, create a default one
-        if (formattedWishlists.length === 0 && !initializing) {
+        if (normalizedWishlists.length === 0 && !initializing) {
           console.log('[WishlistsScreen] No wishlists found, creating default wishlist');
           await initializeDefaultWishlist();
           return;
@@ -301,7 +321,7 @@ export default function WishlistsScreen() {
       }
 
       setHasMore(formattedWishlists.length === PAGE_SIZE);
-      console.log('[WishlistsScreen] Fetched wishlists:', formattedWishlists.length);
+      console.log('[WishlistsScreen] Fetched wishlists:', normalizedWishlists.length);
     } catch (err) {
       console.error('[WishlistsScreen] Error fetching wishlists:', err);
       console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
@@ -311,29 +331,89 @@ export default function WishlistsScreen() {
         const cached = await getCachedData<Wishlist[]>('wishlists');
         if (cached) {
           console.log('[WishlistsScreen] Using cached wishlists');
-          setWishlists(cached);
+          const normalizedCached = dedupeById(cached, 'id');
+          setWishlists(normalizedCached);
         }
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
       setLoadingMore(false);
+      isFetchingRef.current = false;
     }
   }, [user, initializing, initializeDefaultWishlist]);
 
-  useEffect(() => {
-    if (user) {
-      console.log('[WishlistsScreen] User authenticated, fetching wishlists');
-      fetchWishlistsFromNetwork(1, false);
+  // Setup realtime subscription (only once)
+  const setupRealtimeSubscription = useCallback(() => {
+    if (!user?.id) {
+      console.log('[WishlistsScreen] No user, skipping realtime subscription');
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+
+    // Prevent duplicate subscriptions
+    if (subscriptionRef.current) {
+      console.log('[WishlistsScreen] Realtime subscription already exists, skipping');
+      return;
+    }
+
+    console.log('[WishlistsScreen] Setting up realtime subscription for user:', user.id);
+
+    const channel = supabase
+      .channel('wishlists-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wishlists',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          console.log('[WishlistsScreen] Realtime update received:', payload.eventType);
+          
+          // Refetch wishlists on any change
+          fetchWishlistsFromNetwork(false);
+        }
+      )
+      .subscribe((status) => {
+        console.log('[WishlistsScreen] Realtime subscription status:', status);
+      });
+
+    subscriptionRef.current = channel;
+  }, [user, fetchWishlistsFromNetwork]);
+
+  // Cleanup realtime subscription
+  const cleanupRealtimeSubscription = useCallback(() => {
+    if (subscriptionRef.current) {
+      console.log('[WishlistsScreen] Cleaning up realtime subscription');
+      supabase.removeChannel(subscriptionRef.current);
+      subscriptionRef.current = null;
+    }
+  }, []);
+
+  // Initial fetch and subscription setup
+  useEffect(() => {
+    if (user && !hasInitializedRef.current) {
+      console.log('[WishlistsScreen] User authenticated, initializing');
+      hasInitializedRef.current = true;
+      fetchWishlistsFromNetwork(false);
+      setupRealtimeSubscription();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      console.log('[WishlistsScreen] Component unmounting, cleaning up');
+      cleanupRealtimeSubscription();
+      hasInitializedRef.current = false;
+      isFetchingRef.current = false;
+    };
+  }, [user, fetchWishlistsFromNetwork, setupRealtimeSubscription, cleanupRealtimeSubscription]);
 
   const handleRefresh = useCallback(() => {
     console.log('[WishlistsScreen] User triggered refresh');
     setRefreshing(true);
     setPage(1);
-    fetchWishlistsFromNetwork(1, false);
+    fetchWishlistsFromNetwork(false);
   }, [fetchWishlistsFromNetwork]);
 
   const handleLoadMore = useCallback(() => {
@@ -341,7 +421,7 @@ export default function WishlistsScreen() {
       console.log('[WishlistsScreen] Loading more wishlists');
       const nextPage = page + 1;
       setPage(nextPage);
-      fetchWishlistsFromNetwork(nextPage, true);
+      fetchWishlistsFromNetwork(true);
     }
   }, [loadingMore, hasMore, loading, page, fetchWishlistsFromNetwork]);
 
@@ -566,7 +646,7 @@ export default function WishlistsScreen() {
         {renderHeader()}
         <ErrorState
           message={error}
-          onRetry={() => fetchWishlistsFromNetwork(1, false)}
+          onRetry={() => fetchWishlistsFromNetwork(false)}
         />
       </SafeAreaView>
     );
