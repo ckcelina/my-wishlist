@@ -130,6 +130,30 @@ export const userSettings = pgTable(
   (table) => [index('user_settings_user_id_idx').on(table.userId)]
 );
 
+// User alert settings table
+export const userAlertSettings = pgTable(
+  'user_alert_settings',
+  {
+    userId: text('user_id')
+      .primaryKey()
+      .references(() => user.id, {
+        onDelete: 'cascade',
+      }),
+    alertsEnabled: boolean('alerts_enabled').default(true).notNull(),
+    notifyPriceDrops: boolean('notify_price_drops').default(true).notNull(),
+    notifyUnderTarget: boolean('notify_under_target').default(true).notNull(),
+    weeklyDigest: boolean('weekly_digest').default(false).notNull(),
+    quietHoursEnabled: boolean('quiet_hours_enabled').default(false).notNull(),
+    quietStart: text('quiet_start'), // "22:00" format
+    quietEnd: text('quiet_end'), // "08:00" format
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  }
+);
+
 // Relations
 export const wishlistsRelations = relations(wishlists, ({ many, one }) => ({
   items: many(wishlistItems),
@@ -177,6 +201,16 @@ export const userSettingsRelations = relations(userSettings, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+export const userAlertSettingsRelations = relations(
+  userAlertSettings,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userAlertSettings.userId],
+      references: [user.id],
+    }),
+  })
+);
 
 // User location table
 export const userLocation = pgTable(
