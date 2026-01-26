@@ -1,6 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import i18n from '@/lib/i18n';
+import { safeTranslate } from '@/lib/i18n';
 
 const TRANSLATION_DEBUG_KEY = '@wishlist_translation_debug';
 
@@ -31,6 +31,7 @@ export async function setTranslationDebugEnabled(enabled: boolean): Promise<void
 /**
  * Enhanced translation function with debug mode support
  * Shows missing keys in bright warning color when debug mode is enabled
+ * This is now a wrapper around the safe translate function
  */
 export function debugTranslate(
   key: string,
@@ -38,17 +39,11 @@ export function debugTranslate(
   debugEnabled: boolean = false
 ): string {
   try {
-    const translation = i18n.t(key, options);
+    const translation = safeTranslate(key, options);
     
-    // Check if translation is missing (i18next returns the key if not found)
-    if (translation === key || !translation) {
-      if (debugEnabled) {
-        // Return key in brackets with warning indicator
-        console.warn(`[TranslationDebug] Missing key: ${key}`);
-        return `[${key}]`;
-      }
-      // Fallback to empty string or key
-      return key;
+    // If debug mode is enabled and translation is missing (indicated by brackets)
+    if (debugEnabled && translation.startsWith('[') && translation.endsWith(']')) {
+      console.warn(`[TranslationDebug] Missing key: ${key}`);
     }
     
     return translation;
@@ -57,7 +52,7 @@ export function debugTranslate(
     if (debugEnabled) {
       return `[ERROR:${key}]`;
     }
-    return key;
+    return `[${key}]`;
   }
 }
 
@@ -99,7 +94,7 @@ export function validateTranslations(
   return {
     missingKeys,
     unusedKeys,
-    mismatchedParams: [], // TODO: Implement param validation
+    mismatchedParams: [],
   };
 }
 
@@ -116,7 +111,6 @@ export function extractTranslationKeys(
     const fullKey = prefix ? `${prefix}.${key}` : key;
     
     if (typeof obj[key] === 'object' && obj[key] !== null) {
-      // Recursively extract nested keys
       const nestedKeys = extractTranslationKeys(obj[key], fullKey);
       nestedKeys.forEach(k => keys.add(k));
     } else {

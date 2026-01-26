@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,14 +23,33 @@ export default function LanguageSelectorScreen() {
   const { theme } = useAppTheme();
   const { t } = useTranslation();
   const router = useRouter();
-  const { currentLanguage, languageMode, changeLanguage } = useI18n();
+  const { currentLanguage, languageMode, changeLanguage, isI18nReady, loading: i18nLoading } = useI18n();
   const [loading, setLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<'system' | 'manual'>(languageMode);
   const [selectedLanguage, setSelectedLanguage] = useState(currentLanguage);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Log diagnostic info
+  useEffect(() => {
+    console.log('[LanguageSelector] Component mounted');
+    console.log('[LanguageSelector] i18nReady:', isI18nReady);
+    console.log('[LanguageSelector] i18nLoading:', i18nLoading);
+    console.log('[LanguageSelector] currentLanguage:', currentLanguage);
+    console.log('[LanguageSelector] languageMode:', languageMode);
+    console.log('[LanguageSelector] supportedLanguages count:', SUPPORTED_LANGUAGES.length);
+  }, []);
+
+  // Update selected values when context changes
+  useEffect(() => {
+    setSelectedMode(languageMode);
+    setSelectedLanguage(currentLanguage);
+  }, [languageMode, currentLanguage]);
 
   const handleSelectMode = (mode: 'system' | 'manual') => {
     console.log('[LanguageSelector] Mode selected:', mode);
     setSelectedMode(mode);
+    setError(null);
     if (mode === 'system') {
       setSelectedLanguage(currentLanguage);
     }
@@ -39,28 +59,29 @@ export default function LanguageSelectorScreen() {
     console.log('[LanguageSelector] Language selected:', languageCode);
     setSelectedLanguage(languageCode);
     setSelectedMode('manual');
+    setError(null);
   };
 
   const handleSave = async () => {
     try {
       setLoading(true);
+      setError(null);
       console.log('[LanguageSelector] Saving:', selectedMode, selectedLanguage);
+      
+      if (!isI18nReady) {
+        throw new Error('i18n is not ready. Please try again.');
+      }
       
       await changeLanguage(selectedLanguage, selectedMode);
       
-      Alert.alert(
-        t('common.success'),
-        t('toast.languageUpdated'),
-        [
-          {
-            text: t('common.ok'),
-            onPress: () => router.back(),
-          },
-        ]
-      );
+      setShowSuccessModal(true);
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        router.back();
+      }, 1500);
     } catch (error) {
       console.error('[LanguageSelector] Error saving:', error);
-      Alert.alert(t('common.error'), String(error));
+      setError(error instanceof Error ? error.message : 'Failed to save language preference');
     } finally {
       setLoading(false);
     }
@@ -70,6 +91,17 @@ export default function LanguageSelectorScreen() {
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+    },
+    loadingText: {
+      marginTop: spacing.md,
+      fontSize: typography.sizes.md,
+      color: theme.colors.textSecondary,
     },
     content: {
       padding: spacing.lg,
@@ -156,7 +188,58 @@ export default function LanguageSelectorScreen() {
       fontWeight: typography.weights.semibold as any,
       color: '#FFFFFF',
     },
+    errorContainer: {
+      backgroundColor: '#FF3B3020',
+      padding: spacing.md,
+      borderRadius: 12,
+      margin: spacing.lg,
+      borderWidth: 1,
+      borderColor: '#FF3B30',
+    },
+    errorText: {
+      fontSize: typography.sizes.sm,
+      color: '#FF3B30',
+      textAlign: 'center',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: theme.colors.card,
+      borderRadius: 16,
+      padding: spacing.xl,
+      alignItems: 'center',
+      minWidth: 200,
+    },
+    modalText: {
+      fontSize: typography.sizes.lg,
+      fontWeight: typography.weights.semibold as any,
+      color: theme.colors.text,
+      marginTop: spacing.md,
+    },
   });
+
+  // Show loading state while i18n initializes
+  if (i18nLoading || !isI18nReady) {
+    return (
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Language',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.accent} />
+          <Text style={styles.loadingText}>Loading languages...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const hasChanges = selectedMode !== languageMode || selectedLanguage !== currentLanguage;
 
@@ -214,39 +297,52 @@ export default function LanguageSelectorScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t('profile.language')}</Text>
           
-          {SUPPORTED_LANGUAGES.map((lang) => (
-            <TouchableOpacity
-              key={lang.code}
-              style={[
-                styles.languageOption,
-                selectedLanguage === lang.code && styles.languageOptionSelected,
-              ]}
-              onPress={() => handleSelectLanguage(lang.code)}
-            >
-              <View style={styles.languageInfo}>
-                <Text style={styles.languageName}>{lang.name}</Text>
-                <Text style={styles.languageNative}>{lang.nativeName}</Text>
-              </View>
-              
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                {lang.rtl && (
-                  <View style={styles.rtlBadge}>
-                    <Text style={styles.rtlBadgeText}>RTL</Text>
-                  </View>
-                )}
-                {selectedLanguage === lang.code && (
-                  <IconSymbol
-                    ios_icon_name="checkmark.circle.fill"
-                    android_material_icon_name="check-circle"
-                    size={24}
-                    color={theme.colors.accent}
-                  />
-                )}
-              </View>
-            </TouchableOpacity>
-          ))}
+          {SUPPORTED_LANGUAGES.map((lang) => {
+            const languageCode = lang.code;
+            const languageName = lang.name;
+            const nativeName = lang.nativeName;
+            const isRTLLang = lang.isRTL || false;
+            
+            return (
+              <TouchableOpacity
+                key={languageCode}
+                style={[
+                  styles.languageOption,
+                  selectedLanguage === languageCode && styles.languageOptionSelected,
+                ]}
+                onPress={() => handleSelectLanguage(languageCode)}
+              >
+                <View style={styles.languageInfo}>
+                  <Text style={styles.languageName}>{languageName}</Text>
+                  <Text style={styles.languageNative}>{nativeName}</Text>
+                </View>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {isRTLLang && (
+                    <View style={styles.rtlBadge}>
+                      <Text style={styles.rtlBadgeText}>RTL</Text>
+                    </View>
+                  )}
+                  {selectedLanguage === languageCode && (
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check-circle"
+                      size={24}
+                      color={theme.colors.accent}
+                    />
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </ScrollView>
+
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={[
@@ -262,6 +358,24 @@ export default function LanguageSelectorScreen() {
           <Text style={styles.saveButtonText}>{t('common.save')}</Text>
         )}
       </TouchableOpacity>
+
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <IconSymbol
+              ios_icon_name="checkmark.circle.fill"
+              android_material_icon_name="check-circle"
+              size={48}
+              color={theme.colors.accent}
+            />
+            <Text style={styles.modalText}>{t('toast.languageUpdated')}</Text>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

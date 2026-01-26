@@ -1,37 +1,85 @@
-import { Link, Stack } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+
+import { Link, Stack, useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useMemo } from 'react';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
 
 export default function NotFoundScreen() {
-    return (
-        <>
-            <Stack.Screen options={{ title: 'Oops!' }} />
-            <View style={styles.container}>
-                <Text style={styles.title}>This screen doesn't exist.</Text>
-                <Link href="/" style={styles.link}>
-                    <Text style={styles.linkText}>Go to home screen!</Text>
-                </Link>
-            </View>
-        </>
-    );
-}
+  const { theme } = useAppTheme();
+  const router = useRouter();
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(), []);
 
-const styles = StyleSheet.create({
+  const styles = useMemo(() => StyleSheet.create({
     container: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.xl,
+    },
+    iconContainer: {
+      marginBottom: spacing.xl,
     },
     title: {
-        fontSize: 20,
-        fontWeight: 'bold',
+      fontSize: typography.sizes.xxl,
+      fontWeight: typography.weights.bold as any,
+      color: colors.text,
+      marginBottom: spacing.md,
+      textAlign: 'center',
     },
-    link: {
-        marginTop: 15,
-        paddingVertical: 15,
+    message: {
+      fontSize: typography.sizes.md,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: spacing.xl,
+      lineHeight: 24,
     },
-    linkText: {
-        fontSize: 14,
-        color: '#2e78b7',
+    button: {
+      backgroundColor: colors.accent,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+      borderRadius: 12,
+      minWidth: 200,
+      alignItems: 'center',
     },
-});
+    buttonText: {
+      color: '#FFFFFF',
+      fontSize: typography.sizes.md,
+      fontWeight: typography.weights.semibold as any,
+    },
+  }), [colors, typography]);
+
+  const handleGoHome = () => {
+    router.replace('/(tabs)/wishlists');
+  };
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.content}>
+        <View style={styles.iconContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={64}
+            color={colors.accent}
+          />
+        </View>
+        <Text style={styles.title}>Page Not Found</Text>
+        <Text style={styles.message}>
+          This screen doesn't exist. Let's get you back to your wishlists.
+        </Text>
+        <TouchableOpacity style={styles.button} onPress={handleGoHome}>
+          <Text style={styles.buttonText}>Go to Wishlists</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
