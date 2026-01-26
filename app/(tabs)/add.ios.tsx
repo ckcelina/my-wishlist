@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
-    paddingTop: 8,
+    paddingTop: 12,
   },
   tab: {
     flex: 1,
@@ -71,13 +71,13 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.primary,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
     fontWeight: '500',
   },
   tabTextActive: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   scrollContent: {
     paddingBottom: 140,
@@ -85,6 +85,14 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
+  },
+  formCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.divider,
   },
   label: {
     fontSize: 14,
@@ -95,7 +103,7 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 12,
     fontSize: 16,
     color: '#FFFFFF',
@@ -109,7 +117,7 @@ const styles = StyleSheet.create({
   button: {
     backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
     minHeight: 48,
@@ -125,11 +133,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   secondaryButton: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.12)',
     borderWidth: 1,
     borderColor: colors.border,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
   },
@@ -139,17 +147,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   previewCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.divider,
   },
   previewImage: {
     width: '100%',
     height: 200,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 12,
   },
   previewTitle: {
@@ -172,10 +180,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.border,
     borderStyle: 'dashed',
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 40,
     alignItems: 'center',
     marginBottom: 16,
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
   imagePickerText: {
     fontSize: 14,
@@ -185,7 +194,7 @@ const styles = StyleSheet.create({
   selectedImage: {
     width: '100%',
     height: 200,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
   },
   removeImageButton: {
@@ -539,30 +548,32 @@ export default function AddItemScreen() {
 
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Product URL</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="https://example.com/product"
-          placeholderTextColor={placeholderColor}
-          value={urlInput}
-          onChangeText={setUrlInput}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          editable={!extracting}
-        />
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Product URL</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="https://example.com/product"
+            placeholderTextColor={placeholderColor}
+            value={urlInput}
+            onChangeText={setUrlInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            editable={!extracting}
+          />
 
-        <TouchableOpacity
-          style={[styles.button, !canExtract && styles.buttonDisabled]}
-          onPress={handleExtractItem}
-          disabled={!canExtract}
-        >
-          {extracting ? (
-            <ActivityIndicator color="#3b2a1f" />
-          ) : (
-            <Text style={styles.buttonText}>Extract Item Details</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, !canExtract && styles.buttonDisabled]}
+            onPress={handleExtractItem}
+            disabled={!canExtract}
+          >
+            {extracting ? (
+              <ActivityIndicator color="#3b2a1f" />
+            ) : (
+              <Text style={styles.buttonText}>Extract Item Details</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {extractedItem && (
           <>
@@ -644,78 +655,80 @@ export default function AddItemScreen() {
 
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Title *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Item name"
-          placeholderTextColor={placeholderColor}
-          value={manualTitle}
-          onChangeText={setManualTitle}
-        />
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Title *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Item name"
+            placeholderTextColor={placeholderColor}
+            value={manualTitle}
+            onChangeText={setManualTitle}
+          />
 
-        <Text style={styles.label}>Price (optional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="0.00"
-          placeholderTextColor={placeholderColor}
-          value={manualPrice}
-          onChangeText={setManualPrice}
-          keyboardType="decimal-pad"
-        />
+          <Text style={styles.label}>Price (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="0.00"
+            placeholderTextColor={placeholderColor}
+            value={manualPrice}
+            onChangeText={setManualPrice}
+            keyboardType="decimal-pad"
+          />
 
-        <Text style={styles.label}>Image (optional)</Text>
-        {manualImageUrl ? (
-          <View>
-            <Image
-              source={resolveImageSource(manualImageUrl)}
-              style={styles.selectedImage}
-              resizeMode="cover"
-            />
-            <TouchableOpacity
-              style={styles.removeImageButton}
-              onPress={handleRemoveManualImage}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={16}
-                color="#FFFFFF"
+          <Text style={styles.label}>Image (optional)</Text>
+          {manualImageUrl ? (
+            <View>
+              <Image
+                source={resolveImageSource(manualImageUrl)}
+                style={styles.selectedImage}
+                resizeMode="cover"
               />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="image"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.imagePickerText}>Tap to add image</Text>
-          </TouchableOpacity>
-        )}
-
-        <Text style={styles.label}>Notes (optional)</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Add any notes about this item"
-          placeholderTextColor={placeholderColor}
-          value={manualNotes}
-          onChangeText={setManualNotes}
-          multiline
-        />
-
-        <TouchableOpacity
-          style={[styles.button, !canSave && styles.buttonDisabled]}
-          onPress={handleSaveManualItem}
-          disabled={!canSave}
-        >
-          {savingManual ? (
-            <ActivityIndicator color="#3b2a1f" />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={handleRemoveManualImage}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={16}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
           ) : (
-            <Text style={styles.buttonText}>Add to Wishlist</Text>
+            <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
+              <IconSymbol
+                ios_icon_name="photo"
+                android_material_icon_name="image"
+                size={32}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.imagePickerText}>Tap to add image</Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+
+          <Text style={styles.label}>Notes (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Add any notes about this item"
+            placeholderTextColor={placeholderColor}
+            value={manualNotes}
+            onChangeText={setManualNotes}
+            multiline
+          />
+
+          <TouchableOpacity
+            style={[styles.button, !canSave && styles.buttonDisabled]}
+            onPress={handleSaveManualItem}
+            disabled={!canSave}
+          >
+            {savingManual ? (
+              <ActivityIndicator color="#3b2a1f" />
+            ) : (
+              <Text style={styles.buttonText}>Add to Wishlist</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -723,68 +736,70 @@ export default function AddItemScreen() {
   const renderImageTab = () => {
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Upload or Paste Image</Text>
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Upload or Paste Image</Text>
 
-        {selectedImageUri ? (
-          <View>
-            <Image
-              source={resolveImageSource(selectedImageUri)}
-              style={styles.selectedImage}
-              resizeMode="cover"
-            />
+          {selectedImageUri ? (
+            <View>
+              <Image
+                source={resolveImageSource(selectedImageUri)}
+                style={styles.selectedImage}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={() => setSelectedImageUri(null)}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={16}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              style={styles.removeImageButton}
-              onPress={() => setSelectedImageUri(null)}
+              style={styles.imagePickerButton}
+              onPress={handleUploadImageForIdentification}
             >
               <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={16}
-                color="#FFFFFF"
+                ios_icon_name="camera"
+                android_material_icon_name="camera"
+                size={32}
+                color={colors.textSecondary}
               />
+              <Text style={styles.imagePickerText}>Tap to select image</Text>
             </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.imagePickerButton}
-            onPress={handleUploadImageForIdentification}
-          >
-            <IconSymbol
-              ios_icon_name="camera"
-              android_material_icon_name="camera"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.imagePickerText}>Tap to select image</Text>
-          </TouchableOpacity>
-        )}
+          )}
 
-        {!selectedImageUri && (
-          <TouchableOpacity style={styles.secondaryButton} onPress={handlePasteImageUrl}>
-            <Text style={styles.secondaryButtonText}>Paste Image URL</Text>
-          </TouchableOpacity>
-        )}
+          {!selectedImageUri && (
+            <TouchableOpacity style={styles.secondaryButton} onPress={handlePasteImageUrl}>
+              <Text style={styles.secondaryButtonText}>Paste Image URL</Text>
+            </TouchableOpacity>
+          )}
 
-        {selectedImageUri && (
-          <TouchableOpacity
-            style={[styles.button, identifyingImage && styles.buttonDisabled]}
-            onPress={handleIdentifyProduct}
-            disabled={identifyingImage}
-          >
-            {identifyingImage ? (
-              <ActivityIndicator color="#3b2a1f" />
-            ) : (
-              <Text style={styles.buttonText}>Identify Product</Text>
-            )}
-          </TouchableOpacity>
-        )}
+          {selectedImageUri && (
+            <TouchableOpacity
+              style={[styles.button, identifyingImage && styles.buttonDisabled]}
+              onPress={handleIdentifyProduct}
+              disabled={identifyingImage}
+            >
+              {identifyingImage ? (
+                <ActivityIndicator color="#3b2a1f" />
+              ) : (
+                <Text style={styles.buttonText}>Identify Product</Text>
+              )}
+            </TouchableOpacity>
+          )}
 
-        {identifyingImage && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Analyzing image...</Text>
-          </View>
-        )}
+          {identifyingImage && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Analyzing image...</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };

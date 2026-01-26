@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Button } from '@/components/design-system/Button';
-import { Card } from '@/components/design-system/Card';
+import { Toast } from '@/components/design-system/Toast';
 import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
 import { authenticatedGet, authenticatedPost, authenticatedDelete } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
@@ -25,6 +25,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { CountryPicker } from '@/components/pickers/CountryPicker';
 import { CityPicker } from '@/components/pickers/CityPicker';
 import { getCountryFlag } from '@/constants/countries';
+import debounce from 'lodash.debounce';
 
 interface UserLocation {
   id: string;
@@ -44,21 +45,7 @@ interface UserLocation {
 
 // Countries that support area/address fields
 const COUNTRIES_WITH_AREA_SUPPORT = [
-  'AE', // UAE
-  'SA', // Saudi Arabia
-  'KW', // Kuwait
-  'QA', // Qatar
-  'BH', // Bahrain
-  'OM', // Oman
-  'IN', // India
-  'PK', // Pakistan
-  'BD', // Bangladesh
-  'PH', // Philippines
-  'ID', // Indonesia
-  'MY', // Malaysia
-  'SG', // Singapore
-  'TH', // Thailand
-  'VN', // Vietnam
+  'AE', 'SA', 'KW', 'QA', 'BH', 'OM', 'IN', 'PK', 'BD', 'PH', 'ID', 'MY', 'SG', 'TH', 'VN',
 ];
 
 interface CityResult {
@@ -93,6 +80,10 @@ export default function LocationScreen() {
 
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showCityPicker, setShowCityPicker] = useState(false);
+  
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error'>('success');
   
   const showAreaFields = COUNTRIES_WITH_AREA_SUPPORT.includes(countryCode);
 
@@ -130,47 +121,17 @@ export default function LocationScreen() {
     }
   }, [user, fetchLocation]);
 
-  const handleSelectCountry = (country: { countryName: string; countryCode: string }) => {
-    console.log('[LocationScreen] User selected country:', country.countryCode, country.countryName);
-    haptics.selection();
-    setCountryCode(country.countryCode);
-    setCountryName(country.countryName);
-    setCity('');
-    setRegion('');
-    setGeonameId(null);
-    setLat(null);
-    setLng(null);
-    setArea('');
-    setAddressLine('');
-  };
-
-  const handleSelectCity = (cityResult: CityResult) => {
-    console.log('[LocationScreen] User selected city:', cityResult);
-    haptics.selection();
-    setCity(cityResult.name);
-    setRegion(cityResult.region || '');
-    setGeonameId(cityResult.geonameId);
-    setLat(cityResult.lat);
-    setLng(cityResult.lng);
-  };
-
-  const handleSave = async () => {
+  const saveLocation = async (showToast: boolean = true) => {
     if (!countryCode || !countryName) {
-      haptics.warning();
-      Alert.alert('Required Field', 'Please select a country');
+      console.log('[LocationScreen] Cannot save: missing country');
       return;
     }
 
-    console.log('[LocationScreen] Saving location:', {
+    console.log('[LocationScreen] Autosaving location:', {
       countryCode,
       countryName,
       city,
       region,
-      geonameId,
-      lat,
-      lng,
-      area,
-      addressLine,
     });
 
     setSaving(true);
@@ -188,20 +149,74 @@ export default function LocationScreen() {
       });
 
       console.log('[LocationScreen] Location saved successfully');
-      haptics.success();
-      Alert.alert('Success', 'Your shopping location has been saved', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
+      setHasLocation(true);
+      
+      if (showToast) {
+        setToastMessage('Location saved');
+        setToastType('success');
+        setToastVisible(true);
+        haptics.success();
+      }
     } catch (error) {
       console.error('[LocationScreen] Error saving location:', error);
-      haptics.error();
-      Alert.alert('Error', 'Failed to save location');
+      
+      if (showToast) {
+        setToastMessage('Failed to save location');
+        setToastType('error');
+        setToastVisible(true);
+        haptics.error();
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  // Debounced autosave function
+  const debouncedSave = useRef(
+    debounce((showToast: boolean) => {
+      saveLocation(showToast);
+    }, 400)
+  ).current;
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedSave.cancel();
+    };
+  }, [debouncedSave]);
+
+  const handleSelectCountry = (country: { countryName: string; countryCode: string }) => {
+    console.log('[LocationScreen] User selected country:', country.countryCode, country.countryName);
+    haptics.selection();
+    setCountryCode(country.countryCode);
+    setCountryName(country.countryName);
+    setCity('');
+    setRegion('');
+    setGeonameId(null);
+    setLat(null);
+    setLng(null);
+    setArea('');
+    setAddressLine('');
+    
+    // Autosave after country selection
+    setTimeout(() => {
+      debouncedSave(true);
+    }, 100);
+  };
+
+  const handleSelectCity = (cityResult: CityResult) => {
+    console.log('[LocationScreen] User selected city:', cityResult);
+    haptics.selection();
+    setCity(cityResult.name);
+    setRegion(cityResult.region || '');
+    setGeonameId(cityResult.geonameId);
+    setLat(cityResult.lat);
+    setLng(cityResult.lng);
+    
+    // Autosave after city selection
+    setTimeout(() => {
+      debouncedSave(true);
+    }, 100);
   };
 
   const handleDelete = async () => {
@@ -236,7 +251,6 @@ export default function LocationScreen() {
     );
   };
 
-  const isFormValid = countryCode && countryName;
   const countryFlag = getCountryFlag(countryCode);
   const countryDisplayText = countryName ? `${countryFlag} ${countryName}` : 'Select Country';
   const cityDisplayText = city || 'Select City (Optional)';
@@ -266,6 +280,13 @@ export default function LocationScreen() {
         }}
       />
 
+      <Toast
+        visible={toastVisible}
+        message={toastMessage}
+        type={toastType}
+        onHide={() => setToastVisible(false)}
+      />
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View entering={FadeInDown.delay(0).springify()}>
           <Text style={[styles.description, { color: theme.colors.textSecondary }]}>
@@ -279,7 +300,7 @@ export default function LocationScreen() {
             <Text style={styles.required}> *</Text>
           </Text>
           <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-            Required - Select your country
+            Required - Saves automatically
           </Text>
 
           <TouchableOpacity
@@ -304,7 +325,7 @@ export default function LocationScreen() {
         <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
           <Text style={[styles.label, { color: theme.colors.text }]}>City</Text>
           <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-            Optional - May be required for some stores
+            Optional - Saves automatically
           </Text>
 
           <TouchableOpacity
@@ -349,7 +370,10 @@ export default function LocationScreen() {
               <TextInput
                 style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
                 value={area}
-                onChangeText={setArea}
+                onChangeText={(text) => {
+                  setArea(text);
+                  debouncedSave(false);
+                }}
                 placeholder="e.g., Downtown, Marina District"
                 placeholderTextColor={theme.colors.textSecondary}
               />
@@ -364,7 +388,10 @@ export default function LocationScreen() {
               <TextInput
                 style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
                 value={addressLine}
-                onChangeText={setAddressLine}
+                onChangeText={(text) => {
+                  setAddressLine(text);
+                  debouncedSave(false);
+                }}
                 placeholder="e.g., 123 Main Street, Building A"
                 placeholderTextColor={theme.colors.textSecondary}
                 multiline
@@ -374,23 +401,15 @@ export default function LocationScreen() {
           </>
         )}
 
-        <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.buttonContainer}>
-          <Button
-            title={saving ? 'Saving...' : 'Save Location'}
-            onPress={handleSave}
-            disabled={!isFormValid || saving}
-            loading={saving}
-          />
-
-          {hasLocation && (
+        {hasLocation && (
+          <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.buttonContainer}>
             <Button
               title="Remove Location"
               onPress={handleDelete}
               variant="secondary"
-              style={styles.deleteButton}
             />
-          )}
-        </Animated.View>
+          </Animated.View>
+        )}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -474,9 +493,6 @@ const styles = StyleSheet.create({
   buttonContainer: {
     gap: spacing.sm,
     marginTop: spacing.md,
-  },
-  deleteButton: {
-    marginTop: spacing.xs,
   },
   bottomPadding: {
     height: 100,

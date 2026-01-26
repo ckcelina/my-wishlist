@@ -1,9 +1,11 @@
 
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import * as Linking from 'expo-linking';
 import React, { useState, useEffect, useMemo } from 'react';
-import * as Clipboard from 'expo-clipboard';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
+import * as Clipboard from 'expo-clipboard';
 import {
   View,
   Text,
@@ -20,15 +22,13 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
 } from 'react-native';
-import Constants from 'expo-constants';
-import { useAuth } from '@/contexts/AuthContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage } from '@/utils/supabase-edge-functions';
 import { createWishlistItem } from '@/lib/supabase-helpers';
-import { useAppTheme } from '@/contexts/ThemeContext';
-import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import Constants from 'expo-constants';
+import { IconSymbol } from '@/components/IconSymbol';
 import { StatusBar } from 'expo-status-bar';
+import { useAuth } from '@/contexts/AuthContext';
 
 type TabType = 'url' | 'manual' | 'image';
 
@@ -118,11 +118,11 @@ export default function AddItemScreen() {
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       backgroundColor: colors.card,
-      paddingTop: spacing.sm,
+      paddingTop: spacing.md,
     },
     tab: {
       flex: 1,
-      paddingVertical: 16,
+      paddingVertical: spacing.md,
       alignItems: 'center',
     },
     tabActive: {
@@ -130,19 +130,34 @@ export default function AddItemScreen() {
       borderBottomColor: colors.accent,
     },
     tabText: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.textSecondary,
       fontWeight: '500',
     },
     tabTextActive: {
       color: colors.accent,
-      fontWeight: '600',
+      fontWeight: '700',
     },
     scrollContent: {
       paddingBottom: scrollViewBottomPadding,
     },
     content: {
       padding: spacing.lg,
+    },
+    formCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: isDark ? colors.divider : 'transparent',
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 2,
+      }),
     },
     label: {
       fontSize: 14,
@@ -157,7 +172,7 @@ export default function AddItemScreen() {
       padding: spacing.md,
       fontSize: 16,
       color: colors.text,
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.card,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.background,
       marginBottom: spacing.md,
     },
     inputFocused: {
@@ -210,8 +225,8 @@ export default function AddItemScreen() {
       fontWeight: '600',
     },
     previewCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.05)' : colors.background,
+      borderRadius: 12,
       padding: spacing.md,
       marginBottom: spacing.md,
       borderWidth: 1,
@@ -247,7 +262,7 @@ export default function AddItemScreen() {
       padding: 40,
       alignItems: 'center',
       marginBottom: spacing.md,
-      backgroundColor: colors.card,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : colors.background,
     },
     imagePickerText: {
       fontSize: 14,
@@ -280,7 +295,7 @@ export default function AddItemScreen() {
       fontSize: 14,
       color: colors.textSecondary,
     },
-  }), [colors, typography, theme, scrollViewBottomPadding]);
+  }), [colors, typography, theme, scrollViewBottomPadding, isDark]);
 
   useEffect(() => {
     if (sharedUrl) {
@@ -569,30 +584,32 @@ export default function AddItemScreen() {
 
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Product URL</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="https://example.com/product"
-          placeholderTextColor={placeholderColor}
-          value={urlInput}
-          onChangeText={setUrlInput}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          editable={!extracting}
-        />
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Product URL</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="https://example.com/product"
+            placeholderTextColor={placeholderColor}
+            value={urlInput}
+            onChangeText={setUrlInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            editable={!extracting}
+          />
 
-        <TouchableOpacity
-          style={[styles.button, !canExtract && styles.buttonDisabled]}
-          onPress={handleExtractItem}
-          disabled={!canExtract}
-        >
-          {extracting ? (
-            <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-          ) : (
-            <Text style={styles.buttonText}>Extract Item Details</Text>
-          )}
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.button, !canExtract && styles.buttonDisabled]}
+            onPress={handleExtractItem}
+            disabled={!canExtract}
+          >
+            {extracting ? (
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+            ) : (
+              <Text style={styles.buttonText}>Extract Item Details</Text>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {extractedItem && (
           <>
@@ -674,78 +691,80 @@ export default function AddItemScreen() {
 
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Title *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Item name"
-          placeholderTextColor={placeholderColor}
-          value={manualTitle}
-          onChangeText={setManualTitle}
-        />
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Title *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Item name"
+            placeholderTextColor={placeholderColor}
+            value={manualTitle}
+            onChangeText={setManualTitle}
+          />
 
-        <Text style={styles.label}>Price (optional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="0.00"
-          placeholderTextColor={placeholderColor}
-          value={manualPrice}
-          onChangeText={setManualPrice}
-          keyboardType="decimal-pad"
-        />
+          <Text style={styles.label}>Price (optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="0.00"
+            placeholderTextColor={placeholderColor}
+            value={manualPrice}
+            onChangeText={setManualPrice}
+            keyboardType="decimal-pad"
+          />
 
-        <Text style={styles.label}>Image (optional)</Text>
-        {manualImageUrl ? (
-          <View>
-            <Image
-              source={resolveImageSource(manualImageUrl)}
-              style={styles.selectedImage}
-              resizeMode="cover"
-            />
-            <TouchableOpacity
-              style={styles.removeImageButton}
-              onPress={handleRemoveManualImage}
-            >
-              <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={16}
-                color="#FFFFFF"
+          <Text style={styles.label}>Image (optional)</Text>
+          {manualImageUrl ? (
+            <View>
+              <Image
+                source={resolveImageSource(manualImageUrl)}
+                style={styles.selectedImage}
+                resizeMode="cover"
               />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
-            <IconSymbol
-              ios_icon_name="photo"
-              android_material_icon_name="image"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.imagePickerText}>Tap to add image</Text>
-          </TouchableOpacity>
-        )}
-
-        <Text style={styles.label}>Notes (optional)</Text>
-        <TextInput
-          style={[styles.input, styles.textArea]}
-          placeholder="Add any notes about this item"
-          placeholderTextColor={placeholderColor}
-          value={manualNotes}
-          onChangeText={setManualNotes}
-          multiline
-        />
-
-        <TouchableOpacity
-          style={[styles.button, !canSave && styles.buttonDisabled]}
-          onPress={handleSaveManualItem}
-          disabled={!canSave}
-        >
-          {savingManual ? (
-            <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={handleRemoveManualImage}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={16}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
           ) : (
-            <Text style={styles.buttonText}>Add to Wishlist</Text>
+            <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickImage}>
+              <IconSymbol
+                ios_icon_name="photo"
+                android_material_icon_name="image"
+                size={32}
+                color={colors.textSecondary}
+              />
+              <Text style={styles.imagePickerText}>Tap to add image</Text>
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+
+          <Text style={styles.label}>Notes (optional)</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Add any notes about this item"
+            placeholderTextColor={placeholderColor}
+            value={manualNotes}
+            onChangeText={setManualNotes}
+            multiline
+          />
+
+          <TouchableOpacity
+            style={[styles.button, !canSave && styles.buttonDisabled]}
+            onPress={handleSaveManualItem}
+            disabled={!canSave}
+          >
+            {savingManual ? (
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+            ) : (
+              <Text style={styles.buttonText}>Add to Wishlist</Text>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -755,68 +774,70 @@ export default function AddItemScreen() {
 
     return (
       <View style={styles.content}>
-        <Text style={styles.label}>Upload or Paste Image</Text>
+        <View style={styles.formCard}>
+          <Text style={styles.label}>Upload or Paste Image</Text>
 
-        {selectedImageUri ? (
-          <View>
-            <Image
-              source={resolveImageSource(selectedImageUri)}
-              style={styles.selectedImage}
-              resizeMode="cover"
-            />
+          {selectedImageUri ? (
+            <View>
+              <Image
+                source={resolveImageSource(selectedImageUri)}
+                style={styles.selectedImage}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={() => setSelectedImageUri(null)}
+              >
+                <IconSymbol
+                  ios_icon_name="xmark"
+                  android_material_icon_name="close"
+                  size={16}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              style={styles.removeImageButton}
-              onPress={() => setSelectedImageUri(null)}
+              style={styles.imagePickerButton}
+              onPress={handleUploadImageForIdentification}
             >
               <IconSymbol
-                ios_icon_name="xmark"
-                android_material_icon_name="close"
-                size={16}
-                color="#FFFFFF"
+                ios_icon_name="camera"
+                android_material_icon_name="camera"
+                size={32}
+                color={colors.textSecondary}
               />
+              <Text style={styles.imagePickerText}>Tap to select image</Text>
             </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.imagePickerButton}
-            onPress={handleUploadImageForIdentification}
-          >
-            <IconSymbol
-              ios_icon_name="camera"
-              android_material_icon_name="camera"
-              size={32}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.imagePickerText}>Tap to select image</Text>
-          </TouchableOpacity>
-        )}
+          )}
 
-        {!selectedImageUri && (
-          <TouchableOpacity style={styles.secondaryButton} onPress={handlePasteImageUrl}>
-            <Text style={styles.secondaryButtonText}>Paste Image URL</Text>
-          </TouchableOpacity>
-        )}
+          {!selectedImageUri && (
+            <TouchableOpacity style={styles.secondaryButton} onPress={handlePasteImageUrl}>
+              <Text style={styles.secondaryButtonText}>Paste Image URL</Text>
+            </TouchableOpacity>
+          )}
 
-        {selectedImageUri && (
-          <TouchableOpacity
-            style={[styles.button, identifyingImage && styles.buttonDisabled]}
-            onPress={handleIdentifyProduct}
-            disabled={identifyingImage}
-          >
-            {identifyingImage ? (
-              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-            ) : (
-              <Text style={styles.buttonText}>Identify Product</Text>
-            )}
-          </TouchableOpacity>
-        )}
+          {selectedImageUri && (
+            <TouchableOpacity
+              style={[styles.button, identifyingImage && styles.buttonDisabled]}
+              onPress={handleIdentifyProduct}
+              disabled={identifyingImage}
+            >
+              {identifyingImage ? (
+                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+              ) : (
+                <Text style={styles.buttonText}>Identify Product</Text>
+              )}
+            </TouchableOpacity>
+          )}
 
-        {identifyingImage && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={styles.loadingText}>Analyzing image...</Text>
-          </View>
-        )}
+          {identifyingImage && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={styles.loadingText}>Analyzing image...</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
