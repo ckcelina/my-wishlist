@@ -1,5 +1,5 @@
 
-import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import React, { useState, useEffect, useMemo } from 'react';
 import * as Clipboard from 'expo-clipboard';
@@ -16,10 +16,13 @@ import {
   Image,
   ImageSourcePropType,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage } from '@/utils/supabase-edge-functions';
 import { createWishlistItem } from '@/lib/supabase-helpers';
@@ -66,6 +69,7 @@ export default function AddItemScreen() {
   const { theme, isDark } = useAppTheme();
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
+  const insets = useSafeAreaInsets();
   
   const [activeTab, setActiveTab] = useState<TabType>('url');
 
@@ -86,16 +90,35 @@ export default function AddItemScreen() {
   const [identifyingImage, setIdentifyingImage] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
+  // Calculate bottom padding: tab bar height (64) + bottom safe area + extra spacing
+  const TAB_BAR_HEIGHT = 64;
+  const scrollViewBottomPadding = TAB_BAR_HEIGHT + Math.max(insets.bottom, 20) + 16;
+
   const styles = useMemo(() => StyleSheet.create({
-    container: {
+    safeArea: {
       flex: 1,
       backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+      backgroundColor: colors.background,
+    },
+    headerTitle: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.text,
     },
     tabBar: {
       flexDirection: 'row',
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       backgroundColor: colors.card,
+      paddingTop: spacing.sm,
     },
     tab: {
       flex: 1,
@@ -115,8 +138,10 @@ export default function AddItemScreen() {
       color: colors.accent,
       fontWeight: '600',
     },
+    scrollContent: {
+      paddingBottom: scrollViewBottomPadding,
+    },
     content: {
-      flex: 1,
       padding: spacing.lg,
     },
     label: {
@@ -160,7 +185,7 @@ export default function AddItemScreen() {
       }),
     },
     buttonDisabled: {
-      opacity: 0.4,
+      opacity: 0.5,
       backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : colors.border,
     },
     buttonText: {
@@ -255,7 +280,7 @@ export default function AddItemScreen() {
       fontSize: 14,
       color: colors.textSecondary,
     },
-  }), [colors, typography, theme]);
+  }), [colors, typography, theme, scrollViewBottomPadding]);
 
   useEffect(() => {
     if (sharedUrl) {
@@ -799,7 +824,11 @@ export default function AddItemScreen() {
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Add Item</Text>
+        </View>
+
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'url' && styles.tabActive]}
@@ -827,11 +856,23 @@ export default function AddItemScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.container}>
-          {activeTab === 'url' && renderUrlTab()}
-          {activeTab === 'manual' && renderManualTab()}
-          {activeTab === 'image' && renderImageTab()}
-        </ScrollView>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView 
+              style={styles.container}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {activeTab === 'url' && renderUrlTab()}
+              {activeTab === 'manual' && renderManualTab()}
+              {activeTab === 'image' && renderImageTab()}
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </>
   );

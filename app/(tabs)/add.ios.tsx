@@ -16,9 +16,13 @@ import {
   Image,
   ImageSourcePropType,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage } from '@/utils/supabase-edge-functions';
 import { createWishlistItem } from '@/lib/supabase-helpers';
@@ -39,11 +43,23 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: colors.background,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: colors.text,
+  },
   tabBar: {
     flexDirection: 'row',
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
+    paddingTop: 8,
   },
   tab: {
     flex: 1,
@@ -62,6 +78,9 @@ const styles = StyleSheet.create({
   tabTextActive: {
     color: colors.primary,
     fontWeight: '600',
+  },
+  scrollContent: {
+    paddingBottom: 140,
   },
   content: {
     flex: 1,
@@ -97,7 +116,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
     backgroundColor: 'rgba(255,255,255,0.15)',
   },
   buttonText: {
@@ -216,6 +235,7 @@ export default function AddItemScreen() {
   const { wishlistId, sharedUrl } = useLocalSearchParams<{ wishlistId?: string; sharedUrl?: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('url');
 
   // URL tab state
@@ -778,6 +798,10 @@ export default function AddItemScreen() {
         }}
       />
       <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Add Item</Text>
+        </View>
+
         <View style={styles.tabBar}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'url' && styles.tabActive]}
@@ -805,11 +829,23 @@ export default function AddItemScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.container}>
-          {activeTab === 'url' && renderUrlTab()}
-          {activeTab === 'manual' && renderManualTab()}
-          {activeTab === 'image' && renderImageTab()}
-        </ScrollView>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior="padding"
+          keyboardVerticalOffset={90}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <ScrollView 
+              style={styles.container}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {activeTab === 'url' && renderUrlTab()}
+              {activeTab === 'manual' && renderManualTab()}
+              {activeTab === 'image' && renderImageTab()}
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </View>
     </>
   );
