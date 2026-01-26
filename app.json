@@ -95,7 +95,8 @@
       "supabaseAnonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
       "nativelyEnvironment": "supabase",
       "nativelyPrimaryDataSource": "supabase",
-      "nativelyExclusiveProvider": true
+      "nativelyExclusiveProvider": true,
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
     },
     "updates": {
       "url": "https://u.expo.dev/YOUR_PROJECT_ID"

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,30 +7,52 @@ import {
   ScrollView,
   Switch,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { authenticatedGet, authenticatedPut } from '@/utils/api';
-import {
-  requestNotificationPermissions,
-  registerForPushNotifications,
-  areNotificationsEnabled,
-  scheduleTestNotification,
-} from '@/utils/notifications';
-import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
+import { colors, typography, spacing } from '@/styles/designSystem';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
+import debounce from 'lodash.debounce';
 
-interface UserSettings {
-  priceDropAlertsEnabled: boolean;
-  defaultCurrency: string;
-  expoPushToken: string | null;
+interface AlertSettings {
+  userId: string;
+  alertsEnabled: boolean;
+  notifyPriceDrops: boolean;
+  notifyUnderTarget: boolean;
+  weeklyDigest: boolean;
+  quietHoursEnabled: boolean;
+  quietStart: string | null;
+  quietEnd: string | null;
+  updatedAt: string;
 }
+
+interface ItemsWithTargetsResponse {
+  count: number;
+  items: Array<{
+    id: string;
+    title: string;
+    alertPrice: number;
+    currentPrice: number | null;
+    currency: string;
+  }>;
+}
+
+const DEFAULT_SETTINGS: Omit<AlertSettings, 'userId' | 'updatedAt'> = {
+  alertsEnabled: true,
+  notifyPriceDrops: true,
+  notifyUnderTarget: true,
+  weeklyDigest: false,
+  quietHoursEnabled: false,
+  quietStart: null,
+  quietEnd: null,
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -67,57 +89,59 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    marginBottom: spacing.md,
-  },
-  statusBadgeEnabled: {
-    backgroundColor: '#E8F5E9',
-  },
-  statusBadgeDisabled: {
-    backgroundColor: '#FFEBEE',
-  },
-  statusText: {
-    ...typography.body,
-    marginLeft: spacing.sm,
-  },
-  statusTextEnabled: {
-    color: '#2E7D32',
-  },
-  statusTextDisabled: {
-    color: '#C62828',
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 12,
-    marginTop: spacing.md,
-  },
-  buttonSecondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  buttonText: {
-    ...typography.button,
-    color: colors.background,
-    marginLeft: spacing.sm,
-  },
-  buttonTextSecondary: {
-    color: colors.text,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  errorText: {
+    ...typography.caption,
+    color: '#991B1B',
+    flex: 1,
+  },
+  retryButton: {
+    backgroundColor: '#DC2626',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    ...typography.caption,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  savingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  savingText: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  targetsSummary: {
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  targetsSummaryText: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
   },
   infoBox: {
     backgroundColor: colors.surface,
@@ -138,28 +162,44 @@ export default function AlertsScreen() {
   const { user, authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
-  const [settings, setSettings] = useState<UserSettings | null>(null);
-  const [systemPermissionGranted, setSystemPermissionGranted] = useState(false);
+  const [settings, setSettings] = useState<AlertSettings | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [itemsWithTargets, setItemsWithTargets] = useState<ItemsWithTargetsResponse | null>(null);
+
+  // Debounced save function
+  const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching user settings');
+    console.log('[AlertsScreen] Fetching alert settings');
     try {
-      const data = await authenticatedGet<UserSettings>('/api/users/settings');
+      setError(null);
+      const data = await authenticatedGet<AlertSettings>('/api/alert-settings');
       setSettings(data);
-      console.log('[AlertsScreen] Settings loaded:', data);
-    } catch (error) {
-      console.error('[AlertsScreen] Failed to fetch settings:', error);
-      Alert.alert('Error', 'Failed to load settings. Please try again.');
+      console.log('[AlertsScreen] Settings loaded successfully');
+    } catch (err) {
+      console.error('[AlertsScreen] Failed to fetch settings:', err);
+      setError('Failed to load settings');
+      // Set safe defaults so UI is still usable
+      setSettings({
+        userId: user?.id || '',
+        ...DEFAULT_SETTINGS,
+        updatedAt: new Date().toISOString(),
+      });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
-  const checkSystemPermissions = useCallback(async () => {
-    const enabled = await areNotificationsEnabled();
-    setSystemPermissionGranted(enabled);
-    console.log('[AlertsScreen] System permissions:', enabled);
+  const fetchItemsWithTargets = useCallback(async () => {
+    console.log('[AlertsScreen] Fetching items with target prices');
+    try {
+      const data = await authenticatedGet<ItemsWithTargetsResponse>('/api/alert-settings/items-with-targets');
+      setItemsWithTargets(data);
+      console.log('[AlertsScreen] Items with targets:', data.count);
+    } catch (err) {
+      console.error('[AlertsScreen] Failed to fetch items with targets:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -171,106 +211,51 @@ export default function AlertsScreen() {
 
     if (user) {
       fetchSettings();
-      checkSystemPermissions();
+      fetchItemsWithTargets();
     }
-  }, [user, authLoading, fetchSettings, checkSystemPermissions, router]);
+  }, [user, authLoading, fetchSettings, fetchItemsWithTargets, router]);
 
-  const handleRequestPermissions = async () => {
-    console.log('[AlertsScreen] User requesting notification permissions');
-    setUpdating(true);
-
+  const saveSettings = useCallback(async (updates: Partial<AlertSettings>) => {
+    console.log('[AlertsScreen] Saving settings:', updates);
+    setSaving(true);
     try {
-      const granted = await requestNotificationPermissions();
-      
-      if (granted) {
-        // Register for push notifications
-        const token = await registerForPushNotifications();
-        
-        if (token) {
-          Alert.alert(
-            'Success',
-            'Notification permissions granted! You can now enable price drop alerts.'
-          );
-          setSystemPermissionGranted(true);
-          
-          // Refresh settings to get the updated token
-          await fetchSettings();
-        } else {
-          Alert.alert(
-            'Warning',
-            'Permissions granted but failed to register push token. Please try again.'
-          );
-        }
-      } else {
-        Alert.alert(
-          'Permission Denied',
-          'Please enable notifications in your device settings to receive price drop alerts.'
-        );
-      }
-    } catch (error) {
-      console.error('[AlertsScreen] Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request permissions. Please try again.');
+      const response = await authenticatedPut<{ success: boolean } & AlertSettings>('/api/alert-settings', updates);
+      // Backend returns { success, ...settings }, extract the settings
+      const { success, ...updated } = response;
+      setSettings(prev => prev ? { ...prev, ...updated } : null);
+      setError(null);
+      console.log('[AlertsScreen] Settings saved successfully');
+    } catch (err) {
+      console.error('[AlertsScreen] Failed to save settings:', err);
+      setError('Couldn\'t save. Tap to retry.');
     } finally {
-      setUpdating(false);
+      setSaving(false);
     }
-  };
+  }, []);
 
-  const handleToggleAlerts = async (enabled: boolean) => {
-    console.log('[AlertsScreen] Toggling alerts:', enabled);
+  // Initialize debounced save
+  useEffect(() => {
+    debouncedSaveRef.current = debounce((updates: Partial<AlertSettings>) => {
+      saveSettings(updates);
+    }, 400);
 
-    if (enabled && !systemPermissionGranted) {
-      Alert.alert(
-        'Permissions Required',
-        'Please grant notification permissions first.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Grant Permissions', onPress: handleRequestPermissions },
-        ]
-      );
-      return;
-    }
+    return () => {
+      debouncedSaveRef.current?.cancel();
+    };
+  }, [saveSettings]);
 
-    setUpdating(true);
+  const handleToggle = useCallback((key: keyof AlertSettings, value: boolean) => {
+    console.log('[AlertsScreen] Toggle:', key, value);
+    // Optimistic UI update
+    setSettings(prev => prev ? { ...prev, [key]: value } : null);
+    // Debounced save
+    debouncedSaveRef.current?.({ [key]: value });
+  }, []);
 
-    try {
-      const updated = await authenticatedPut<UserSettings>('/api/users/settings', {
-        priceDropAlertsEnabled: enabled,
-      });
-
-      setSettings(updated);
-      console.log('[AlertsScreen] Alerts toggled successfully');
-
-      const statusText = enabled ? 'enabled' : 'disabled';
-      Alert.alert('Success', `Price drop alerts ${statusText}`);
-    } catch (error) {
-      console.error('[AlertsScreen] Failed to toggle alerts:', error);
-      Alert.alert('Error', 'Failed to update settings. Please try again.');
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const handleTestNotification = async () => {
-    console.log('[AlertsScreen] Sending test notification');
-
-    if (!systemPermissionGranted) {
-      Alert.alert(
-        'Permissions Required',
-        'Please grant notification permissions first.'
-      );
-      return;
-    }
-
-    try {
-      await scheduleTestNotification();
-      Alert.alert(
-        'Test Notification Sent',
-        'You should receive a test notification in a few seconds.'
-      );
-    } catch (error) {
-      console.error('[AlertsScreen] Failed to send test notification:', error);
-      Alert.alert('Error', 'Failed to send test notification.');
-    }
+  const handleRetry = () => {
+    console.log('[AlertsScreen] Retrying fetch');
+    setLoading(true);
+    fetchSettings();
   };
 
   if (authLoading || loading) {
@@ -285,127 +270,83 @@ export default function AlertsScreen() {
     return null;
   }
 
-  const alertsEnabled = settings.priceDropAlertsEnabled;
-  const hasToken = !!settings.expoPushToken;
+  const alertsEnabledValue = settings.alertsEnabled;
+  const notifyPriceDropsValue = settings.notifyPriceDrops;
+  const notifyUnderTargetValue = settings.notifyUnderTarget;
+  const weeklyDigestValue = settings.weeklyDigest;
+  const quietHoursEnabledValue = settings.quietHoursEnabled;
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen
         options={{
-          title: 'Alert Settings',
+          title: 'Price Drop Alerts',
           headerShown: true,
           headerBackTitle: 'Back',
         }}
       />
 
       <ScrollView style={styles.scrollContent}>
-        {/* Status Badge */}
-        <View
-          style={[
-            styles.statusBadge,
-            systemPermissionGranted && alertsEnabled
-              ? styles.statusBadgeEnabled
-              : styles.statusBadgeDisabled,
-          ]}
-        >
-          <IconSymbol
-            ios_icon_name={
-              systemPermissionGranted && alertsEnabled
-                ? 'checkmark.circle.fill'
-                : 'xmark.circle.fill'
-            }
-            android_material_icon_name={
-              systemPermissionGranted && alertsEnabled ? 'check-circle' : 'cancel'
-            }
-            size={20}
-            color={
-              systemPermissionGranted && alertsEnabled ? '#2E7D32' : '#C62828'
-            }
-          />
-          <Text
-            style={[
-              styles.statusText,
-              systemPermissionGranted && alertsEnabled
-                ? styles.statusTextEnabled
-                : styles.statusTextDisabled,
-            ]}
-          >
-            {systemPermissionGranted && alertsEnabled
-              ? 'Alerts Active'
-              : 'Alerts Inactive'}
-          </Text>
-        </View>
+        {/* Error Banner */}
+        {error && (
+          <View style={styles.errorBanner}>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle.fill"
+              android_material_icon_name="warning"
+              size={20}
+              color="#991B1B"
+            />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Saving Indicator */}
+        {saving && (
+          <View style={styles.savingIndicator}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.savingText}>Saving...</Text>
+          </View>
+        )}
 
         {/* Info Box */}
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            Get notified when prices drop on items in your wishlists. We&apos;ll send you a
-            push notification with the new price and percentage decrease.
+            Get notified when prices drop on items in your wishlists. Set target prices on individual items to get alerts when they go below your desired price.
           </Text>
         </View>
 
-        {/* System Permissions Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>System Permissions</Text>
-          <Card>
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Notification Permissions</Text>
-                <Text style={styles.settingDescription}>
-                  {systemPermissionGranted
-                    ? 'Granted - You can receive notifications'
-                    : 'Not granted - Enable to receive alerts'}
-                </Text>
-              </View>
-              <IconSymbol
-                ios_icon_name={
-                  systemPermissionGranted
-                    ? 'checkmark.circle.fill'
-                    : 'xmark.circle.fill'
-                }
-                android_material_icon_name={
-                  systemPermissionGranted ? 'check-circle' : 'cancel'
-                }
-                size={24}
-                color={systemPermissionGranted ? '#4CAF50' : '#F44336'}
-              />
-            </View>
+        {/* Items with Targets Summary */}
+        {itemsWithTargets && itemsWithTargets.count > 0 && (
+          <View style={styles.targetsSummary}>
+            <IconSymbol
+              ios_icon_name="bell.badge.fill"
+              android_material_icon_name="notifications-active"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={styles.targetsSummaryText}>
+              {itemsWithTargets.count} {itemsWithTargets.count === 1 ? 'item has' : 'items have'} target price alerts
+            </Text>
+          </View>
+        )}
 
-            {!systemPermissionGranted && (
-              <TouchableOpacity
-                style={styles.button}
-                onPress={handleRequestPermissions}
-                disabled={updating}
-              >
-                <IconSymbol
-                  ios_icon_name="bell.badge.fill"
-                  android_material_icon_name="notifications-active"
-                  size={20}
-                  color={colors.background}
-                />
-                <Text style={styles.buttonText}>
-                  {updating ? 'Requesting...' : 'Grant Permissions'}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </Card>
-        </View>
-
-        {/* Alert Settings Section */}
+        {/* Main Alert Settings */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Alert Settings</Text>
           <Card>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Price Drop Alerts</Text>
+                <Text style={styles.settingLabel}>Enable Alerts</Text>
                 <Text style={styles.settingDescription}>
-                  Receive notifications when item prices decrease
+                  Master switch for all price drop notifications
                 </Text>
               </View>
               <Switch
-                value={alertsEnabled}
-                onValueChange={handleToggleAlerts}
-                disabled={updating || !systemPermissionGranted}
+                value={alertsEnabledValue}
+                onValueChange={(value) => handleToggle('alertsEnabled', value)}
                 trackColor={{ false: colors.border, true: colors.primary }}
                 thumbColor={colors.background}
               />
@@ -415,45 +356,108 @@ export default function AlertsScreen() {
 
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Push Token Status</Text>
+                <Text style={styles.settingLabel}>Price Drop Notifications</Text>
                 <Text style={styles.settingDescription}>
-                  {hasToken
-                    ? 'Registered - Ready to receive notifications'
-                    : 'Not registered - Grant permissions to register'}
+                  Get notified when any item price decreases
                 </Text>
               </View>
-              <IconSymbol
-                ios_icon_name={hasToken ? 'checkmark.circle' : 'xmark.circle'}
-                android_material_icon_name={hasToken ? 'check-circle' : 'cancel'}
-                size={24}
-                color={hasToken ? '#4CAF50' : '#9E9E9E'}
+              <Switch
+                value={notifyPriceDropsValue}
+                onValueChange={(value) => handleToggle('notifyPriceDrops', value)}
+                disabled={!alertsEnabledValue}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
+              />
+            </View>
+
+            <Divider />
+
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Target Price Alerts</Text>
+                <Text style={styles.settingDescription}>
+                  Get notified when items go below your target price
+                </Text>
+              </View>
+              <Switch
+                value={notifyUnderTargetValue}
+                onValueChange={(value) => handleToggle('notifyUnderTarget', value)}
+                disabled={!alertsEnabledValue}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
               />
             </View>
           </Card>
         </View>
 
-        {/* Test Notification */}
-        {systemPermissionGranted && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Testing</Text>
-            <Card>
-              <TouchableOpacity
-                style={[styles.button, styles.buttonSecondary]}
-                onPress={handleTestNotification}
-              >
-                <IconSymbol
-                  ios_icon_name="bell.fill"
-                  android_material_icon_name="notifications"
-                  size={20}
-                  color={colors.text}
-                />
-                <Text style={[styles.buttonText, styles.buttonTextSecondary]}>
-                  Send Test Notification
+        {/* Digest Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Digest</Text>
+          <Card>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Weekly Digest</Text>
+                <Text style={styles.settingDescription}>
+                  Receive a weekly summary of price changes
                 </Text>
-              </TouchableOpacity>
-            </Card>
-          </View>
-        )}
+              </View>
+              <Switch
+                value={weeklyDigestValue}
+                onValueChange={(value) => handleToggle('weeklyDigest', value)}
+                disabled={!alertsEnabledValue}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
+              />
+            </View>
+          </Card>
+        </View>
+
+        {/* Quiet Hours */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quiet Hours</Text>
+          <Card>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Enable Quiet Hours</Text>
+                <Text style={styles.settingDescription}>
+                  Pause notifications during specific hours
+                </Text>
+              </View>
+              <Switch
+                value={quietHoursEnabledValue}
+                onValueChange={(value) => handleToggle('quietHoursEnabled', value)}
+                disabled={!alertsEnabledValue}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.background}
+              />
+            </View>
+
+            {quietHoursEnabledValue && (
+              <>
+                <Divider />
+                <TouchableOpacity
+                  style={styles.settingRow}
+                  onPress={() => router.push('/quiet-hours')}
+                >
+                  <View style={styles.settingInfo}>
+                    <Text style={styles.settingLabel}>Set Quiet Hours</Text>
+                    <Text style={styles.settingDescription}>
+                      {settings.quietStart && settings.quietEnd
+                        ? `${settings.quietStart} - ${settings.quietEnd}`
+                        : 'Tap to configure'}
+                    </Text>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </>
+            )}
+          </Card>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

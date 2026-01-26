@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
@@ -102,6 +103,11 @@ export default function ItemDetailScreen() {
   const [storesMessage, setStoresMessage] = useState<string | null>(null);
   const [userDefaultCurrency, setUserDefaultCurrency] = useState<string>('USD');
   const [convertedPrice, setConvertedPrice] = useState<string | null>(null);
+  
+  // Target price alert state
+  const [alertEnabled, setAlertEnabled] = useState(false);
+  const [alertPrice, setAlertPrice] = useState<string>('');
+  const [savingAlert, setSavingAlert] = useState(false);
 
   // Edit form state
   const [editedTitle, setEditedTitle] = useState('');
@@ -182,9 +188,13 @@ export default function ItemDetailScreen() {
     try {
       setLoading(true);
       const { authenticatedGet } = await import('@/utils/api');
-      const data = await authenticatedGet<ItemDetail>(`/api/items/${id}`);
+      const data = await authenticatedGet<ItemDetail & { alertEnabled?: boolean; alertPrice?: number | null }>(`/api/items/${id}`);
       console.log('[ItemDetailScreen] Fetched item:', data.title);
       setItem(data);
+      
+      // Set alert state
+      setAlertEnabled(data.alertEnabled || false);
+      setAlertPrice(data.alertPrice ? data.alertPrice.toString() : '');
       
       // Fetch currency conversion if needed
       if (data.currentPrice && data.currency) {
@@ -441,6 +451,58 @@ export default function ItemDetailScreen() {
     });
   };
 
+  const handleToggleAlert = async (enabled: boolean) => {
+    console.log('[ItemDetailScreen] Toggling alert:', enabled);
+    setAlertEnabled(enabled);
+    
+    if (!enabled) {
+      // Disable alert
+      try {
+        setSavingAlert(true);
+        const { authenticatedPut } = await import('@/utils/api');
+        await authenticatedPut(`/api/items/${id}/alert`, {
+          alertEnabled: false,
+          alertPrice: null,
+        });
+        setAlertPrice('');
+        console.log('[ItemDetailScreen] Alert disabled');
+      } catch (error) {
+        console.error('[ItemDetailScreen] Error disabling alert:', error);
+        Alert.alert('Error', 'Failed to disable alert');
+        setAlertEnabled(true);
+      } finally {
+        setSavingAlert(false);
+      }
+    }
+  };
+
+  const handleSaveAlertPrice = async () => {
+    console.log('[ItemDetailScreen] Saving alert price:', alertPrice);
+    
+    const price = parseFloat(alertPrice);
+    if (isNaN(price) || price <= 0) {
+      Alert.alert('Invalid Price', 'Please enter a valid target price greater than 0');
+      return;
+    }
+    
+    try {
+      setSavingAlert(true);
+      const { authenticatedPut } = await import('@/utils/api');
+      await authenticatedPut(`/api/items/${id}/alert`, {
+        alertEnabled: true,
+        alertPrice: price,
+      });
+      setAlertEnabled(true);
+      console.log('[ItemDetailScreen] Alert price saved');
+      Alert.alert('Success', 'Target price alert set successfully');
+    } catch (error) {
+      console.error('[ItemDetailScreen] Error saving alert price:', error);
+      Alert.alert('Error', 'Failed to save target price');
+    } finally {
+      setSavingAlert(false);
+    }
+  };
+
   if (loading || !item) {
     return (
       <>
@@ -571,6 +633,62 @@ export default function ItemDetailScreen() {
                 )}
               </TouchableOpacity>
             )}
+
+            {/* Target Price Alert Card */}
+            <View style={styles.alertCard}>
+              <View style={styles.alertHeader}>
+                <View style={styles.alertHeaderLeft}>
+                  <IconSymbol
+                    ios_icon_name="bell.fill"
+                    android_material_icon_name="notifications"
+                    size={20}
+                    color={alertEnabled ? colors.primary : colors.textSecondary}
+                  />
+                  <Text style={styles.alertTitle}>Price Alert</Text>
+                </View>
+                <Switch
+                  value={alertEnabled}
+                  onValueChange={handleToggleAlert}
+                  disabled={savingAlert}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.background}
+                />
+              </View>
+              
+              {alertEnabled && (
+                <View style={styles.alertInputContainer}>
+                  <Text style={styles.alertLabel}>Notify me when price goes below:</Text>
+                  <View style={styles.alertInputRow}>
+                    <TextInput
+                      style={styles.alertInput}
+                      value={alertPrice}
+                      onChangeText={setAlertPrice}
+                      placeholder="0.00"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="decimal-pad"
+                      editable={!savingAlert}
+                    />
+                    <Text style={styles.alertCurrency}>{item.currency}</Text>
+                    <TouchableOpacity
+                      style={styles.alertSaveButton}
+                      onPress={handleSaveAlertPrice}
+                      disabled={savingAlert || !alertPrice}
+                    >
+                      {savingAlert ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.alertSaveButtonText}>Set</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {alertPrice && parseFloat(alertPrice) > 0 && (
+                    <Text style={styles.alertHint}>
+                      You&apos;ll be notified when the price drops below {item.currency} {parseFloat(alertPrice).toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
 
             {/* Source Domain */}
             {item.sourceDomain && (
@@ -1045,6 +1163,76 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.primary,
+  },
+  alertCard: {
+    backgroundColor: colors.card,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  alertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  alertHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  alertTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  alertInputContainer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  alertLabel: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  alertInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  alertInput: {
+    flex: 1,
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  alertCurrency: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  alertSaveButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertSaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  alertHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
   },
   infoRow: {
     flexDirection: 'row',
