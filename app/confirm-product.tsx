@@ -224,7 +224,17 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 
 export default function ConfirmProductScreen() {
   const router = useRouter();
-  const { imageUrl, wishlistId, identificationResult } = useLocalSearchParams();
+  const { 
+    imageUrl, 
+    wishlistId, 
+    identificationResult,
+    title: paramTitle,
+    price: paramPrice,
+    currency: paramCurrency,
+    storeLink: paramStoreLink,
+    storeDomain: paramStoreDomain,
+    confidence: paramConfidence,
+  } = useLocalSearchParams();
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
@@ -243,6 +253,38 @@ export default function ConfirmProductScreen() {
   useEffect(() => {
     console.log('ConfirmProductScreen mounted with imageUrl:', imageUrl);
     
+    // Check if we have direct params from search (not image identification)
+    if (paramTitle && typeof paramTitle === 'string') {
+      console.log('[ConfirmProductScreen] Using search result params');
+      setTitle(paramTitle);
+      if (paramPrice && typeof paramPrice === 'string') {
+        setPrice(paramPrice);
+      }
+      if (paramCurrency && typeof paramCurrency === 'string') {
+        setCurrency(paramCurrency);
+      }
+      if (imageUrl && typeof imageUrl === 'string') {
+        setImageUri(imageUrl);
+      }
+      
+      // Create a mock result for display
+      const mockResult: IdentificationResult = {
+        bestGuessTitle: paramTitle,
+        bestGuessCategory: null,
+        keywords: [],
+        confidence: paramConfidence ? parseFloat(paramConfidence as string) : 0.9,
+        suggestedProducts: [{
+          title: paramTitle,
+          imageUrl: imageUrl as string || null,
+          likelyUrl: paramStoreLink as string || null,
+        }],
+      };
+      setResult(mockResult);
+      setSelectedProductIndex(0);
+      setLoading(false);
+      return;
+    }
+    
     // Check if we already have identification result from params
     if (identificationResult && typeof identificationResult === 'string') {
       try {
@@ -259,7 +301,7 @@ export default function ConfirmProductScreen() {
       identifyProduct();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrl, identificationResult]);
+  }, [imageUrl, identificationResult, paramTitle]);
 
   const identifyProduct = async () => {
     console.log('[ConfirmProductScreen] Calling identify-from-image API');

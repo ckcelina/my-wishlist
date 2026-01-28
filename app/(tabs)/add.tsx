@@ -25,8 +25,8 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { extractItem, identifyFromImage, findAlternatives } from '@/utils/supabase-edge-functions';
-import { createWishlistItem, fetchWishlists } from '@/lib/supabase-helpers';
+import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import { createWishlistItem, fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
 import Constants from 'expo-constants';
 import { IconSymbol } from '@/components/IconSymbol';
 import { StatusBar } from 'expo-status-bar';
@@ -52,9 +52,11 @@ interface Wishlist {
 interface SearchResult {
   title: string;
   imageUrl: string | null;
-  storeLink: string | null;
+  productUrl: string;
+  storeDomain: string;
   price: number | null;
   currency: string | null;
+  confidence: number;
 }
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -91,6 +93,9 @@ export default function AddItemScreen() {
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [selectedWishlistId, setSelectedWishlistId] = useState<string>(wishlistId || '');
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
+
+  // User location for filtering
+  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
 
   // URL tab state
   const [urlInput, setUrlInput] = useState('');
@@ -336,6 +341,7 @@ export default function AddItemScreen() {
       width: 80,
       height: 80,
       borderRadius: 8,
+      backgroundColor: colors.card,
     },
     searchResultInfo: {
       flex: 1,
@@ -349,6 +355,37 @@ export default function AddItemScreen() {
     searchResultPrice: {
       fontSize: 14,
       color: colors.accent,
+      fontWeight: '600',
+      marginBottom: spacing.xs,
+    },
+    searchResultStore: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
+    confidenceBadge: {
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : colors.card,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      alignSelf: 'flex-start',
+    },
+    confidenceText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    selectButton: {
+      backgroundColor: colors.accent,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+      alignSelf: 'flex-start',
+      marginTop: spacing.sm,
+    },
+    selectButtonText: {
+      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
+      fontSize: 14,
       fontWeight: '600',
     },
     modalOverlay: {
@@ -409,6 +446,27 @@ export default function AddItemScreen() {
     };
 
     loadWishlists();
+  }, [user]);
+
+  useEffect(() => {
+    const loadUserLocation = async () => {
+      if (!user) return;
+      
+      try {
+        const location = await fetchUserLocation(user.id);
+        if (location) {
+          setUserLocation({
+            countryCode: location.countryCode,
+            city: location.city,
+          });
+          console.log('User location loaded:', location.countryCode, location.city);
+        }
+      } catch (error) {
+        console.error('Failed to load user location:', error);
+      }
+    };
+
+    loadUserLocation();
   }, [user]);
 
   useEffect(() => {
@@ -624,25 +682,23 @@ export default function AddItemScreen() {
     setSearchResults([]);
 
     try {
-      const searchTitle = [searchQuery, searchBrand, searchKeywords].filter(Boolean).join(' ');
-      const result = await findAlternatives(searchTitle);
+      const fullQuery = [searchQuery, searchBrand, searchKeywords].filter(Boolean).join(' ');
+      
+      const result = await searchByName(fullQuery, {
+        countryCode: userLocation?.countryCode,
+        city: userLocation?.city || undefined,
+        currency: manualCurrency,
+        limit: 10,
+      });
 
-      if (result.error && result.alternatives.length === 0) {
-        Alert.alert('No Results', 'Could not find any products matching your search.');
+      if (result.error && result.results.length === 0) {
+        Alert.alert('No Results', result.error || 'Could not find any products matching your search.');
         setSearching(false);
         return;
       }
 
-      const results: SearchResult[] = result.alternatives.map(alt => ({
-        title: alt.storeName + ' - ' + searchTitle,
-        imageUrl: null,
-        storeLink: alt.url,
-        price: alt.price,
-        currency: alt.currency,
-      }));
-
-      setSearchResults(results);
-      console.log('Found', results.length, 'search results');
+      setSearchResults(result.results);
+      console.log('Found', result.results.length, 'search results');
     } catch (error: any) {
       console.error('Search failed:', error);
       Alert.alert('Error', 'Search failed. Please try again.');
@@ -652,14 +708,17 @@ export default function AddItemScreen() {
   };
 
   const handleSelectSearchResult = (result: SearchResult) => {
+    console.log('User selected search result:', result.title);
     router.push({
       pathname: '/confirm-product',
       params: {
         title: result.title,
         price: result.price?.toString() || '',
         currency: result.currency || 'USD',
-        storeLink: result.storeLink || '',
+        storeLink: result.productUrl || '',
         imageUrl: result.imageUrl || '',
+        storeDomain: result.storeDomain,
+        confidence: result.confidence.toString(),
         wishlistId: selectedWishlistId,
       },
     });
@@ -958,11 +1017,17 @@ export default function AddItemScreen() {
             )}
             <View style={styles.searchResultInfo}>
               <Text style={styles.searchResultTitle}>{result.title}</Text>
-              {result.price && (
+              {result.price !== null && (
                 <Text style={styles.searchResultPrice}>
                   {result.currency} {result.price.toFixed(2)}
                 </Text>
               )}
+              <Text style={styles.searchResultStore}>{result.storeDomain}</Text>
+              <View style={styles.confidenceBadge}>
+                <Text style={styles.confidenceText}>
+                  {Math.round(result.confidence * 100)}% match
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
         ))}

@@ -26,7 +26,7 @@ import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { extractItem, identifyFromImage, findAlternatives } from '@/utils/supabase-edge-functions';
+import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
 import { createWishlistItem, fetchWishlists } from '@/lib/supabase-helpers';
 
 type TabType = 'url' | 'camera' | 'upload' | 'search' | 'manual';
@@ -49,9 +49,11 @@ interface Wishlist {
 interface SearchResult {
   title: string;
   imageUrl: string | null;
-  storeLink: string | null;
+  productUrl: string;
+  storeDomain: string;
   price: number | null;
   currency: string | null;
+  confidence: number;
 }
 
 const styles = StyleSheet.create({
@@ -261,6 +263,24 @@ const styles = StyleSheet.create({
   searchResultPrice: {
     fontSize: 14,
     color: colors.primary,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  searchResultStore: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  confidenceBadge: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  confidenceText: {
+    fontSize: 11,
+    color: colors.textSecondary,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -595,25 +615,20 @@ export default function AddItemScreen() {
     setSearchResults([]);
 
     try {
-      const searchTitle = [searchQuery, searchBrand, searchKeywords].filter(Boolean).join(' ');
-      const result = await findAlternatives(searchTitle);
+      const fullQuery = [searchQuery, searchBrand, searchKeywords].filter(Boolean).join(' ');
+      
+      const result = await searchByName(fullQuery, {
+        limit: 10,
+      });
 
-      if (result.error && result.alternatives.length === 0) {
-        Alert.alert('No Results', 'Could not find any products matching your search.');
+      if (result.error && result.results.length === 0) {
+        Alert.alert('No Results', result.error || 'Could not find any products matching your search.');
         setSearching(false);
         return;
       }
 
-      const results: SearchResult[] = result.alternatives.map(alt => ({
-        title: alt.storeName + ' - ' + searchTitle,
-        imageUrl: null,
-        storeLink: alt.url,
-        price: alt.price,
-        currency: alt.currency,
-      }));
-
-      setSearchResults(results);
-      console.log('Found', results.length, 'search results');
+      setSearchResults(result.results);
+      console.log('Found', result.results.length, 'search results');
     } catch (error: any) {
       console.error('Search failed:', error);
       Alert.alert('Error', 'Search failed. Please try again.');
@@ -623,14 +638,17 @@ export default function AddItemScreen() {
   };
 
   const handleSelectSearchResult = (result: SearchResult) => {
+    console.log('User selected search result:', result.title);
     router.push({
       pathname: '/confirm-product',
       params: {
         title: result.title,
         price: result.price?.toString() || '',
         currency: result.currency || 'USD',
-        storeLink: result.storeLink || '',
+        storeLink: result.productUrl || '',
         imageUrl: result.imageUrl || '',
+        storeDomain: result.storeDomain,
+        confidence: result.confidence.toString(),
         wishlistId: selectedWishlistId,
       },
     });
@@ -929,11 +947,17 @@ export default function AddItemScreen() {
             )}
             <View style={styles.searchResultInfo}>
               <Text style={styles.searchResultTitle}>{result.title}</Text>
-              {result.price && (
+              {result.price !== null && (
                 <Text style={styles.searchResultPrice}>
                   {result.currency} {result.price.toFixed(2)}
                 </Text>
               )}
+              <Text style={styles.searchResultStore}>{result.storeDomain}</Text>
+              <View style={styles.confidenceBadge}>
+                <Text style={styles.confidenceText}>
+                  {Math.round(result.confidence * 100)}% match
+                </Text>
+              </View>
             </View>
           </TouchableOpacity>
         ))}

@@ -93,6 +93,32 @@ export interface IdentifyFromImageResponse {
   error?: string;
 }
 
+export interface SearchByNameRequest {
+  query: string;
+  countryCode?: string;
+  city?: string;
+  currency?: string;
+  limit?: number;
+}
+
+export interface SearchResult {
+  title: string;
+  imageUrl: string | null;
+  productUrl: string;
+  storeDomain: string;
+  price: number | null;
+  currency: string | null;
+  confidence: number;
+}
+
+export interface SearchByNameResponse {
+  results: SearchResult[];
+  meta: {
+    requestId: string;
+  };
+  error?: string;
+}
+
 // Get Supabase configuration
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl;
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey;
@@ -289,6 +315,51 @@ export async function identifyFromImage(
         partial: true,
       },
       error: error.message || 'Failed to identify product',
+    };
+  }
+}
+
+/**
+ * Search for products by name across multiple stores
+ * Filters by user location if provided
+ * Returns products with confidence scores
+ */
+export async function searchByName(
+  query: string,
+  options?: {
+    countryCode?: string;
+    city?: string;
+    currency?: string;
+    limit?: number;
+  }
+): Promise<SearchByNameResponse> {
+  try {
+    const response = await callEdgeFunction<SearchByNameRequest, SearchByNameResponse>(
+      'search-by-name',
+      {
+        query,
+        countryCode: options?.countryCode,
+        city: options?.city,
+        currency: options?.currency,
+        limit: options?.limit,
+      }
+    );
+
+    // Log warnings for errors
+    if (response.error) {
+      console.warn('[searchByName] Error returned:', response.error);
+    }
+
+    return response;
+  } catch (error: any) {
+    console.error('[searchByName] Failed:', error);
+    // Return safe fallback
+    return {
+      results: [],
+      meta: {
+        requestId: 'error',
+      },
+      error: error.message || 'Failed to search for products',
     };
   }
 }
