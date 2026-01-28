@@ -21,25 +21,35 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemColorScheme = useColorScheme();
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
   const [isLoading, setIsLoading] = useState(true);
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Load theme preference from storage on mount
+  // Load theme preference from storage BEFORE first render
   useEffect(() => {
-    loadThemePreference();
-  }, []);
-
-  const loadThemePreference = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (stored && (stored === 'light' || stored === 'dark' || stored === 'system')) {
-        setThemePreferenceState(stored as ThemePreference);
-        console.log('[ThemeContext] Loaded theme preference:', stored);
+    let isMounted = true;
+    
+    const loadThemePreference = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+        if (isMounted && stored && (stored === 'light' || stored === 'dark' || stored === 'system')) {
+          setThemePreferenceState(stored as ThemePreference);
+          console.log('[ThemeContext] Loaded theme preference:', stored);
+        }
+      } catch (error) {
+        console.error('[ThemeContext] Error loading theme preference:', error);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          setIsHydrated(true);
+        }
       }
-    } catch (error) {
-      console.error('[ThemeContext] Error loading theme preference:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    loadThemePreference();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const setThemePreference = async (preference: ThemePreference) => {
     try {
@@ -58,14 +68,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   
   const theme = isDark ? darkTheme : lightTheme;
 
-  console.log('[ThemeContext] Current theme mode:', theme.mode, 'preference:', themePreference);
+  console.log('[ThemeContext] Current theme mode:', theme.mode, 'preference:', themePreference, 'hydrated:', isHydrated);
 
-  if (isLoading) {
-    // Return a default theme while loading
+  // Show loading state with default theme while hydrating
+  if (isLoading || !isHydrated) {
+    // Use system theme as default while loading
+    const defaultIsDark = systemColorScheme === 'dark';
+    const defaultTheme = defaultIsDark ? darkTheme : lightTheme;
+    
     return (
       <ThemeContext.Provider value={{ 
-        theme: lightTheme, 
-        isDark: false, 
+        theme: defaultTheme, 
+        isDark: defaultIsDark, 
         themePreference: 'system',
         setThemePreference 
       }}>

@@ -12,22 +12,21 @@ export interface Theme {
   colors: {
     // Primary backgrounds
     background: string;
-    backgroundSecondary: string;
+    surface: string;      // Cards
+    surface2: string;     // Inputs / secondary surfaces
     
     // Text colors
-    text: string;
+    textPrimary: string;
     textSecondary: string;
-    
-    // Card & surface colors
-    card: string;
     
     // Borders & dividers
     border: string;
-    divider: string;
+    
+    // Icons
+    icon: string;
     
     // Accent colors (for buttons, links, etc.)
     accent: string;
-    accentLight: string;
     
     // Semantic colors
     success: string;
@@ -35,7 +34,12 @@ export interface Theme {
     error: string;
     info: string;
     
-    // Shadow colors
+    // Legacy aliases for backward compatibility
+    text: string;
+    card: string;
+    backgroundSecondary: string;
+    divider: string;
+    accentLight: string;
     shadow: string;
   };
   
@@ -78,29 +82,34 @@ export interface Theme {
 export const darkTheme: Theme = {
   mode: 'dark',
   colors: {
+    // Core tokens
     background: '#765943',
-    backgroundSecondary: 'rgba(255,255,255,0.05)',
+    surface: 'rgba(255,255,255,0.10)',
+    surface2: 'rgba(255,255,255,0.14)',
     
-    text: '#FFFFFF',
+    textPrimary: '#FFFFFF',
     textSecondary: 'rgba(255,255,255,0.75)',
     
-    // Increased contrast for better readability
-    card: 'rgba(255,255,255,0.10)',
+    border: 'rgba(255,255,255,0.16)',
     
-    // Subtle borders for definition
-    border: 'rgba(255,255,255,0.14)',
-    divider: 'rgba(255,255,255,0.14)',
+    icon: '#FFFFFF',
     
-    // Prominent white accent for dark mode
+    // Brand-safe accent (white for dark mode)
     accent: '#FFFFFF',
-    accentLight: 'rgba(255,255,255,0.12)',
     
+    // Semantic colors
     success: '#34C759',
     warning: '#FF9500',
     error: '#FF3B30',
     info: '#5AC8FA',
     
-    shadow: 'transparent', // No shadows in dark mode
+    // Legacy aliases
+    text: '#FFFFFF',
+    card: 'rgba(255,255,255,0.10)',
+    backgroundSecondary: 'rgba(255,255,255,0.05)',
+    divider: 'rgba(255,255,255,0.16)',
+    accentLight: 'rgba(255,255,255,0.12)',
+    shadow: 'transparent',
   },
   
   spacing: {
@@ -138,25 +147,33 @@ export const darkTheme: Theme = {
 export const lightTheme: Theme = {
   mode: 'light',
   colors: {
+    // Core tokens
     background: '#ede8e3',
-    backgroundSecondary: '#f5f1ed',
+    surface: '#ffffff',
+    surface2: 'rgba(0,0,0,0.04)',
     
-    text: '#3b2a1f',
-    textSecondary: 'rgba(59,42,31,0.7)',
+    textPrimary: '#2b1f19',
+    textSecondary: 'rgba(43,31,25,0.70)',
     
-    card: '#ffffff',
+    border: 'rgba(43,31,25,0.12)',
     
-    border: 'rgba(0,0,0,0.08)',
-    divider: 'rgba(0,0,0,0.08)',
+    icon: '#2b1f19',
     
+    // Brand-safe accent
     accent: '#3b2a1f',
-    accentLight: 'rgba(59,42,31,0.1)',
     
+    // Semantic colors
     success: '#34C759',
     warning: '#FF9500',
     error: '#FF3B30',
     info: '#007AFF',
     
+    // Legacy aliases
+    text: '#2b1f19',
+    card: '#ffffff',
+    backgroundSecondary: '#f5f1ed',
+    divider: 'rgba(43,31,25,0.12)',
+    accentLight: 'rgba(59,42,31,0.1)',
     shadow: 'rgba(0,0,0,0.1)',
   },
   
@@ -208,7 +225,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 32,
     fontWeight: '400' as const,
     lineHeight: 40,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.5,
   },
   
@@ -218,7 +235,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 24,
     fontWeight: '400' as const,
     lineHeight: 32,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.3,
   },
   
@@ -228,7 +245,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 20,
     fontWeight: '400' as const,
     lineHeight: 28,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
     letterSpacing: -0.2,
   },
   
@@ -238,7 +255,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 16,
     fontWeight: '400' as const,
     lineHeight: 24,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
   },
   
   bodyMedium: {
@@ -246,7 +263,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 15,
     fontWeight: '400' as const,
     lineHeight: 22,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
   },
   
   bodySmall: {
@@ -272,7 +289,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 16,
     fontWeight: '600' as const,
     lineHeight: 24,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
   },
   
   // Label text
@@ -281,7 +298,7 @@ export const createTypography = (theme: Theme) => ({
     fontSize: 14,
     fontWeight: '500' as const,
     lineHeight: 20,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
   },
 });
 
@@ -292,14 +309,14 @@ export const createTypography = (theme: Theme) => ({
 export const createComponentStyles = (theme: Theme) => ({
   // Card styles - consistent radius and surface color
   card: {
-    backgroundColor: theme.colors.card,
-    borderRadius: 16, // Consistent 16px radius
+    backgroundColor: theme.colors.surface,
+    borderRadius: 16,
     padding: theme.spacing.md,
     ...(theme.mode === 'dark' 
       ? {
           // Dark mode: subtle border instead of shadow
           borderWidth: 1,
-          borderColor: theme.colors.divider,
+          borderColor: theme.colors.border,
         }
       : {
           // Light mode: shadow
@@ -330,9 +347,7 @@ export const createComponentStyles = (theme: Theme) => ({
   },
   
   buttonSecondary: {
-    backgroundColor: theme.mode === 'dark' 
-      ? 'rgba(255,255,255,0.12)' 
-      : theme.colors.card,
+    backgroundColor: theme.colors.surface2,
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
@@ -344,12 +359,12 @@ export const createComponentStyles = (theme: Theme) => ({
   
   // Input styles - visible placeholders
   input: {
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.surface2,
     borderRadius: theme.radius.md,
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.md,
     fontSize: 16,
-    color: theme.colors.text,
+    color: theme.colors.textPrimary,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -357,7 +372,7 @@ export const createComponentStyles = (theme: Theme) => ({
   // Divider
   divider: {
     height: 1,
-    backgroundColor: theme.colors.divider,
+    backgroundColor: theme.colors.border,
     marginVertical: theme.spacing.md,
   },
   

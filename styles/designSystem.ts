@@ -16,29 +16,35 @@ export type { Theme };
 
 export function createColors(theme: Theme) {
   return {
-    // Primary palette
-    primary: '#6366F1',
-    primaryLight: '#818CF8',
-    primaryDark: '#4F46E5',
-    
-    // Neutral palette
+    // Core theme tokens
     background: theme.colors.background,
+    surface: theme.colors.surface,
+    surface2: theme.colors.surface2,
+    textPrimary: theme.colors.textPrimary,
+    textSecondary: theme.colors.textSecondary,
+    border: theme.colors.border,
+    icon: theme.colors.icon,
+    accent: theme.colors.accent,
+    
+    // Primary palette (for backward compatibility)
+    primary: theme.colors.accent,
+    primaryLight: theme.colors.accentLight,
+    primaryDark: theme.mode === 'dark' ? 'rgba(255,255,255,0.8)' : '#2b1f19',
+    
+    // Neutral palette (legacy aliases)
     backgroundAlt: theme.colors.backgroundSecondary,
-    surface: theme.colors.card,
+    card: theme.colors.surface,
     white: '#FFFFFF',
     black: '#000000',
     
-    // Text hierarchy
-    text: theme.colors.text,
-    textPrimary: theme.colors.text,
-    textSecondary: theme.colors.textSecondary,
-    textTertiary: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(59,42,31,0.5)',
-    textInverse: theme.mode === 'dark' ? '#000000' : '#FFFFFF',
+    // Text hierarchy (legacy aliases)
+    text: theme.colors.textPrimary,
+    textTertiary: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(43,31,25,0.5)',
+    textInverse: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
     
-    // Borders and dividers
-    border: theme.colors.border,
-    borderLight: theme.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-    divider: theme.colors.divider,
+    // Borders and dividers (legacy aliases)
+    borderLight: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(43,31,25,0.06)',
+    divider: theme.colors.border,
     
     // Semantic colors
     success: theme.colors.success,
@@ -50,14 +56,17 @@ export function createColors(theme: Theme) {
     info: theme.colors.info,
     infoLight: theme.mode === 'dark' ? 'rgba(90,200,250,0.2)' : '#DBEAFE',
     
-    // Accent colors
-    accent: theme.colors.accent,
+    // Accent colors (legacy aliases)
     accentLight: theme.colors.accentLight,
     
     // Shadows
+    shadow: theme.colors.shadow,
     shadowLight: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.05)',
     shadowMedium: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
     shadowDark: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.15)',
+    
+    // Highlight (for selected states)
+    highlight: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(43,31,25,0.04)',
   };
 }
 
@@ -86,15 +95,13 @@ export const spacing = {
 // ═══════════════════════════════════════════════════════
 
 export function createTypography(theme: Theme) {
-  const themeColors = createColors(theme);
-  
   return {
     // Display text - Large, elegant headings (Playfair Display)
     displayLarge: {
       fontSize: 32,
       fontWeight: '400' as const,
       lineHeight: 40,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.5,
     },
     
@@ -102,7 +109,7 @@ export function createTypography(theme: Theme) {
       fontSize: 28,
       fontWeight: '400' as const,
       lineHeight: 36,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.5,
     },
     
@@ -111,7 +118,7 @@ export function createTypography(theme: Theme) {
       fontSize: 24,
       fontWeight: '400' as const,
       lineHeight: 32,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.3,
     },
     
@@ -119,7 +126,7 @@ export function createTypography(theme: Theme) {
       fontSize: 20,
       fontWeight: '400' as const,
       lineHeight: 28,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.2,
     },
     
@@ -127,7 +134,7 @@ export function createTypography(theme: Theme) {
       fontSize: 18,
       fontWeight: '400' as const,
       lineHeight: 24,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
     },
     
     // Body text - Regular content (Inter)
@@ -135,21 +142,21 @@ export function createTypography(theme: Theme) {
       fontSize: 16,
       fontWeight: '400' as const,
       lineHeight: 24,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
     },
     
     bodyMedium: {
       fontSize: 14,
       fontWeight: '400' as const,
       lineHeight: 20,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
     },
     
     bodySmall: {
       fontSize: 12,
       fontWeight: '400' as const,
       lineHeight: 16,
-      color: themeColors.textSecondary,
+      color: theme.colors.textSecondary,
     },
     
     // Labels - UI labels and captions
@@ -157,21 +164,21 @@ export function createTypography(theme: Theme) {
       fontSize: 14,
       fontWeight: '500' as const,
       lineHeight: 20,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
     },
     
     labelMedium: {
       fontSize: 12,
       fontWeight: '500' as const,
       lineHeight: 16,
-      color: themeColors.textSecondary,
+      color: theme.colors.textSecondary,
     },
     
     labelSmall: {
       fontSize: 10,
       fontWeight: '500' as const,
       lineHeight: 14,
-      color: themeColors.textTertiary,
+      color: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(43,31,25,0.5)',
     },
     
     // Button text
@@ -179,14 +186,14 @@ export function createTypography(theme: Theme) {
       fontSize: 16,
       fontWeight: '600' as const,
       lineHeight: 24,
-      color: themeColors.textInverse,
+      color: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
     },
     
     buttonMedium: {
       fontSize: 14,
       fontWeight: '600' as const,
       lineHeight: 20,
-      color: themeColors.textInverse,
+      color: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
     },
     
     // Backward compatibility
@@ -194,7 +201,7 @@ export function createTypography(theme: Theme) {
       fontSize: 32,
       fontWeight: '400' as const,
       lineHeight: 40,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.5,
     },
     
@@ -202,7 +209,7 @@ export function createTypography(theme: Theme) {
       fontSize: 24,
       fontWeight: '400' as const,
       lineHeight: 32,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.3,
     },
     
@@ -210,7 +217,7 @@ export function createTypography(theme: Theme) {
       fontSize: 20,
       fontWeight: '400' as const,
       lineHeight: 28,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
       letterSpacing: -0.2,
     },
     
@@ -218,14 +225,32 @@ export function createTypography(theme: Theme) {
       fontSize: 16,
       fontWeight: '400' as const,
       lineHeight: 24,
-      color: themeColors.textPrimary,
+      color: theme.colors.textPrimary,
     },
     
     caption: {
       fontSize: 12,
       fontWeight: '400' as const,
       lineHeight: 16,
-      color: themeColors.textSecondary,
+      color: theme.colors.textSecondary,
+    },
+    
+    // Typography sizes (for backward compatibility)
+    sizes: {
+      xs: 10,
+      sm: 12,
+      md: 14,
+      lg: 16,
+      xl: 20,
+      xxl: 24,
+    },
+    
+    // Typography weights (for backward compatibility)
+    weights: {
+      regular: '400',
+      medium: '500',
+      semibold: '600',
+      bold: '700',
     },
   };
 }
@@ -333,7 +358,7 @@ export const cardStyles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: colors.border,
   } as ViewStyle,
   
   elevated: {
@@ -356,7 +381,7 @@ export const cardStyles = StyleSheet.create({
   } as ViewStyle,
   
   interactivePressed: {
-    backgroundColor: colors.backgroundAlt,
+    backgroundColor: colors.highlight,
   } as ViewStyle,
 });
 
@@ -408,7 +433,7 @@ export const containerStyles = StyleSheet.create({
 
 export const inputStyles = StyleSheet.create({
   base: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface2,
     borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: 12,
@@ -419,7 +444,7 @@ export const inputStyles = StyleSheet.create({
   } as TextStyle,
   
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface2,
     borderWidth: 1.5,
     borderColor: colors.border,
     borderRadius: 12,
@@ -430,8 +455,8 @@ export const inputStyles = StyleSheet.create({
   } as TextStyle,
   
   focused: {
-    borderColor: colors.primary,
-    shadowColor: colors.primary,
+    borderColor: colors.accent,
+    shadowColor: colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -444,7 +469,7 @@ export const inputStyles = StyleSheet.create({
   
   disabled: {
     backgroundColor: colors.backgroundAlt,
-    color: colors.textTertiary,
+    color: colors.textSecondary,
   } as TextStyle,
 });
 
