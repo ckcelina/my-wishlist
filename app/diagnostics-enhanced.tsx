@@ -52,7 +52,7 @@ export default function DiagnosticsEnhancedScreen() {
     setResults([]);
     setProgress(0);
 
-    const totalTests = 15;
+    const totalTests = 19; // Updated count
     let currentTest = 0;
 
     const incrementProgress = () => {
@@ -193,7 +193,6 @@ export default function DiagnosticsEnhancedScreen() {
       try {
         updateResult({ name: 'Wishlists CRUD', status: 'pending', message: 'Testing...' });
         
-        // Fetch wishlists
         const { data: wishlists, error: fetchError } = await supabase
           .from('wishlists')
           .select('*')
@@ -232,52 +231,175 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 5: Backend API Connection
+    // Test 5: Edge Function - extract-item
     try {
-      updateResult({ name: 'Backend API', status: 'pending', message: 'Testing...' });
+      updateResult({ name: 'Edge Function: extract-item', status: 'pending', message: 'Testing...' });
       
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
+      const { data, error } = await supabase.functions.invoke('extract-item', {
+        body: { url: 'https://example.com/test' },
+      });
       
-      if (!backendUrl) {
-        updateResult({
-          name: 'Backend API',
-          status: 'warning',
-          message: 'No backend URL configured',
-          details: 'App uses Supabase only',
-        });
-      } else {
-        const response = await fetch(`${backendUrl}/health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        
-        if (response.ok) {
+      if (error) {
+        if (error.message.includes('not found') || error.message.includes('404')) {
           updateResult({
-            name: 'Backend API',
-            status: 'pass',
-            message: 'Backend reachable',
-            details: `Status: ${response.status}`,
+            name: 'Edge Function: extract-item',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
           });
         } else {
           updateResult({
-            name: 'Backend API',
-            status: 'fail',
-            message: 'Backend unreachable',
-            details: `Status: ${response.status}`,
+            name: 'Edge Function: extract-item',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
           });
         }
+      } else {
+        updateResult({
+          name: 'Edge Function: extract-item',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       updateResult({
-        name: 'Backend API',
-        status: 'warning',
-        message: 'Backend not accessible',
-        details: 'Using Supabase only',
+        name: 'Edge Function: extract-item',
+        status: 'fail',
+        message: 'Not available',
+        details: error.message || 'Function invocation failed',
       });
     }
     incrementProgress();
 
-    // Test 6: Notifications Permission
+    // Test 6: Edge Function - identify-from-image
+    try {
+      updateResult({ name: 'Edge Function: identify-from-image', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('identify-from-image', {
+        body: { imageUrl: 'https://example.com/test.jpg' },
+      });
+      
+      if (error) {
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        } else {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      updateResult({
+        name: 'Edge Function: identify-from-image',
+        status: 'fail',
+        message: 'Not available',
+        details: error.message || 'Function invocation failed',
+      });
+    }
+    incrementProgress();
+
+    // Test 7: Edge Function - find-alternatives
+    try {
+      updateResult({ name: 'Edge Function: find-alternatives', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('find-alternatives', {
+        body: { title: 'Test Product' },
+      });
+      
+      if (error) {
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        } else {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      updateResult({
+        name: 'Edge Function: find-alternatives',
+        status: 'fail',
+        message: 'Not available',
+        details: error.message || 'Function invocation failed',
+      });
+    }
+    incrementProgress();
+
+    // Test 8: Edge Function - import-wishlist
+    try {
+      updateResult({ name: 'Edge Function: import-wishlist', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('import-wishlist', {
+        body: { wishlistUrl: 'https://example.com/wishlist' },
+      });
+      
+      if (error) {
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        } else {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      updateResult({
+        name: 'Edge Function: import-wishlist',
+        status: 'fail',
+        message: 'Not available',
+        details: error.message || 'Function invocation failed',
+      });
+    }
+    incrementProgress();
+
+    // Test 9: Notifications Permission
     try {
       updateResult({ name: 'Notifications', status: 'pending', message: 'Checking...' });
       
@@ -308,7 +430,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 7: Image Picker Permission
+    // Test 10: Image Picker Permission
     try {
       updateResult({ name: 'Image Picker', status: 'pending', message: 'Checking...' });
       
@@ -339,7 +461,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 8: Storage (Supabase Storage)
+    // Test 11: Storage (Supabase Storage)
     try {
       updateResult({ name: 'Storage', status: 'pending', message: 'Testing...' });
       
@@ -370,47 +492,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 9: Edge Functions
-    try {
-      updateResult({ name: 'Edge Functions', status: 'pending', message: 'Testing...' });
-      
-      const { data, error } = await supabase.functions.invoke('extract-item', {
-        body: { url: 'https://example.com' },
-      });
-      
-      if (error && error.message.includes('not found')) {
-        updateResult({
-          name: 'Edge Functions',
-          status: 'warning',
-          message: 'Functions not deployed',
-          details: 'Deploy edge functions to enable AI features',
-        });
-      } else if (error) {
-        updateResult({
-          name: 'Edge Functions',
-          status: 'warning',
-          message: 'Function test inconclusive',
-          details: error.message,
-        });
-      } else {
-        updateResult({
-          name: 'Edge Functions',
-          status: 'pass',
-          message: 'Functions accessible',
-          details: 'AI features enabled',
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Edge Functions',
-        status: 'warning',
-        message: 'Functions not available',
-        details: 'Deploy edge functions for AI features',
-      });
-    }
-    incrementProgress();
-
-    // Test 10: Deep Linking
+    // Test 12: Deep Linking
     try {
       updateResult({ name: 'Deep Linking', status: 'pending', message: 'Checking...' });
       
@@ -441,7 +523,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 11: Platform Detection
+    // Test 13: Platform Detection
     updateResult({
       name: 'Platform',
       status: 'pass',
@@ -450,7 +532,7 @@ export default function DiagnosticsEnhancedScreen() {
     });
     incrementProgress();
 
-    // Test 12: Environment Variables
+    // Test 14: Environment Variables
     try {
       updateResult({ name: 'Environment', status: 'pending', message: 'Checking...' });
       
@@ -488,7 +570,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 13: Network Connectivity
+    // Test 15: Network Connectivity
     try {
       updateResult({ name: 'Network', status: 'pending', message: 'Testing...' });
       
@@ -522,7 +604,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 14: User Settings
+    // Test 16: User Settings
     if (user) {
       try {
         updateResult({ name: 'User Settings', status: 'pending', message: 'Checking...' });
@@ -573,7 +655,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 15: Share Sheet Configuration
+    // Test 17: Share Sheet Configuration
     try {
       updateResult({ name: 'Share Sheet', status: 'pending', message: 'Checking...' });
       
@@ -611,6 +693,78 @@ export default function DiagnosticsEnhancedScreen() {
         status: 'fail',
         message: 'Config check failed',
         details: error instanceof Error ? error.message : String(error),
+      });
+    }
+    incrementProgress();
+
+    // Test 18: Camera Permission
+    try {
+      updateResult({ name: 'Camera Permission', status: 'pending', message: 'Checking...' });
+      
+      const { status } = await ImagePicker.getCameraPermissionsAsync();
+      
+      if (status === 'granted') {
+        updateResult({
+          name: 'Camera Permission',
+          status: 'pass',
+          message: 'Permission granted',
+          details: 'Camera access enabled',
+        });
+      } else {
+        updateResult({
+          name: 'Camera Permission',
+          status: 'warning',
+          message: 'Permission not granted',
+          details: `Status: ${status}`,
+        });
+      }
+    } catch (error) {
+      updateResult({
+        name: 'Camera Permission',
+        status: 'fail',
+        message: 'Permission check failed',
+        details: error instanceof Error ? error.message : String(error),
+      });
+    }
+    incrementProgress();
+
+    // Test 19: OpenAI Key Configuration (Edge Functions)
+    try {
+      updateResult({ name: 'OpenAI Configuration', status: 'pending', message: 'Checking...' });
+      
+      // Try a real extraction to see if OpenAI key is configured
+      const { data, error } = await supabase.functions.invoke('extract-item', {
+        body: { url: 'https://www.amazon.com/test' },
+      });
+      
+      if (error) {
+        updateResult({
+          name: 'OpenAI Configuration',
+          status: 'warning',
+          message: 'Cannot verify',
+          details: 'Edge function error',
+        });
+      } else if (data && data.error && data.error.includes('configuration')) {
+        updateResult({
+          name: 'OpenAI Configuration',
+          status: 'fail',
+          message: 'OpenAI key not configured',
+          details: 'Set OPENAI_API_KEY in Supabase secrets',
+        });
+      } else {
+        updateResult({
+          name: 'OpenAI Configuration',
+          status: 'pass',
+          message: 'OpenAI key configured',
+          details: 'AI features enabled',
+        });
+      }
+    } catch (error: any) {
+      updateResult({
+        name: 'OpenAI Configuration',
+        status: 'warning',
+        message: 'Cannot verify',
+        details: 'Check Edge Functions',
       });
     }
     incrementProgress();

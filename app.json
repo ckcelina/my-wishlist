@@ -85,7 +85,7 @@
         }
       ]
     ],
-    "scheme": "mywishlist",
+    "scheme": "My Wishlist",
     "experiments": {
       "typedRoutes": true
     },
