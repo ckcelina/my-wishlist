@@ -85,15 +85,16 @@ export function Button({
   const getTextColor = () => {
     switch (variant) {
       case 'primary':
-        return theme.mode === 'dark' ? colors.background : colors.background;
+        // Primary button text: dark text on light bg in dark mode, light text on dark bg in light mode
+        return theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF';
       case 'secondary':
-        return colors.text;
+        return colors.textPrimary;
       case 'destructive':
         return '#FFFFFF';
       case 'ghost':
         return colors.accent;
       default:
-        return colors.text;
+        return colors.textPrimary;
     }
   };
   

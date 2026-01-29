@@ -1,12 +1,12 @@
 
 import { StyleSheet, TextStyle, ViewStyle } from 'react-native';
-import { Theme, lightTheme, darkTheme } from './theme';
+import { Theme, lightTheme, darkTheme, createTypography as createThemeTypography } from './theme';
 
 // ═══════════════════════════════════════════════════════
 // 🎨 DESIGN SYSTEM - MY WISHLIST
+// All colors MUST come from theme tokens - NO hardcoded colors
 // ═══════════════════════════════════════════════════════
 
-// Export theme utilities
 export { lightTheme, darkTheme };
 export type { Theme };
 
@@ -16,7 +16,7 @@ export type { Theme };
 
 export function createColors(theme: Theme) {
   return {
-    // Core theme tokens
+    // Core theme tokens (single source of truth)
     background: theme.colors.background,
     surface: theme.colors.surface,
     surface2: theme.colors.surface2,
@@ -25,48 +25,39 @@ export function createColors(theme: Theme) {
     border: theme.colors.border,
     icon: theme.colors.icon,
     accent: theme.colors.accent,
-    
-    // Primary palette (for backward compatibility)
-    primary: theme.colors.accent,
-    primaryLight: theme.colors.accentLight,
-    primaryDark: theme.mode === 'dark' ? 'rgba(255,255,255,0.8)' : '#2b1f19',
-    
-    // Neutral palette (legacy aliases)
-    backgroundAlt: theme.colors.backgroundSecondary,
-    card: theme.colors.surface,
-    white: '#FFFFFF',
-    black: '#000000',
-    
-    // Text hierarchy (legacy aliases)
-    text: theme.colors.textPrimary,
-    textTertiary: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(43,31,25,0.5)',
-    textInverse: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
-    
-    // Borders and dividers (legacy aliases)
-    borderLight: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(43,31,25,0.06)',
-    divider: theme.colors.border,
+    accentLight: theme.colors.accentLight,
     
     // Semantic colors
     success: theme.colors.success,
-    successLight: theme.mode === 'dark' ? 'rgba(52,199,89,0.2)' : '#D1FAE5',
+    successLight: theme.mode === 'dark' ? 'rgba(52,199,89,0.2)' : 'rgba(52,199,89,0.15)',
     warning: theme.colors.warning,
-    warningLight: theme.mode === 'dark' ? 'rgba(255,149,0,0.2)' : '#FEF3C7',
+    warningLight: theme.mode === 'dark' ? 'rgba(255,149,0,0.2)' : 'rgba(255,149,0,0.15)',
     error: theme.colors.error,
-    errorLight: theme.mode === 'dark' ? 'rgba(255,59,48,0.2)' : '#FEE2E2',
+    errorLight: theme.mode === 'dark' ? 'rgba(255,59,48,0.2)' : 'rgba(255,59,48,0.15)',
     info: theme.colors.info,
-    infoLight: theme.mode === 'dark' ? 'rgba(90,200,250,0.2)' : '#DBEAFE',
+    infoLight: theme.mode === 'dark' ? 'rgba(90,200,250,0.2)' : 'rgba(90,200,250,0.15)',
     
-    // Accent colors (legacy aliases)
-    accentLight: theme.colors.accentLight,
-    
-    // Shadows
+    // Legacy aliases for backward compatibility
+    primary: theme.colors.accent,
+    primaryLight: theme.colors.accentLight,
+    primaryDark: theme.mode === 'dark' ? 'rgba(255,255,255,0.8)' : '#2b1f19',
+    text: theme.colors.textPrimary,
+    textTertiary: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(43,31,25,0.5)',
+    textInverse: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
+    card: theme.colors.surface,
+    backgroundAlt: theme.colors.backgroundSecondary,
+    backgroundSecondary: theme.colors.backgroundSecondary,
+    divider: theme.colors.divider,
+    borderLight: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(43,31,25,0.08)',
     shadow: theme.colors.shadow,
-    shadowLight: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.05)',
-    shadowMedium: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
-    shadowDark: theme.mode === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.15)',
-    
-    // Highlight (for selected states)
+    shadowLight: theme.mode === 'dark' ? 'transparent' : 'rgba(0,0,0,0.05)',
+    shadowMedium: theme.mode === 'dark' ? 'transparent' : 'rgba(0,0,0,0.1)',
+    shadowDark: theme.mode === 'dark' ? 'transparent' : 'rgba(0,0,0,0.15)',
     highlight: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(43,31,25,0.04)',
+    
+    // DO NOT USE - kept only for migration
+    white: '#FFFFFF',
+    black: '#000000',
   };
 }
 
@@ -95,164 +86,7 @@ export const spacing = {
 // ═══════════════════════════════════════════════════════
 
 export function createTypography(theme: Theme) {
-  return {
-    // Display text - Large, elegant headings (Playfair Display)
-    displayLarge: {
-      fontSize: 32,
-      fontWeight: '400' as const,
-      lineHeight: 40,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.5,
-    },
-    
-    displayMedium: {
-      fontSize: 28,
-      fontWeight: '400' as const,
-      lineHeight: 36,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.5,
-    },
-    
-    // Titles - Section headings (Playfair Display)
-    titleLarge: {
-      fontSize: 24,
-      fontWeight: '400' as const,
-      lineHeight: 32,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.3,
-    },
-    
-    titleMedium: {
-      fontSize: 20,
-      fontWeight: '400' as const,
-      lineHeight: 28,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.2,
-    },
-    
-    titleSmall: {
-      fontSize: 18,
-      fontWeight: '400' as const,
-      lineHeight: 24,
-      color: theme.colors.textPrimary,
-    },
-    
-    // Body text - Regular content (Inter)
-    bodyLarge: {
-      fontSize: 16,
-      fontWeight: '400' as const,
-      lineHeight: 24,
-      color: theme.colors.textPrimary,
-    },
-    
-    bodyMedium: {
-      fontSize: 14,
-      fontWeight: '400' as const,
-      lineHeight: 20,
-      color: theme.colors.textPrimary,
-    },
-    
-    bodySmall: {
-      fontSize: 12,
-      fontWeight: '400' as const,
-      lineHeight: 16,
-      color: theme.colors.textSecondary,
-    },
-    
-    // Labels - UI labels and captions
-    labelLarge: {
-      fontSize: 14,
-      fontWeight: '500' as const,
-      lineHeight: 20,
-      color: theme.colors.textPrimary,
-    },
-    
-    labelMedium: {
-      fontSize: 12,
-      fontWeight: '500' as const,
-      lineHeight: 16,
-      color: theme.colors.textSecondary,
-    },
-    
-    labelSmall: {
-      fontSize: 10,
-      fontWeight: '500' as const,
-      lineHeight: 14,
-      color: theme.mode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(43,31,25,0.5)',
-    },
-    
-    // Button text
-    buttonLarge: {
-      fontSize: 16,
-      fontWeight: '600' as const,
-      lineHeight: 24,
-      color: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
-    },
-    
-    buttonMedium: {
-      fontSize: 14,
-      fontWeight: '600' as const,
-      lineHeight: 20,
-      color: theme.mode === 'dark' ? '#2b1f19' : '#FFFFFF',
-    },
-    
-    // Backward compatibility
-    h1: {
-      fontSize: 32,
-      fontWeight: '400' as const,
-      lineHeight: 40,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.5,
-    },
-    
-    h2: {
-      fontSize: 24,
-      fontWeight: '400' as const,
-      lineHeight: 32,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.3,
-    },
-    
-    h3: {
-      fontSize: 20,
-      fontWeight: '400' as const,
-      lineHeight: 28,
-      color: theme.colors.textPrimary,
-      letterSpacing: -0.2,
-    },
-    
-    body: {
-      fontSize: 16,
-      fontWeight: '400' as const,
-      lineHeight: 24,
-      color: theme.colors.textPrimary,
-    },
-    
-    caption: {
-      fontSize: 12,
-      fontWeight: '400' as const,
-      lineHeight: 16,
-      color: theme.colors.textSecondary,
-    },
-    
-    // Typography sizes (for backward compatibility)
-    sizes: {
-      xs: 10,
-      sm: 12,
-      md: 14,
-      lg: 16,
-      xl: 20,
-      xxl: 24,
-    },
-    
-    // Typography weights (for backward compatibility)
-    weights: {
-      regular: '400',
-      medium: '500',
-      semibold: '600',
-      bold: '700',
-    },
-  };
+  return createThemeTypography(theme);
 }
 
 // Static typography export for backward compatibility

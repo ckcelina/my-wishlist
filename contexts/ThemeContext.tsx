@@ -20,7 +20,6 @@ const THEME_STORAGE_KEY = '@my_wishlist_theme_preference';
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const systemColorScheme = useColorScheme();
   const [themePreference, setThemePreferenceState] = useState<ThemePreference>('system');
-  const [isLoading, setIsLoading] = useState(true);
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Load theme preference from storage BEFORE first render
@@ -33,13 +32,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (isMounted && stored && (stored === 'light' || stored === 'dark' || stored === 'system')) {
           setThemePreferenceState(stored as ThemePreference);
           console.log('[ThemeContext] Loaded theme preference:', stored);
+        } else {
+          console.log('[ThemeContext] No stored preference, using system default');
         }
       } catch (error) {
         console.error('[ThemeContext] Error loading theme preference:', error);
       } finally {
         if (isMounted) {
-          setIsLoading(false);
           setIsHydrated(true);
+          console.log('[ThemeContext] Theme hydration complete');
         }
       }
     };
@@ -68,11 +69,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   
   const theme = isDark ? darkTheme : lightTheme;
 
-  console.log('[ThemeContext] Current theme mode:', theme.mode, 'preference:', themePreference, 'hydrated:', isHydrated);
+  console.log('[ThemeContext] Current theme:', theme.mode, '| Preference:', themePreference, '| Hydrated:', isHydrated);
 
-  // Show loading state with default theme while hydrating
-  if (isLoading || !isHydrated) {
-    // Use system theme as default while loading
+  // Show default theme while hydrating (prevents flicker)
+  if (!isHydrated) {
     const defaultIsDark = systemColorScheme === 'dark';
     const defaultTheme = defaultIsDark ? darkTheme : lightTheme;
     
