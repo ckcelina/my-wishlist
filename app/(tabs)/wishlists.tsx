@@ -51,9 +51,6 @@ export default function WishlistsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [initializing, setInitializing] = useState(false);
 
   const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -78,6 +75,7 @@ export default function WishlistsScreen() {
   const subscriptionRef = useRef<any>(null);
   const isFetchingRef = useRef(false);
   const hasInitializedRef = useRef(false);
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -227,10 +225,6 @@ export default function WishlistsScreen() {
     menuItemDanger: {
       color: colors.error,
     },
-    loadingFooter: {
-      paddingVertical: spacing.lg,
-      alignItems: 'center',
-    },
     createButtonContainer: {
       paddingTop: spacing.lg,
       paddingBottom: spacing.md,
@@ -259,7 +253,7 @@ export default function WishlistsScreen() {
       console.log('[WishlistsScreen] Default wishlist created successfully:', newWishlist.id);
       
       // Refresh the list
-      await fetchWishlistsFromNetwork(false);
+      await fetchWishlistsFromNetwork();
       
       // Navigate to the new wishlist
       router.push(`/wishlist/${newWishlist.id}`);
@@ -274,7 +268,7 @@ export default function WishlistsScreen() {
     }
   }, [user, initializing, router]);
 
-  const fetchWishlistsFromNetwork = useCallback(async (append: boolean) => {
+  const fetchWishlistsFromNetwork = useCallback(async () => {
     if (!user?.id) {
       console.log('[WishlistsScreen] No user ID, skipping fetch');
       return;
@@ -289,11 +283,7 @@ export default function WishlistsScreen() {
     isFetchingRef.current = true;
 
     try {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
-      }
+      setLoading(true);
       setError(null);
 
       console.log('[WishlistsScreen] Fetching wishlists from Supabase for user:', user.id);
@@ -311,42 +301,33 @@ export default function WishlistsScreen() {
       // Apply deduplication and normalization
       const normalizedWishlists = normalizeList(formattedWishlists, 'id', 'updatedAt');
 
-      if (append) {
-        setWishlists((prev) => {
-          const combined = [...prev, ...normalizedWishlists];
-          return dedupeById(combined, 'id');
-        });
-      } else {
-        setWishlists(normalizedWishlists);
-        await setCachedData('wishlists', normalizedWishlists);
-        
-        // If user has no wishlists, create a default one
-        if (normalizedWishlists.length === 0 && !initializing) {
-          console.log('[WishlistsScreen] No wishlists found, creating default wishlist');
-          await initializeDefaultWishlist();
-          return;
-        }
-      }
-
-      setHasMore(formattedWishlists.length === PAGE_SIZE);
       console.log('[WishlistsScreen] Fetched wishlists:', normalizedWishlists.length);
+
+      // Set state with deduplicated data
+      setWishlists(normalizedWishlists);
+      await setCachedData('wishlists', normalizedWishlists);
+      
+      // If user has no wishlists, create a default one
+      if (normalizedWishlists.length === 0 && !initializing) {
+        console.log('[WishlistsScreen] No wishlists found, creating default wishlist');
+        await initializeDefaultWishlist();
+        return;
+      }
     } catch (err) {
       console.error('[WishlistsScreen] Error fetching wishlists:', err);
       console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
       setError(err instanceof Error ? err.message : 'Failed to load wishlists');
 
-      if (!append) {
-        const cached = await getCachedData<Wishlist[]>('wishlists');
-        if (cached) {
-          console.log('[WishlistsScreen] Using cached wishlists');
-          const normalizedCached = dedupeById(cached, 'id');
-          setWishlists(normalizedCached);
-        }
+      // Try to load from cache
+      const cached = await getCachedData<Wishlist[]>('wishlists');
+      if (cached) {
+        console.log('[WishlistsScreen] Using cached wishlists');
+        const normalizedCached = dedupeById(cached, 'id');
+        setWishlists(normalizedCached);
       }
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setLoadingMore(false);
       isFetchingRef.current = false;
     }
   }, [user, initializing, initializeDefaultWishlist]);
@@ -379,8 +360,15 @@ export default function WishlistsScreen() {
         (payload) => {
           console.log('[WishlistsScreen] Realtime update received:', payload.eventType);
           
-          // Refetch wishlists on any change
-          fetchWishlistsFromNetwork(false);
+          // Debounce realtime updates to prevent multiple rapid fetches
+          if (realtimeDebounceRef.current) {
+            clearTimeout(realtimeDebounceRef.current);
+          }
+
+          realtimeDebounceRef.current = setTimeout(() => {
+            console.log('[WishlistsScreen] Debounced realtime update - refetching wishlists');
+            fetchWishlistsFromNetwork();
+          }, 500); // Wait 500ms before refetching
         }
       )
       .subscribe((status) => {
@@ -397,6 +385,11 @@ export default function WishlistsScreen() {
       supabase.removeChannel(subscriptionRef.current);
       subscriptionRef.current = null;
     }
+
+    if (realtimeDebounceRef.current) {
+      clearTimeout(realtimeDebounceRef.current);
+      realtimeDebounceRef.current = null;
+    }
   }, []);
 
   // Initial fetch and subscription setup
@@ -404,7 +397,7 @@ export default function WishlistsScreen() {
     if (user && !hasInitializedRef.current) {
       console.log('[WishlistsScreen] User authenticated, initializing');
       hasInitializedRef.current = true;
-      fetchWishlistsFromNetwork(false);
+      fetchWishlistsFromNetwork();
       setupRealtimeSubscription();
     }
 
@@ -420,18 +413,8 @@ export default function WishlistsScreen() {
   const handleRefresh = useCallback(() => {
     console.log('[WishlistsScreen] User triggered refresh');
     setRefreshing(true);
-    setPage(1);
-    fetchWishlistsFromNetwork(false);
+    fetchWishlistsFromNetwork();
   }, [fetchWishlistsFromNetwork]);
-
-  const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore && !loading) {
-      console.log('[WishlistsScreen] Loading more wishlists');
-      const nextPage = page + 1;
-      setPage(nextPage);
-      fetchWishlistsFromNetwork(true);
-    }
-  }, [loadingMore, hasMore, loading, page, fetchWishlistsFromNetwork]);
 
   const handleCreateWishlist = async () => {
     const trimmedName = newWishlistName.trim();
@@ -627,19 +610,12 @@ export default function WishlistsScreen() {
 
   const renderFooter = () => {
     return (
-      <View>
-        {loadingMore && (
-          <View style={styles.loadingFooter}>
-            <ListItemSkeleton />
-          </View>
-        )}
-        <View style={styles.createButtonContainer}>
-          <Button
-            title="Create Wishlist"
-            onPress={openCreateModal}
-            variant="primary"
-          />
-        </View>
+      <View style={styles.createButtonContainer}>
+        <Button
+          title="Create Wishlist"
+          onPress={openCreateModal}
+          variant="primary"
+        />
       </View>
     );
   };
@@ -664,7 +640,7 @@ export default function WishlistsScreen() {
         {renderHeader()}
         <ErrorState
           message={error}
-          onRetry={() => fetchWishlistsFromNetwork(false)}
+          onRetry={() => fetchWishlistsFromNetwork()}
         />
       </SafeAreaView>
     );
@@ -739,8 +715,6 @@ export default function WishlistsScreen() {
               tintColor={colors.primary}
             />
           }
-          onEndReached={handleLoadMore}
-          onEndReachedThreshold={0.5}
         />
 
         <Modal
