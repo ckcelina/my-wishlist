@@ -93,131 +93,153 @@ export function createTypography(theme: Theme) {
 export const typography = createTypography(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
-// 🔘 BUTTON STYLES
+// 🔘 BUTTON STYLES (Theme-aware)
 // ═══════════════════════════════════════════════════════
 
-export const buttonStyles = StyleSheet.create({
-  base: {
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-  } as ViewStyle,
+export function createButtonStyles(theme: Theme) {
+  const colors = createColors(theme);
   
-  primary: {
-    backgroundColor: colors.accent,
-    shadowColor: colors.shadowMedium,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
-  } as ViewStyle,
-  
-  primaryPressed: {
-    backgroundColor: colors.primaryDark,
-  } as ViewStyle,
-  
-  secondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-  } as ViewStyle,
-  
-  secondaryPressed: {
-    backgroundColor: colors.backgroundAlt,
-    borderColor: colors.textTertiary,
-  } as ViewStyle,
-  
-  destructive: {
-    backgroundColor: colors.error,
-    shadowColor: colors.shadowMedium,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
-  } as ViewStyle,
-  
-  destructivePressed: {
-    backgroundColor: '#DC2626',
-  } as ViewStyle,
-  
-  ghost: {
-    backgroundColor: 'transparent',
-  } as ViewStyle,
-  
-  ghostPressed: {
-    backgroundColor: colors.backgroundAlt,
-  } as ViewStyle,
-  
-  disabled: {
-    opacity: 0.5,
-  } as ViewStyle,
-  
-  primaryText: {
-    ...typography.buttonMedium,
-    color: colors.textInverse,
-  } as TextStyle,
-  
-  secondaryText: {
-    ...typography.buttonMedium,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  destructiveText: {
-    ...typography.buttonMedium,
-    color: colors.textInverse,
-  } as TextStyle,
-  
-  ghostText: {
-    ...typography.buttonMedium,
-    color: colors.primary,
-  } as TextStyle,
-});
+  return StyleSheet.create({
+    base: {
+      borderRadius: 12,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: spacing.sm,
+    } as ViewStyle,
+    
+    primary: {
+      backgroundColor: colors.accent,
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadowMedium,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 4,
+        elevation: 2,
+      }),
+    } as ViewStyle,
+    
+    primaryPressed: {
+      backgroundColor: colors.primaryDark,
+    } as ViewStyle,
+    
+    secondary: {
+      backgroundColor: colors.surface2,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    } as ViewStyle,
+    
+    secondaryPressed: {
+      backgroundColor: colors.backgroundAlt,
+      borderColor: colors.textTertiary,
+    } as ViewStyle,
+    
+    destructive: {
+      backgroundColor: colors.error,
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadowMedium,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 4,
+        elevation: 2,
+      }),
+    } as ViewStyle,
+    
+    destructivePressed: {
+      backgroundColor: '#DC2626',
+    } as ViewStyle,
+    
+    ghost: {
+      backgroundColor: 'transparent',
+    } as ViewStyle,
+    
+    ghostPressed: {
+      backgroundColor: colors.backgroundAlt,
+    } as ViewStyle,
+    
+    disabled: {
+      opacity: 0.5,
+    } as ViewStyle,
+    
+    primaryText: {
+      ...createTypography(theme).buttonMedium,
+      color: colors.textInverse,
+    } as TextStyle,
+    
+    secondaryText: {
+      ...createTypography(theme).buttonMedium,
+      color: colors.textPrimary,
+    } as TextStyle,
+    
+    destructiveText: {
+      ...createTypography(theme).buttonMedium,
+      color: colors.textInverse,
+    } as TextStyle,
+    
+    ghostText: {
+      ...createTypography(theme).buttonMedium,
+      color: colors.primary,
+    } as TextStyle,
+  });
+}
+
+// Static button styles export for backward compatibility
+export const buttonStyles = createButtonStyles(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
-// 🃏 CARD STYLES
+// 🃏 CARD STYLES (Theme-aware)
 // ═══════════════════════════════════════════════════════
 
-export const cardStyles = StyleSheet.create({
-  base: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: spacing.md,
-    shadowColor: colors.shadowLight,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: colors.border,
-  } as ViewStyle,
+export function createCardStyles(theme: Theme) {
+  const colors = createColors(theme);
   
-  elevated: {
-    shadowColor: colors.shadowMedium,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 12,
-    elevation: 4,
-  } as ViewStyle,
-  
-  flat: {
-    shadowOpacity: 0,
-    elevation: 0,
-    borderWidth: 1,
-    borderColor: colors.border,
-  } as ViewStyle,
-  
-  interactive: {
-    backgroundColor: colors.surface,
-  } as ViewStyle,
-  
-  interactivePressed: {
-    backgroundColor: colors.highlight,
-  } as ViewStyle,
-});
+  return StyleSheet.create({
+    base: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadowLight,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 8,
+        elevation: 2,
+      }),
+    } as ViewStyle,
+    
+    elevated: {
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadowMedium,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 1,
+        shadowRadius: 12,
+        elevation: 4,
+      }),
+    } as ViewStyle,
+    
+    flat: {
+      shadowOpacity: 0,
+      elevation: 0,
+      borderWidth: 1,
+      borderColor: colors.border,
+    } as ViewStyle,
+    
+    interactive: {
+      backgroundColor: colors.surface,
+    } as ViewStyle,
+    
+    interactivePressed: {
+      backgroundColor: colors.highlight,
+    } as ViewStyle,
+  });
+}
+
+// Static card styles export for backward compatibility
+export const cardStyles = createCardStyles(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
 // 📦 CONTAINER STYLES
@@ -262,50 +284,57 @@ export const containerStyles = StyleSheet.create({
 });
 
 // ═══════════════════════════════════════════════════════
-// 🔲 INPUT STYLES
+// 🔲 INPUT STYLES (Theme-aware)
 // ═══════════════════════════════════════════════════════
 
-export const inputStyles = StyleSheet.create({
-  base: {
-    backgroundColor: colors.surface2,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
-    color: colors.textPrimary,
-  } as TextStyle,
+export function createInputStyles(theme: Theme) {
+  const colors = createColors(theme);
   
-  input: {
-    backgroundColor: colors.surface2,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    fontSize: 16,
-    color: colors.textPrimary,
-  } as TextStyle,
-  
-  focused: {
-    borderColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  } as ViewStyle,
-  
-  error: {
-    borderColor: colors.error,
-  } as ViewStyle,
-  
-  disabled: {
-    backgroundColor: colors.backgroundAlt,
-    color: colors.textSecondary,
-  } as TextStyle,
-});
+  return StyleSheet.create({
+    base: {
+      backgroundColor: colors.surface2,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      fontSize: 16,
+      color: colors.textPrimary,
+    } as TextStyle,
+    
+    input: {
+      backgroundColor: colors.surface2,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 12,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      fontSize: 16,
+      color: colors.textPrimary,
+    } as TextStyle,
+    
+    focused: {
+      borderColor: colors.accent,
+      shadowColor: colors.accent,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    } as ViewStyle,
+    
+    error: {
+      borderColor: colors.error,
+    } as ViewStyle,
+    
+    disabled: {
+      backgroundColor: colors.backgroundAlt,
+      color: colors.textSecondary,
+    } as TextStyle,
+  });
+}
+
+// Static input styles export for backward compatibility
+export const inputStyles = createInputStyles(defaultTheme);
 
 // ═══════════════════════════════════════════════════════
 // 🏷️ BADGE STYLES

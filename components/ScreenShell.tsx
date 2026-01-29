@@ -1,12 +1,11 @@
 
 import React, { ReactNode, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, ViewStyle, StatusBar as RNStatusBar, Platform } from 'react-native';
-import { SafeAreaView, Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, ScrollView, StyleSheet, ViewStyle, Platform } from 'react-native';
+import { SafeAreaView, Edge } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors } from '@/styles/designSystem';
-import { Spacing } from '@/styles/spacing';
-import { UIConfig } from '@/utils/environmentConfig';
+import { spacing } from '@/styles/spacing';
 
 interface ScreenShellProps {
   children: ReactNode;
@@ -15,20 +14,18 @@ interface ScreenShellProps {
   edges?: Edge[];
   contentContainerStyle?: ViewStyle;
   style?: ViewStyle;
+  showsVerticalScrollIndicator?: boolean;
 }
 
 /**
  * ScreenShell - Reusable wrapper for all screens
  * 
- * Provides consistent layout across Expo Go, TestFlight, and Android builds:
- * - Full-screen background color (theme.colors.background)
+ * Provides consistent layout across all environments:
+ * - Full-screen background color (theme.background)
  * - SafeAreaView for content (top + bottom)
  * - Optional header area (inside safe area)
- * - ScrollView or View content with consistent padding
- * - StatusBar style matching theme (ONLY driven by theme, no dev overrides)
- * 
- * CRITICAL: This component enforces ONE visual rendering path.
- * No dev-only UI changes that affect layout.
+ * - ScrollView or View content with consistent padding (16)
+ * - StatusBar style matching theme (light-content for dark, dark-content for light)
  * 
  * Usage:
  * <ScreenShell header={<CustomHeader />} scrollable>
@@ -42,10 +39,10 @@ export function ScreenShell({
   edges = ['top', 'bottom'],
   contentContainerStyle,
   style,
+  showsVerticalScrollIndicator = false,
 }: ScreenShellProps) {
   const { theme, isDark } = useAppTheme();
   const colors = useMemo(() => createColors(theme), [theme]);
-  const insets = useSafeAreaInsets();
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -58,16 +55,18 @@ export function ScreenShell({
     },
     content: {
       flex: 1,
+      paddingHorizontal: spacing.md,
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: Spacing.xl,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.xl,
     },
   }), [colors]);
 
   return (
     <View style={[styles.container, style]}>
-      {/* StatusBar with theme-aware style - ONLY driven by theme */}
+      {/* StatusBar with theme-aware style */}
       <StatusBar 
         style={isDark ? 'light' : 'dark'} 
         backgroundColor={colors.background}
@@ -83,7 +82,7 @@ export function ScreenShell({
           <ScrollView
             style={styles.content}
             contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
-            showsVerticalScrollIndicator={false}
+            showsVerticalScrollIndicator={showsVerticalScrollIndicator}
           >
             {children}
           </ScrollView>

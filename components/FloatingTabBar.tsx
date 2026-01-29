@@ -23,7 +23,6 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { createColors } from '@/styles/designSystem';
 import { ComponentSpacing } from '@/styles/spacing';
-import { UIConfig } from '@/utils/environmentConfig';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -50,7 +49,7 @@ export default function FloatingTabBar({
 }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
   const colors = createColors(theme);
   const animatedValue = useSharedValue(0);
   const insets = useSafeAreaInsets();
@@ -113,7 +112,7 @@ export default function FloatingTabBar({
     };
   });
 
-  // Calculate bottom margin with safe area - use consistent value from spacing tokens
+  // Calculate bottom margin with safe area
   const calculatedBottomMargin = bottomMargin ?? Math.max(insets.bottom, ComponentSpacing.tabBarBottomMargin);
 
   const dynamicStyles = {
@@ -125,23 +124,21 @@ export default function FloatingTabBar({
     blurContainer: {
       ...styles.blurContainer,
       borderWidth: 1.2,
-      borderColor: theme.mode === 'dark' 
-        ? 'rgba(255,255,255,0.14)' 
-        : colors.border,
+      borderColor: colors.border,
       borderRadius,
       ...Platform.select({
         ios: {
-          backgroundColor: theme.mode === 'dark'
+          backgroundColor: isDark
             ? 'rgba(118, 89, 67, 0.85)'
             : 'rgba(237, 232, 227, 0.85)',
         },
         android: {
-          backgroundColor: theme.mode === 'dark'
+          backgroundColor: isDark
             ? 'rgba(118, 89, 67, 0.95)'
             : 'rgba(237, 232, 227, 0.95)',
         },
         web: {
-          backgroundColor: theme.mode === 'dark'
+          backgroundColor: isDark
             ? 'rgba(118, 89, 67, 0.95)'
             : 'rgba(237, 232, 227, 0.95)',
           backdropFilter: 'blur(10px)',
@@ -153,9 +150,7 @@ export default function FloatingTabBar({
     },
     indicator: {
       ...styles.indicator,
-      backgroundColor: theme.mode === 'dark'
-        ? 'rgba(255, 255, 255, 0.12)'
-        : 'rgba(59, 42, 31, 0.08)',
+      backgroundColor: colors.surface2,
       width: `${tabWidthPercent}%` as `${number}%`,
     },
   };
@@ -175,9 +170,7 @@ export default function FloatingTabBar({
               const isEmphasized = tab.emphasized === true;
 
               const iconSize = isEmphasized ? 28 : 24;
-              const iconColor = isActive 
-                ? (theme.mode === 'dark' ? '#FFFFFF' : colors.accent)
-                : colors.textSecondary;
+              const iconColor = isActive ? colors.textPrimary : colors.textSecondary;
 
               return (
                 <React.Fragment key={index}>
@@ -196,11 +189,8 @@ export default function FloatingTabBar({
                     <Text
                       style={[
                         styles.tabLabel,
-                        { color: colors.textSecondary },
-                        isActive && { 
-                          color: theme.mode === 'dark' ? '#FFFFFF' : colors.accent, 
-                          fontWeight: '600' 
-                        },
+                        { color: isActive ? colors.textPrimary : colors.textSecondary },
+                        isActive && { fontWeight: '600' },
                       ]}
                     >
                       {tab.label}
