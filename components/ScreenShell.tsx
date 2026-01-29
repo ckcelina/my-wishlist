@@ -1,7 +1,7 @@
 
 import React, { ReactNode, useMemo } from 'react';
 import { View, ScrollView, StyleSheet, ViewStyle, StatusBar as RNStatusBar, Platform } from 'react-native';
-import { SafeAreaView, Edge } from 'react-native-safe-area-context';
+import { SafeAreaView, Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, spacing } from '@/styles/designSystem';
@@ -40,6 +40,7 @@ export function ScreenShell({
 }: ScreenShellProps) {
   const { theme, isDark } = useAppTheme();
   const colors = useMemo(() => createColors(theme), [theme]);
+  const insets = useSafeAreaInsets();
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -52,7 +53,6 @@ export function ScreenShell({
     },
     content: {
       flex: 1,
-      paddingHorizontal: spacing.lg,
     },
     scrollContent: {
       flexGrow: 1,

@@ -17,7 +17,7 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
@@ -82,6 +82,8 @@ export default function WishlistDetailScreen() {
   const { id } = useLocalSearchParams();
   const { user, loading: authLoading } = useAuth();
   const { isOnline } = useNetworkStatus();
+  const insets = useSafeAreaInsets();
+  
   const [wishlist, setWishlist] = useState<Wishlist | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -608,7 +610,7 @@ export default function WishlistDetailScreen() {
 
   if (loading && !wishlist) {
     return (
-      <>
+      <View style={styles.container}>
         <Stack.Screen
           options={{
             headerShown: true,
@@ -616,7 +618,7 @@ export default function WishlistDetailScreen() {
             headerBackTitle: 'Back',
           }}
         />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SafeAreaView style={styles.safeContainer} edges={['top', 'bottom']}>
           <OfflineNotice />
           <View style={styles.searchSortContainer}>
             <View style={styles.searchContainer}>
@@ -631,7 +633,7 @@ export default function WishlistDetailScreen() {
             <ListItemSkeleton />
           </ScrollView>
         </SafeAreaView>
-      </>
+      </View>
     );
   }
 
@@ -639,7 +641,7 @@ export default function WishlistDetailScreen() {
     const isAuthError = error.includes('sign in') || error.includes('session has expired');
     
     return (
-      <>
+      <View style={styles.container}>
         <Stack.Screen
           options={{
             headerShown: true,
@@ -647,7 +649,7 @@ export default function WishlistDetailScreen() {
             headerBackTitle: 'Back',
           }}
         />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+        <SafeAreaView style={styles.safeContainer} edges={['top', 'bottom']}>
           <OfflineNotice />
           <ErrorState
             message={error}
@@ -664,12 +666,12 @@ export default function WishlistDetailScreen() {
             </View>
           )}
         </SafeAreaView>
-      </>
+      </View>
     );
   }
 
   return (
-    <>
+    <View style={styles.container}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -715,7 +717,7 @@ export default function WishlistDetailScreen() {
           ),
         }}
       />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.safeContainer} edges={['top', 'bottom']}>
         <OfflineNotice />
         <View style={styles.searchSortContainer}>
           <View style={styles.searchContainer}>
@@ -1436,12 +1438,16 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
       </SafeAreaView>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  safeContainer: {
     flex: 1,
     backgroundColor: colors.background,
   },
