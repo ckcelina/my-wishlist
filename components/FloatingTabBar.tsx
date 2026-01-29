@@ -22,6 +22,8 @@ import Animated, {
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Href } from 'expo-router';
 import { createColors } from '@/styles/designSystem';
+import { ComponentSpacing } from '@/styles/spacing';
+import { UIConfig } from '@/utils/environmentConfig';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -111,8 +113,8 @@ export default function FloatingTabBar({
     };
   });
 
-  // Calculate bottom margin with safe area
-  const calculatedBottomMargin = bottomMargin ?? Math.max(insets.bottom, 20);
+  // Calculate bottom margin with safe area - use consistent value from spacing tokens
+  const calculatedBottomMargin = bottomMargin ?? Math.max(insets.bottom, ComponentSpacing.tabBarBottomMargin);
 
   const dynamicStyles = {
     container: {
@@ -244,9 +246,9 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    height: 64,
+    height: ComponentSpacing.tabBarHeight,
     alignItems: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: ComponentSpacing.tabBarPadding,
   },
   tab: {
     flex: 1,

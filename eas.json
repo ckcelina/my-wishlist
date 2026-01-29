@@ -13,16 +13,30 @@
       "distribution": "internal",
       "autoIncrement": true,
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "buildConfiguration": "Release"
       },
-      "channel": "preview"
+      "android": {
+        "buildType": "apk"
+      },
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_ENV": "preview"
+      }
     },
     "production": {
       "autoIncrement": true,
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "buildConfiguration": "Release"
       },
-      "channel": "production"
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_ENV": "production"
+      }
     }
   },
   "submit": {

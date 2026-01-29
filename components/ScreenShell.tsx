@@ -4,7 +4,9 @@ import { View, ScrollView, StyleSheet, ViewStyle, StatusBar as RNStatusBar, Plat
 import { SafeAreaView, Edge, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { createColors, spacing } from '@/styles/designSystem';
+import { createColors } from '@/styles/designSystem';
+import { Spacing } from '@/styles/spacing';
+import { UIConfig } from '@/utils/environmentConfig';
 
 interface ScreenShellProps {
   children: ReactNode;
@@ -18,12 +20,15 @@ interface ScreenShellProps {
 /**
  * ScreenShell - Reusable wrapper for all screens
  * 
- * Provides:
+ * Provides consistent layout across Expo Go, TestFlight, and Android builds:
  * - Full-screen background color (theme.colors.background)
  * - SafeAreaView for content (top + bottom)
  * - Optional header area (inside safe area)
  * - ScrollView or View content with consistent padding
- * - StatusBar style matching theme
+ * - StatusBar style matching theme (ONLY driven by theme, no dev overrides)
+ * 
+ * CRITICAL: This component enforces ONE visual rendering path.
+ * No dev-only UI changes that affect layout.
  * 
  * Usage:
  * <ScreenShell header={<CustomHeader />} scrollable>
@@ -56,13 +61,13 @@ export function ScreenShell({
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: spacing.xl,
+      paddingBottom: Spacing.xl,
     },
   }), [colors]);
 
   return (
     <View style={[styles.container, style]}>
-      {/* StatusBar with theme-aware style */}
+      {/* StatusBar with theme-aware style - ONLY driven by theme */}
       <StatusBar 
         style={isDark ? 'light' : 'dark'} 
         backgroundColor={colors.background}

@@ -22,6 +22,7 @@ import {
   displayVersionInfo,
   checkForUpdatesAndLog 
 } from '@/utils/versionTracking';
+import { logEnvironmentInfo } from '@/utils/environmentConfig';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -114,6 +115,9 @@ export default function RootLayout() {
     console.log('[App] ═══════════════════════════════════════════════════');
     console.log('[App] 🚀 MY WISHLIST APP STARTING');
     console.log('[App] ═══════════════════════════════════════════════════');
+    
+    // Log environment configuration for UI parity verification
+    logEnvironmentInfo();
     
     // Display and log version information
     getVersionInfo().then((versionInfo) => {
