@@ -17,6 +17,7 @@ import { Button } from '@/components/design-system/Button';
 import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
 import { useI18n } from '@/contexts/I18nContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import {
   View,
   Text,
@@ -55,13 +56,17 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { language, changeLanguage } = useI18n();
-  const { theme, themePreference, setThemePreference } = useAppTheme();
+  const { theme, themePreference, setThemePreference, isDark } = useAppTheme();
   const { triggerHaptic } = useHaptics();
   
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
 
   const styles = useMemo(() => StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
     container: {
       flex: 1,
       backgroundColor: colors.background,
@@ -317,11 +322,14 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      </SafeAreaView>
+      <>
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        </SafeAreaView>
+      </>
     );
   }
 
@@ -335,8 +343,9 @@ export default function ProfileScreen() {
     : 'Not set';
 
   return (
-    <View style={styles.container}>
-      <SafeAreaView style={styles.container} edges={['top']}>
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView 
           style={styles.container} 
           contentContainerStyle={styles.scrollContent}
@@ -548,6 +557,6 @@ export default function ProfileScreen() {
           selectedCurrency={defaultCurrency}
         />
       </SafeAreaView>
-    </View>
+    </>
   );
 }

@@ -29,6 +29,8 @@ import { getCurrencyByCode } from '@/constants/currencies';
 import { useI18n } from '@/contexts/I18nContext';
 import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
 import { useTranslation } from 'react-i18next';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 interface UserLocation {
   id: string;
@@ -228,23 +230,25 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <>
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
           <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
             <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
           </View>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={theme.colors.accent} />
           </View>
-        </View>
+        </SafeAreaView>
       </>
     );
   }
 
   return (
     <>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={theme.colors.background} />
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Profile</Text>
         </View>
@@ -635,7 +639,7 @@ export default function ProfileScreen() {
           onSelect={handleSelectCurrency}
           selectedCurrencyCode={defaultCurrency}
         />
-      </View>
+      </SafeAreaView>
     </>
   );
 }

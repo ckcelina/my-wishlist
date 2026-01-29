@@ -1,7 +1,6 @@
 
 import * as Linking from 'expo-linking';
-import React, { useState, useEffect } from 'react';
-import { colors } from '@/styles/commonStyles';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,10 +23,13 @@ import {
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
 import { createWishlistItem, fetchWishlists } from '@/lib/supabase-helpers';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { StatusBar } from 'expo-status-bar';
 
 type TabType = 'url' | 'camera' | 'upload' | 'search' | 'manual';
 
@@ -56,265 +58,6 @@ interface SearchResult {
   confidence: number;
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    backgroundColor: colors.background,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  wishlistSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    padding: 12,
-    marginHorizontal: 20,
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  wishlistSelectorText: {
-    fontSize: 15,
-    color: colors.text,
-    fontWeight: '500',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingTop: 12,
-    marginTop: 12,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
-  },
-  tabText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
-  scrollContent: {
-    paddingBottom: 140,
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  formCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.divider,
-  },
-  tipCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  tipText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    flex: 1,
-    lineHeight: 18,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  input: {
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
-    color: '#FFFFFF',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 16,
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  button: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  buttonText: {
-    color: '#3b2a1f',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  secondaryButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  imagePickerButton: {
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-    marginBottom: 16,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  imagePickerText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 8,
-  },
-  selectedImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    marginBottom: 16,
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 20,
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchResultCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  searchResultImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-  },
-  searchResultInfo: {
-    flex: 1,
-  },
-  searchResultTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  searchResultPrice: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  searchResultStore: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: 4,
-  },
-  confidenceBadge: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  confidenceText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '70%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  wishlistOption: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  wishlistOptionText: {
-    fontSize: 16,
-    color: colors.text,
-  },
-  wishlistOptionSelected: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-});
-
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -340,7 +83,11 @@ export default function AddItemScreen() {
   const { wishlistId, sharedUrl } = useLocalSearchParams<{ wishlistId?: string; sharedUrl?: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { theme, isDark } = useAppTheme();
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
   const insets = useSafeAreaInsets();
+  
   const [activeTab, setActiveTab] = useState<TabType>('url');
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [selectedWishlistId, setSelectedWishlistId] = useState<string>(wishlistId || '');
@@ -375,6 +122,283 @@ export default function AddItemScreen() {
   const [manualImageUrl, setManualImageUrl] = useState('');
   const [manualNotes, setManualNotes] = useState('');
   const [savingManual, setSavingManual] = useState(false);
+
+  const styles = useMemo(() => StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    header: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+      backgroundColor: colors.background,
+    },
+    headerTitle: {
+      fontSize: 28,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    wishlistSelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.card,
+      padding: spacing.md,
+      marginHorizontal: spacing.lg,
+      marginTop: spacing.sm,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    wishlistSelectorText: {
+      fontSize: 15,
+      color: colors.text,
+      fontWeight: '500',
+    },
+    tabBar: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      backgroundColor: colors.card,
+      paddingTop: spacing.md,
+      marginTop: spacing.md,
+    },
+    tab: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      alignItems: 'center',
+    },
+    tabActive: {
+      borderBottomWidth: 2,
+      borderBottomColor: colors.accent,
+    },
+    tabText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      fontWeight: '500',
+    },
+    tabTextActive: {
+      color: colors.accent,
+      fontWeight: '700',
+    },
+    scrollContent: {
+      paddingBottom: 140,
+    },
+    content: {
+      flex: 1,
+      padding: spacing.lg,
+    },
+    formCard: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: isDark ? colors.divider : 'transparent',
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 2,
+      }),
+    },
+    tipCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.card,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: spacing.sm,
+    },
+    tipText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      flex: 1,
+      lineHeight: 18,
+    },
+    label: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: spacing.sm,
+    },
+    input: {
+      borderWidth: 1.5,
+      borderColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : colors.border,
+      borderRadius: 12,
+      padding: spacing.md,
+      fontSize: 16,
+      color: colors.text,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.background,
+      marginBottom: spacing.md,
+    },
+    textArea: {
+      height: 100,
+      textAlignVertical: 'top',
+    },
+    button: {
+      backgroundColor: colors.accent,
+      padding: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginTop: spacing.sm,
+      minHeight: 48,
+      justifyContent: 'center',
+      ...(theme.mode === 'light' && {
+        shadowColor: colors.shadow,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 1,
+        shadowRadius: 4,
+        elevation: 2,
+      }),
+    },
+    buttonDisabled: {
+      opacity: 0.5,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : colors.border,
+    },
+    buttonText: {
+      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    secondaryButton: {
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.12)' : colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginTop: spacing.sm,
+    },
+    secondaryButtonText: {
+      color: colors.text,
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    imagePickerButton: {
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+      borderRadius: 12,
+      padding: 40,
+      alignItems: 'center',
+      marginBottom: spacing.md,
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : colors.background,
+    },
+    imagePickerText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginTop: spacing.sm,
+    },
+    selectedImage: {
+      width: '100%',
+      height: 200,
+      borderRadius: 12,
+      marginBottom: spacing.md,
+    },
+    removeImageButton: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      borderRadius: 20,
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchResultCard: {
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.05)' : colors.background,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    searchResultImage: {
+      width: 80,
+      height: 80,
+      borderRadius: 8,
+      backgroundColor: colors.card,
+    },
+    searchResultInfo: {
+      flex: 1,
+    },
+    searchResultTitle: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    searchResultPrice: {
+      fontSize: 14,
+      color: colors.accent,
+      fontWeight: '600',
+      marginBottom: spacing.xs,
+    },
+    searchResultStore: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
+    confidenceBadge: {
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : colors.card,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      alignSelf: 'flex-start',
+    },
+    confidenceText: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      padding: spacing.lg,
+      maxHeight: '70%',
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    wishlistOption: {
+      padding: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    wishlistOptionText: {
+      fontSize: 16,
+      color: colors.text,
+    },
+    wishlistOptionSelected: {
+      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : colors.background,
+    },
+  }), [colors, typography, theme, isDark]);
 
   useEffect(() => {
     if (sharedUrl) {
@@ -706,7 +730,7 @@ export default function AddItemScreen() {
   };
 
   const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
-  const placeholderColor = 'rgba(255,255,255,0.55)';
+  const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
 
   const renderUrlTab = () => {
     const urlTrimmed = urlInput.trim();
@@ -717,7 +741,7 @@ export default function AddItemScreen() {
     return (
       <View style={styles.content}>
         <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.primary} />
+          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
           <Text style={styles.tipText}>
             Tip: Use Share → My Wishlist from any app to add items instantly.
           </Text>
@@ -743,7 +767,7 @@ export default function AddItemScreen() {
             disabled={!canExtract}
           >
             {extracting ? (
-              <ActivityIndicator color="#3b2a1f" />
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
               <Text style={styles.buttonText}>Extract Item Details</Text>
             )}
@@ -787,7 +811,7 @@ export default function AddItemScreen() {
               disabled={!canSave}
             >
               {savingManual ? (
-                <ActivityIndicator color="#3b2a1f" />
+                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
                 <Text style={styles.buttonText}>Add to Wishlist</Text>
               )}
@@ -832,7 +856,7 @@ export default function AddItemScreen() {
               disabled={identifyingCamera}
             >
               {identifyingCamera ? (
-                <ActivityIndicator color="#3b2a1f" />
+                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
                 <Text style={styles.buttonText}>Identify Product</Text>
               )}
@@ -877,7 +901,7 @@ export default function AddItemScreen() {
               disabled={identifyingUpload}
             >
               {identifyingUpload ? (
-                <ActivityIndicator color="#3b2a1f" />
+                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
                 <Text style={styles.buttonText}>Identify Product</Text>
               )}
@@ -925,7 +949,7 @@ export default function AddItemScreen() {
             disabled={!searchQuery.trim() || searching}
           >
             {searching ? (
-              <ActivityIndicator color="#3b2a1f" />
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
               <Text style={styles.buttonText}>Search</Text>
             )}
@@ -1049,7 +1073,7 @@ export default function AddItemScreen() {
             disabled={!canSave}
           >
             {savingManual ? (
-              <ActivityIndicator color="#3b2a1f" />
+              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
               <Text style={styles.buttonText}>Add to Wishlist</Text>
             )}
@@ -1061,13 +1085,8 @@ export default function AddItemScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Add Item',
-          headerShown: true,
-        }}
-      />
-      <View style={styles.container}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Add Item</Text>
           <Text style={styles.headerSubtitle}>
@@ -1167,7 +1186,7 @@ export default function AddItemScreen() {
             </Pressable>
           </Pressable>
         </Modal>
-      </View>
+      </SafeAreaView>
     </>
   );
 }
