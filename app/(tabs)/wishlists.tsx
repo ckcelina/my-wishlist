@@ -577,7 +577,7 @@ export default function WishlistsScreen() {
               </View>
             </View>
             <View style={styles.wishlistRight}>
-              {item.isDefault && <Badge variant="primary" text="Default" />}
+              {item.isDefault && <Badge variant="info" label="Default" />}
               <TouchableOpacity
                 style={styles.moreButton}
                 onPress={(e) => openOverflowMenu(item, e)}
