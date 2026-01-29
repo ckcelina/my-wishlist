@@ -35,13 +35,13 @@ interface AlertSettings {
 
 interface ItemsWithTargetsResponse {
   count: number;
-  items: Array<{
+  items: {
     id: string;
     title: string;
     alertPrice: number;
     currentPrice: number | null;
     currency: string;
-  }>;
+  }[];
 }
 
 const DEFAULT_SETTINGS: Omit<AlertSettings, 'userId' | 'updatedAt'> = {
