@@ -55,12 +55,10 @@ export function ScreenShell({
       paddingHorizontal: spacing.lg,
     },
     scrollContent: {
+      flexGrow: 1,
       paddingBottom: spacing.xl,
     },
   }), [colors]);
-
-  // Set status bar height for Android
-  const statusBarHeight = Platform.OS === 'android' ? RNStatusBar.currentHeight || 0 : 0;
 
   return (
     <View style={[styles.container, style]}>
@@ -78,8 +76,8 @@ export function ScreenShell({
         {/* Content area */}
         {scrollable ? (
           <ScrollView
-            style={[styles.content, contentContainerStyle]}
-            contentContainerStyle={styles.scrollContent}
+            style={styles.content}
+            contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
             showsVerticalScrollIndicator={false}
           >
             {children}

@@ -67,6 +67,7 @@ export default function ProfileScreen() {
       backgroundColor: colors.background,
     },
     scrollContent: {
+      flexGrow: 1,
       paddingHorizontal: spacing.lg,
       paddingBottom: spacing.xxl,
     },
@@ -334,213 +335,219 @@ export default function ProfileScreen() {
     : 'Not set';
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-        <Animated.View entering={FadeIn} style={styles.header}>
-          <Text style={styles.title}>{t('profile.title')}</Text>
-          <Text style={styles.subtitle}>{user?.email}</Text>
-        </Animated.View>
+    <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScrollView 
+          style={styles.container} 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View entering={FadeIn} style={styles.header}>
+            <Text style={styles.title}>{t('profile.title')}</Text>
+            <Text style={styles.subtitle}>{user?.email}</Text>
+          </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
-          <PremiumCard />
-        </Animated.View>
+          <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
+            <PremiumCard />
+          </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.appearance')}</Text>
-          <Card>
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>{t('profile.theme')}</Text>
-                <Text style={styles.settingDescription}>
-                  {t('profile.themeDescription')}
-                </Text>
+          <Animated.View entering={FadeInDown.delay(200)} style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('profile.appearance')}</Text>
+            <Card>
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('profile.theme')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('profile.themeDescription')}
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.themeOptions}>
-              <TouchableOpacity
-                style={[
-                  styles.themeButton,
-                  themePreference === 'light' && styles.themeButtonActive,
-                ]}
-                onPress={() => handleThemeChange('light')}
-              >
-                <Text
-                  style={
-                    themePreference === 'light'
-                      ? styles.themeButtonTextActive
-                      : styles.themeButtonText
-                  }
+              <View style={styles.themeOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.themeButton,
+                    themePreference === 'light' && styles.themeButtonActive,
+                  ]}
+                  onPress={() => handleThemeChange('light')}
                 >
-                  {t('profile.light')}
+                  <Text
+                    style={
+                      themePreference === 'light'
+                        ? styles.themeButtonTextActive
+                        : styles.themeButtonText
+                    }
+                  >
+                    {t('profile.light')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.themeButton,
+                    themePreference === 'dark' && styles.themeButtonActive,
+                  ]}
+                  onPress={() => handleThemeChange('dark')}
+                >
+                  <Text
+                    style={
+                      themePreference === 'dark'
+                        ? styles.themeButtonTextActive
+                        : styles.themeButtonText
+                    }
+                  >
+                    {t('profile.dark')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.themeButton,
+                    themePreference === 'system' && styles.themeButtonActive,
+                  ]}
+                  onPress={() => handleThemeChange('system')}
+                >
+                  <Text
+                    style={
+                      themePreference === 'system'
+                        ? styles.themeButtonTextActive
+                        : styles.themeButtonText
+                    }
+                  >
+                    {t('profile.system')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Card>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('profile.preferences')}</Text>
+            <Card>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => setCurrencyPickerVisible(true)}
+              >
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('profile.currency')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('profile.currencyDescription')}
+                  </Text>
+                </View>
+                <Text style={styles.settingValue}>{currencyDisplay}</Text>
+              </TouchableOpacity>
+
+              <Divider />
+
+              <TouchableOpacity style={styles.settingRow} onPress={handleEditLocation}>
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('profile.location')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('profile.locationDescription')}
+                  </Text>
+                </View>
+                <Text style={styles.settingValue}>{locationDisplay}</Text>
+              </TouchableOpacity>
+
+              <Divider />
+
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => router.push('/language-selector')}
+              >
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('profile.language')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('profile.languageDescription')}
+                  </Text>
+                </View>
+                <Text style={styles.settingValue}>
+                  {SUPPORTED_LANGUAGES.find((l) => l.code === language)?.name || language}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.themeButton,
-                  themePreference === 'dark' && styles.themeButtonActive,
-                ]}
-                onPress={() => handleThemeChange('dark')}
+            </Card>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('profile.notifications')}</Text>
+            <Card>
+              <View style={styles.settingRow}>
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingLabel}>{t('profile.priceAlerts')}</Text>
+                  <Text style={styles.settingDescription}>
+                    {t('profile.priceAlertsDescription')}
+                  </Text>
+                </View>
+                <Switch
+                  value={priceDropAlertsEnabled}
+                  onValueChange={handleTogglePriceAlerts}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor={colors.surface}
+                />
+              </View>
+            </Card>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
+            <Text style={styles.sectionTitle}>Developer Tools</Text>
+            <Card>
+              <TouchableOpacity 
+                style={styles.linkButton} 
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push('/diagnostics-enhanced');
+                }}
               >
-                <Text
-                  style={
-                    themePreference === 'dark'
-                      ? styles.themeButtonTextActive
-                      : styles.themeButtonText
-                  }
-                >
-                  {t('profile.dark')}
-                </Text>
+                <Text style={styles.linkText}>System Diagnostics</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.themeButton,
-                  themePreference === 'system' && styles.themeButtonActive,
-                ]}
-                onPress={() => handleThemeChange('system')}
+
+              <Divider />
+
+              <TouchableOpacity 
+                style={styles.linkButton} 
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push('/e2e-test');
+                }}
               >
-                <Text
-                  style={
-                    themePreference === 'system'
-                      ? styles.themeButtonTextActive
-                      : styles.themeButtonText
-                  }
-                >
-                  {t('profile.system')}
-                </Text>
+                <Text style={styles.linkText}>End-to-End Tests</Text>
               </TouchableOpacity>
-            </View>
-          </Card>
-        </Animated.View>
+            </Card>
+          </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(300)} style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.preferences')}</Text>
-          <Card>
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => setCurrencyPickerVisible(true)}
-            >
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>{t('profile.currency')}</Text>
-                <Text style={styles.settingDescription}>
-                  {t('profile.currencyDescription')}
-                </Text>
-              </View>
-              <Text style={styles.settingValue}>{currencyDisplay}</Text>
-            </TouchableOpacity>
+          <Animated.View entering={FadeInDown.delay(600)} style={styles.section}>
+            <Text style={styles.sectionTitle}>{t('profile.support')}</Text>
+            <Card>
+              <TouchableOpacity style={styles.linkButton} onPress={handleContactSupport}>
+                <Text style={styles.linkText}>{t('profile.contactSupport')}</Text>
+              </TouchableOpacity>
 
-            <Divider />
+              <Divider />
 
-            <TouchableOpacity style={styles.settingRow} onPress={handleEditLocation}>
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>{t('profile.location')}</Text>
-                <Text style={styles.settingDescription}>
-                  {t('profile.locationDescription')}
-                </Text>
-              </View>
-              <Text style={styles.settingValue}>{locationDisplay}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={styles.linkButton} onPress={handlePrivacyPolicy}>
+                <Text style={styles.linkText}>{t('profile.privacyPolicy')}</Text>
+              </TouchableOpacity>
 
-            <Divider />
+              <Divider />
 
-            <TouchableOpacity
-              style={styles.settingRow}
-              onPress={() => router.push('/language-selector')}
-            >
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>{t('profile.language')}</Text>
-                <Text style={styles.settingDescription}>
-                  {t('profile.languageDescription')}
-                </Text>
-              </View>
-              <Text style={styles.settingValue}>
-                {SUPPORTED_LANGUAGES.find((l) => l.code === language)?.name || language}
-              </Text>
-            </TouchableOpacity>
-          </Card>
-        </Animated.View>
+              <TouchableOpacity style={styles.linkButton} onPress={handleTerms}>
+                <Text style={styles.linkText}>{t('profile.terms')}</Text>
+              </TouchableOpacity>
+            </Card>
+          </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(400)} style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.notifications')}</Text>
-          <Card>
-            <View style={styles.settingRow}>
-              <View style={styles.settingLeft}>
-                <Text style={styles.settingLabel}>{t('profile.priceAlerts')}</Text>
-                <Text style={styles.settingDescription}>
-                  {t('profile.priceAlertsDescription')}
-                </Text>
-              </View>
-              <Switch
-                value={priceDropAlertsEnabled}
-                onValueChange={handleTogglePriceAlerts}
-                trackColor={{ false: colors.border, true: colors.accent }}
-                thumbColor={colors.surface}
-              />
-            </View>
-          </Card>
-        </Animated.View>
+          <Button
+            title={t('profile.signOut')}
+            onPress={handleSignOut}
+            variant="destructive"
+            style={styles.signOutButton}
+          />
+        </ScrollView>
 
-        <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
-          <Text style={styles.sectionTitle}>Developer Tools</Text>
-          <Card>
-            <TouchableOpacity 
-              style={styles.linkButton} 
-              onPress={() => {
-                triggerHaptic('light');
-                router.push('/diagnostics-enhanced');
-              }}
-            >
-              <Text style={styles.linkText}>System Diagnostics</Text>
-            </TouchableOpacity>
-
-            <Divider />
-
-            <TouchableOpacity 
-              style={styles.linkButton} 
-              onPress={() => {
-                triggerHaptic('light');
-                router.push('/e2e-test');
-              }}
-            >
-              <Text style={styles.linkText}>End-to-End Tests</Text>
-            </TouchableOpacity>
-          </Card>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(600)} style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('profile.support')}</Text>
-          <Card>
-            <TouchableOpacity style={styles.linkButton} onPress={handleContactSupport}>
-              <Text style={styles.linkText}>{t('profile.contactSupport')}</Text>
-            </TouchableOpacity>
-
-            <Divider />
-
-            <TouchableOpacity style={styles.linkButton} onPress={handlePrivacyPolicy}>
-              <Text style={styles.linkText}>{t('profile.privacyPolicy')}</Text>
-            </TouchableOpacity>
-
-            <Divider />
-
-            <TouchableOpacity style={styles.linkButton} onPress={handleTerms}>
-              <Text style={styles.linkText}>{t('profile.terms')}</Text>
-            </TouchableOpacity>
-          </Card>
-        </Animated.View>
-
-        <Button
-          title={t('profile.signOut')}
-          onPress={handleSignOut}
-          variant="destructive"
-          style={styles.signOutButton}
+        <CurrencyPicker
+          visible={currencyPickerVisible}
+          onClose={() => setCurrencyPickerVisible(false)}
+          onSelect={handleSelectCurrency}
+          selectedCurrency={defaultCurrency}
         />
-      </ScrollView>
-
-      <CurrencyPicker
-        visible={currencyPickerVisible}
-        onClose={() => setCurrencyPickerVisible(false)}
-        onSelect={handleSelectCurrency}
-        selectedCurrency={defaultCurrency}
-      />
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }

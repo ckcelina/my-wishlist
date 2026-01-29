@@ -107,9 +107,11 @@ export default function WishlistsScreen() {
       color: colors.textSecondary,
     },
     list: {
+      flex: 1,
       paddingHorizontal: spacing.lg,
     },
     listContent: {
+      flexGrow: 1,
       paddingBottom: spacing.xl,
     },
     wishlistCard: {
@@ -226,6 +228,9 @@ export default function WishlistsScreen() {
     loadingFooter: {
       paddingVertical: spacing.lg,
       alignItems: 'center',
+    },
+    createButton: {
+      margin: spacing.lg,
     },
   }), [colors, typography]);
 
@@ -703,153 +708,155 @@ export default function WishlistsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {!isConnected && <OfflineNotice />}
-      <FlatList
-        data={wishlists}
-        renderItem={renderWishlistItem}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderHeader}
-        ListFooterComponent={renderFooter}
-        contentContainerStyle={styles.listContent}
-        style={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-      />
-
-      <Button
-        title="Create Wishlist"
-        onPress={openCreateModal}
-        variant="primary"
-        style={{ margin: spacing.lg }}
-      />
-
-      <Modal
-        visible={createModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCreateModalVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Create Wishlist</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Wishlist name"
-              placeholderTextColor={colors.textSecondary}
-              value={newWishlistName}
-              onChangeText={setNewWishlistName}
-              autoFocus
+    <View style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        {!isConnected && <OfflineNotice />}
+        <FlatList
+          data={wishlists}
+          renderItem={renderWishlistItem}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={renderHeader}
+          ListFooterComponent={renderFooter}
+          contentContainerStyle={styles.listContent}
+          style={styles.list}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
             />
-            <View style={styles.modalButtons}>
-              <Button
-                title="Cancel"
-                onPress={() => setCreateModalVisible(false)}
-                variant="secondary"
-                style={styles.modalButton}
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+        />
+
+        <Button
+          title="Create Wishlist"
+          onPress={openCreateModal}
+          variant="primary"
+          style={styles.createButton}
+        />
+
+        <Modal
+          visible={createModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCreateModalVisible(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setCreateModalVisible(false)}>
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Create Wishlist</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Wishlist name"
+                placeholderTextColor={colors.textSecondary}
+                value={newWishlistName}
+                onChangeText={setNewWishlistName}
+                autoFocus
               />
-              <Button
-                title="Create"
-                onPress={handleCreateWishlist}
-                variant="primary"
-                style={styles.modalButton}
+              <View style={styles.modalButtons}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setCreateModalVisible(false)}
+                  variant="secondary"
+                  style={styles.modalButton}
+                />
+                <Button
+                  title="Create"
+                  onPress={handleCreateWishlist}
+                  variant="primary"
+                  style={styles.modalButton}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={renameModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setRenameModalVisible(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setRenameModalVisible(false)}>
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Rename Wishlist</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="Wishlist name"
+                placeholderTextColor={colors.textSecondary}
+                value={renameWishlistName}
+                onChangeText={setRenameWishlistName}
+                autoFocus
               />
+              <View style={styles.modalButtons}>
+                <Button
+                  title="Cancel"
+                  onPress={() => setRenameModalVisible(false)}
+                  variant="secondary"
+                  style={styles.modalButton}
+                />
+                <Button
+                  title="Rename"
+                  onPress={handleRenameWishlist}
+                  variant="primary"
+                  style={styles.modalButton}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={menuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMenuVisible(false)}
+        >
+          <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+            <View style={[styles.menuContent, { top: menuPosition.top, right: menuPosition.right }]}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => selectedWishlist && openRenameModal(selectedWishlist)}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={20}
+                  color={colors.text}
+                />
+                <Text style={styles.menuItemText}>Rename</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisible(false);
+                  setDeleteDialogVisible(true);
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="trash"
+                  android_material_icon_name="delete"
+                  size={20}
+                  color={colors.error}
+                />
+                <Text style={[styles.menuItemText, styles.menuItemDanger]}>Delete</Text>
+              </TouchableOpacity>
             </View>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
 
-      <Modal
-        visible={renameModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRenameModalVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setRenameModalVisible(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Rename Wishlist</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Wishlist name"
-              placeholderTextColor={colors.textSecondary}
-              value={renameWishlistName}
-              onChangeText={setRenameWishlistName}
-              autoFocus
-            />
-            <View style={styles.modalButtons}>
-              <Button
-                title="Cancel"
-                onPress={() => setRenameModalVisible(false)}
-                variant="secondary"
-                style={styles.modalButton}
-              />
-              <Button
-                title="Rename"
-                onPress={handleRenameWishlist}
-                variant="primary"
-                style={styles.modalButton}
-              />
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
-        <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
-          <View style={[styles.menuContent, { top: menuPosition.top, right: menuPosition.right }]}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => selectedWishlist && openRenameModal(selectedWishlist)}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={20}
-                color={colors.text}
-              />
-              <Text style={styles.menuItemText}>Rename</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setMenuVisible(false);
-                setDeleteDialogVisible(true);
-              }}
-            >
-              <IconSymbol
-                ios_icon_name="trash"
-                android_material_icon_name="delete"
-                size={20}
-                color={colors.error}
-              />
-              <Text style={[styles.menuItemText, styles.menuItemDanger]}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <ConfirmDialog
-        visible={deleteDialogVisible}
-        title="Delete Wishlist"
-        message={`Are you sure you want to delete "${selectedWishlist?.name}"? This will also delete all items in this wishlist.`}
-        confirmText="Delete"
-        cancelText="Cancel"
-        onConfirm={handleDeleteWishlist}
-        onCancel={() => setDeleteDialogVisible(false)}
-        destructive
-      />
-    </SafeAreaView>
+        <ConfirmDialog
+          visible={deleteDialogVisible}
+          title="Delete Wishlist"
+          message={`Are you sure you want to delete "${selectedWishlist?.name}"? This will also delete all items in this wishlist.`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          onConfirm={handleDeleteWishlist}
+          onCancel={() => setDeleteDialogVisible(false)}
+          destructive
+        />
+      </SafeAreaView>
+    </View>
   );
 }
