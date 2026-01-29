@@ -1,23 +1,17 @@
 
-import { useAppTheme } from '@/contexts/ThemeContext';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTranslation } from 'react-i18next';
-import { PressableScale } from '@/components/design-system/PressableScale';
-import { getCurrencyByCode } from '@/constants/currencies';
-import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
-import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
-import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
-import { useRouter } from 'expo-router';
-import { authenticatedGet, authenticatedPut } from '@/utils/api';
-import { PremiumCard } from '@/components/PremiumCard';
-import { Button } from '@/components/design-system/Button';
-import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
-import { useI18n } from '@/contexts/I18nContext';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
+import { IconSymbol } from '@/components/IconSymbol';
+import { useHaptics } from '@/hooks/useHaptics';
 import { StatusBar } from 'expo-status-bar';
+import { PressableScale } from '@/components/design-system/PressableScale';
+import { useAuth } from '@/contexts/AuthContext';
+import { getCurrencyByCode } from '@/constants/currencies';
+import { PremiumCard } from '@/components/PremiumCard';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { Button } from '@/components/design-system/Button';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
 import {
   View,
   Text,
@@ -29,9 +23,17 @@ import {
   Switch,
   Linking,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
-import { useHaptics } from '@/hooks/useHaptics';
-import { IconSymbol } from '@/components/IconSymbol';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { authenticatedGet, authenticatedPut } from '@/utils/api';
+import { Card } from '@/components/design-system/Card';
+import { useTranslation } from 'react-i18next';
+import { SUPPORTED_LANGUAGES } from '@/lib/i18n';
+import { useI18n } from '@/contexts/I18nContext';
+import { useRouter } from 'expo-router';
 
 interface UserLocation {
   id: string;
@@ -51,6 +53,7 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [currencyPickerVisible, setCurrencyPickerVisible] = useState(false);
   const [location, setLocation] = useState<UserLocation | null>(null);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
 
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -61,6 +64,17 @@ export default function ProfileScreen() {
   
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
+
+  // Extract user name from user metadata
+  const userName = useMemo(() => {
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name;
+    }
+    if (user?.email) {
+      return user.email.split('@')[0];
+    }
+    return 'User';
+  }, [user]);
 
   const styles = useMemo(() => StyleSheet.create({
     safeArea: {
@@ -175,6 +189,58 @@ export default function ProfileScreen() {
       justifyContent: 'center',
       alignItems: 'center',
     },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.lg,
+      marginHorizontal: spacing.lg,
+      width: '85%',
+      maxWidth: 400,
+    },
+    modalTitle: {
+      ...typography.h2,
+      color: colors.text,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    modalMessage: {
+      ...typography.body,
+      color: colors.textSecondary,
+      marginBottom: spacing.lg,
+      textAlign: 'center',
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    modalButton: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+    },
+    modalButtonCancel: {
+      backgroundColor: colors.surface2,
+    },
+    modalButtonConfirm: {
+      backgroundColor: '#EF4444',
+    },
+    modalButtonText: {
+      ...typography.body,
+      fontWeight: '600',
+    },
+    modalButtonTextCancel: {
+      color: colors.text,
+    },
+    modalButtonTextConfirm: {
+      color: '#FFFFFF',
+    },
   }), [colors, typography]);
 
   const fetchSettings = useCallback(async () => {
@@ -273,27 +339,19 @@ export default function ProfileScreen() {
   const handleSignOut = async () => {
     console.log('[ProfileScreen] User tapped sign out');
     triggerHaptic('medium');
-    
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await signOut();
-              router.replace('/auth');
-            } catch (error) {
-              console.error('[ProfileScreen] Error signing out:', error);
-              Alert.alert('Error', 'Failed to sign out');
-            }
-          },
-        },
-      ]
-    );
+    setShowSignOutModal(true);
+  };
+
+  const confirmSignOut = async () => {
+    console.log('[ProfileScreen] User confirmed sign out');
+    setShowSignOutModal(false);
+    try {
+      await signOut();
+      router.replace('/auth');
+    } catch (error) {
+      console.error('[ProfileScreen] Error signing out:', error);
+      Alert.alert('Error', 'Failed to sign out');
+    }
   };
 
   const handleContactSupport = () => {
@@ -352,7 +410,7 @@ export default function ProfileScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Animated.View entering={FadeIn} style={styles.header}>
-            <Text style={styles.title}>{t('profile.title')}</Text>
+            <Text style={styles.title}>{userName}</Text>
             <Text style={styles.subtitle}>{user?.email}</Text>
           </Animated.View>
 
@@ -556,6 +614,49 @@ export default function ProfileScreen() {
           onSelect={handleSelectCurrency}
           selectedCurrency={defaultCurrency}
         />
+
+        <Modal
+          visible={showSignOutModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSignOutModal(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay}
+            onPress={() => setShowSignOutModal(false)}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Sign Out</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to sign out?
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel]}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    setShowSignOutModal(false);
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextCancel]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={() => {
+                    triggerHaptic('medium');
+                    confirmSignOut();
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>
+                    Sign Out
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </>
   );

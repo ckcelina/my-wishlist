@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Switch,
   Linking,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -57,6 +59,22 @@ export default function ProfileScreen() {
   const [loading, setLoading] = useState(true);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+
+  // Extract user name from user metadata
+  const userName = useMemo(() => {
+    if (user?.user_metadata?.name) {
+      return user.user_metadata.name;
+    }
+    if (user?.email) {
+      return user.email.split('@')[0];
+    }
+    return 'User';
+  }, [user]);
+
+  const userInitial = useMemo(() => {
+    return userName.charAt(0).toUpperCase();
+  }, [userName]);
 
   const fetchSettings = useCallback(async () => {
     console.log('[ProfileScreen] Fetching user settings');
@@ -147,35 +165,23 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
+    console.log('[ProfileScreen] User tapped sign out');
     haptics.warning();
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { 
-          text: 'Cancel', 
-          style: 'cancel',
-          onPress: () => haptics.light(),
-        },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('[ProfileScreen] User tapped Sign Out');
-              haptics.medium();
-              await signOut();
-              console.log('[ProfileScreen] Sign out successful');
-              // Navigation is handled by AuthGate in _layout.tsx
-            } catch (error: any) {
-              console.error('[ProfileScreen] Sign out error:', error);
-              haptics.error();
-              Alert.alert('Error', 'Failed to sign out');
-            }
-          },
-        },
-      ]
-    );
+    setShowSignOutModal(true);
+  };
+
+  const confirmSignOut = async () => {
+    console.log('[ProfileScreen] User confirmed sign out');
+    setShowSignOutModal(false);
+    try {
+      haptics.medium();
+      await signOut();
+      console.log('[ProfileScreen] Sign out successful');
+    } catch (error: any) {
+      console.error('[ProfileScreen] Sign out error:', error);
+      haptics.error();
+      Alert.alert('Error', 'Failed to sign out');
+    }
   };
 
   const handleContactSupport = () => {
@@ -207,9 +213,7 @@ export default function ProfileScreen() {
     router.push('/location');
   };
 
-  const userNameText = user?.name || 'User';
   const userEmailText = user?.email || '';
-  const userInitial = userNameText.charAt(0).toUpperCase();
   
   const selectedCurrency = getCurrencyByCode(defaultCurrency);
   const currencyDisplayText = selectedCurrency 
@@ -264,7 +268,7 @@ export default function ProfileScreen() {
                   <Text style={[styles.avatarText, { color: isDark ? theme.colors.text : '#FFFFFF' }]}>{userInitial}</Text>
                 </View>
                 <View style={styles.profileInfo}>
-                  <Text style={[styles.profileName, { color: theme.colors.text }]}>{userNameText}</Text>
+                  <Text style={[styles.profileName, { color: theme.colors.text }]}>{userName}</Text>
                   <Text style={[styles.profileEmail, { color: theme.colors.textSecondary }]}>{userEmailText}</Text>
                 </View>
               </View>
@@ -639,6 +643,52 @@ export default function ProfileScreen() {
           onSelect={handleSelectCurrency}
           selectedCurrencyCode={defaultCurrency}
         />
+
+        <Modal
+          visible={showSignOutModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSignOutModal(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay}
+            onPress={() => setShowSignOutModal(false)}
+          >
+            <Pressable 
+              style={[styles.modalContent, { backgroundColor: theme.colors.surface }]} 
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Sign Out</Text>
+              <Text style={[styles.modalMessage, { color: theme.colors.textSecondary }]}>
+                Are you sure you want to sign out?
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonCancel, { backgroundColor: theme.colors.card }]}
+                  onPress={() => {
+                    haptics.light();
+                    setShowSignOutModal(false);
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, { color: theme.colors.text }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonConfirm]}
+                  onPress={() => {
+                    haptics.medium();
+                    confirmSignOut();
+                  }}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextConfirm]}>
+                    Sign Out
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -765,5 +815,51 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 100,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    ...typography.titleLarge,
+    marginBottom: spacing.sm,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    ...typography.bodyMedium,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    // backgroundColor set dynamically
+  },
+  modalButtonConfirm: {
+    backgroundColor: '#EF4444',
+  },
+  modalButtonText: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
+  },
+  modalButtonTextConfirm: {
+    color: '#FFFFFF',
   },
 });
