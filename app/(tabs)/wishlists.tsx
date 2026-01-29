@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { Badge } from '@/components/design-system/Badge';
 import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { supabase } from '@/lib/supabase';
 import { getWishlistWithItemCount, createWishlist, updateWishlist, deleteWishlist } from '@/lib/supabase-helpers';
@@ -44,6 +44,7 @@ interface Wishlist {
 }
 
 const PAGE_SIZE = 20;
+const TAB_BAR_HEIGHT = 80; // FloatingTabBar height
 
 export default function WishlistsScreen() {
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -68,6 +69,7 @@ export default function WishlistsScreen() {
   const router = useRouter();
   const { isConnected } = useNetworkStatus();
   const { theme } = useAppTheme();
+  const insets = useSafeAreaInsets();
   
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
@@ -108,11 +110,11 @@ export default function WishlistsScreen() {
     },
     list: {
       flex: 1,
-      paddingHorizontal: spacing.lg,
     },
     listContent: {
       flexGrow: 1,
-      paddingBottom: spacing.xl,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: insets.bottom + TAB_BAR_HEIGHT + spacing.xl,
     },
     wishlistCard: {
       marginBottom: spacing.md,
@@ -229,10 +231,11 @@ export default function WishlistsScreen() {
       paddingVertical: spacing.lg,
       alignItems: 'center',
     },
-    createButton: {
-      margin: spacing.lg,
+    createButtonContainer: {
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.md,
     },
-  }), [colors, typography]);
+  }), [colors, typography, insets.bottom]);
 
   const initializeDefaultWishlist = useCallback(async () => {
     if (!user?.id || initializing) {
@@ -623,10 +626,20 @@ export default function WishlistsScreen() {
   );
 
   const renderFooter = () => {
-    if (!loadingMore) return null;
     return (
-      <View style={styles.loadingFooter}>
-        <ListItemSkeleton />
+      <View>
+        {loadingMore && (
+          <View style={styles.loadingFooter}>
+            <ListItemSkeleton />
+          </View>
+        )}
+        <View style={styles.createButtonContainer}>
+          <Button
+            title="Create Wishlist"
+            onPress={openCreateModal}
+            variant="primary"
+          />
+        </View>
       </View>
     );
   };
@@ -728,13 +741,6 @@ export default function WishlistsScreen() {
           }
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
-        />
-
-        <Button
-          title="Create Wishlist"
-          onPress={openCreateModal}
-          variant="primary"
-          style={styles.createButton}
         />
 
         <Modal
