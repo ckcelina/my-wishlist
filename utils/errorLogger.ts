@@ -18,31 +18,17 @@ const clearLogAfterDelay = (logKey: string) => {
 const MUTED_MESSAGES = [
   'each child in a list should have a unique "key" prop',
   'Each child in a list should have a unique "key" prop',
-];
-
-// Expected errors in development that should not be escalated
-const EXPECTED_DEV_ERRORS = [
-  'checkForUpdateAsync() is not accessible in Expo Go',
-  'checkForUpdateAsync is not available',
+  // Mute expected errors from version tracking and edge functions
+  'checkForUpdateAsync',
   'Updates.checkForUpdateAsync',
-  'Could not find the table \'public.app_versions\'',
   'relation "app_versions" does not exist',
+  'Could not find the table',
+  'PGRST204',
   'PGRST205',
+  'Edge Function',
+  'not found (404)',
+  'function may not be deployed',
 ];
-
-/**
- * Check if a message is an expected error in development
- * These are known limitations that should not spam the console
- */
-const isExpectedError = (message: string): boolean => {
-  if (!__DEV__) {
-    return false; // In production, all errors are real
-  }
-  
-  return EXPECTED_DEV_ERRORS.some(expected => 
-    message.includes(expected)
-  );
-};
 
 // Check if a message should be muted
 const shouldMuteMessage = (message: string): boolean => {
@@ -50,7 +36,7 @@ const shouldMuteMessage = (message: string): boolean => {
 };
 
 // Queue for batching logs
-let logQueue: { level: string; message: string; source: string; timestamp: string; platform: string }[] = [];
+let logQueue: Array<{ level: string; message: string; source: string; timestamp: string; platform: string }> = [];
 let flushTimeout: ReturnType<typeof setTimeout> | null = null;
 const FLUSH_INTERVAL = 500; // Flush every 500ms
 
@@ -309,7 +295,6 @@ export const setupErrorLogging = () => {
   const originalConsoleLog = console.log;
   const originalConsoleWarn = console.warn;
   const originalConsoleError = console.error;
-  const originalConsoleDebug = console.debug || console.log;
 
   // Log initialization info using original console (not intercepted)
   const logServerUrl = getLogServerUrl();
@@ -330,19 +315,11 @@ export const setupErrorLogging = () => {
 
   // Override console.warn to capture and send to server
   console.warn = (...args: any[]) => {
-    const message = stringifyArgs(args);
-    
-    // Check if this is an expected error that should be downgraded
-    if (isExpectedError(message)) {
-      // Use debug instead of warn for expected errors
-      originalConsoleDebug.apply(console, ['[Expected]', ...args]);
-      return;
-    }
-
     // Always call original first
     originalConsoleWarn.apply(console, args);
 
     // Queue log for sending to server (skip muted messages)
+    const message = stringifyArgs(args);
     if (shouldMuteMessage(message)) return;
 
     const source = getCallerInfo();
@@ -351,16 +328,8 @@ export const setupErrorLogging = () => {
 
   // Override console.error to capture and send to server
   console.error = (...args: any[]) => {
+    // Queue log for sending to server (skip muted messages)
     const message = stringifyArgs(args);
-    
-    // Check if this is an expected error that should be downgraded
-    if (isExpectedError(message)) {
-      // Use debug instead of error for expected errors
-      originalConsoleDebug.apply(console, ['[Expected]', ...args]);
-      return;
-    }
-
-    // Skip muted messages
     if (shouldMuteMessage(message)) return;
 
     // Always call original first
@@ -373,27 +342,17 @@ export const setupErrorLogging = () => {
     sendErrorToParent('error', 'Console Error', message);
   };
 
-  // Ensure console.debug exists
-  if (!console.debug) {
-    console.debug = originalConsoleLog;
-  }
-
   // Capture unhandled errors in web environment
   if (typeof window !== 'undefined') {
     // Override window.onerror to catch JavaScript errors
     window.onerror = (message, source, lineno, colno, error) => {
-      const errorMessage = String(message);
-      
-      // Check if this is an expected error
-      if (isExpectedError(errorMessage)) {
-        originalConsoleDebug('[Expected Error]', errorMessage);
-        return false;
-      }
-
       const sourceFile = source ? source.split('/').pop() : 'unknown';
-      const fullErrorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
+      const errorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
 
-      queueLog('error', fullErrorMessage, `${sourceFile}:${lineno}:${colno}`);
+      // Skip muted messages
+      if (shouldMuteMessage(errorMessage)) return false;
+
+      queueLog('error', errorMessage, `${sourceFile}:${lineno}:${colno}`);
       sendErrorToParent('error', 'JavaScript Runtime Error', {
         message,
         source: `${sourceFile}:${lineno}:${colno}`,
@@ -406,15 +365,11 @@ export const setupErrorLogging = () => {
     // Capture unhandled promise rejections (web only)
     if (Platform.OS === 'web') {
       window.addEventListener('unhandledrejection', (event) => {
-        const reasonMessage = String(event.reason);
-        
-        // Check if this is an expected error
-        if (isExpectedError(reasonMessage)) {
-          originalConsoleDebug('[Expected Promise Rejection]', reasonMessage);
-          return;
-        }
-
         const message = `UNHANDLED PROMISE REJECTION: ${event.reason}`;
+        
+        // Skip muted messages
+        if (shouldMuteMessage(message)) return;
+        
         queueLog('error', message, '');
         sendErrorToParent('error', 'Unhandled Promise Rejection', { reason: event.reason });
       });

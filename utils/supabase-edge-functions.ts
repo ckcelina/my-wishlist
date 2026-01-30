@@ -123,12 +123,22 @@ export interface SearchByNameResponse {
 const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl;
 const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey;
 
+// List of expected Edge Functions (case-sensitive)
+const EXPECTED_EDGE_FUNCTIONS = [
+  'identify-from-image',
+  'extract-item',
+  'find-alternatives',
+  'import-wishlist',
+  'search-by-name',
+];
+
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('[Supabase Edge Functions] Configuration missing');
 }
 
 /**
  * Call a Supabase Edge Function with proper error handling
+ * Returns safe fallback on 404 or missing function
  */
 async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
@@ -136,6 +146,12 @@ async function callEdgeFunction<TRequest, TResponse>(
 ): Promise<TResponse> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     throw new Error('Supabase configuration is missing');
+  }
+
+  // Verify function name is expected (case-sensitive)
+  if (!EXPECTED_EDGE_FUNCTIONS.includes(functionName)) {
+    console.warn(`[Edge Function] Unknown function '${functionName}' - returning safe fallback`);
+    throw new Error(`Edge Function '${functionName}' is not recognized`);
   }
 
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
@@ -150,6 +166,12 @@ async function callEdgeFunction<TRequest, TResponse>(
       },
       body: JSON.stringify(request),
     });
+
+    // Handle 404 - function not deployed
+    if (response.status === 404) {
+      console.warn(`[Edge Function] ${functionName} not found (404) - function may not be deployed`);
+      throw new Error(`Edge Function '${functionName}' not found (404)`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -186,6 +208,12 @@ export async function extractItem(url: string): Promise<ExtractItemResponse> {
     return response;
   } catch (error: any) {
     console.error('[extractItem] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[extractItem] Edge Function not deployed - returning safe fallback');
+    }
+    
     // Return safe fallback
     return {
       title: null,
@@ -234,6 +262,12 @@ export async function findAlternatives(
     return response;
   } catch (error: any) {
     console.error('[findAlternatives] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[findAlternatives] Edge Function not deployed - returning safe fallback');
+    }
+    
     // Return safe fallback
     return {
       alternatives: [],
@@ -266,6 +300,12 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
     return response;
   } catch (error: any) {
     console.error('[importWishlist] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[importWishlist] Edge Function not deployed - returning safe fallback');
+    }
+    
     // Return safe fallback
     return {
       storeName: null,
@@ -302,6 +342,12 @@ export async function identifyFromImage(
     return response;
   } catch (error: any) {
     console.error('[identifyFromImage] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[identifyFromImage] Edge Function not deployed - returning safe fallback');
+    }
+    
     // Return safe fallback
     return {
       bestGuessTitle: null,
@@ -353,6 +399,12 @@ export async function searchByName(
     return response;
   } catch (error: any) {
     console.error('[searchByName] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[searchByName] Edge Function not deployed - returning safe fallback');
+    }
+    
     // Return safe fallback
     return {
       results: [],

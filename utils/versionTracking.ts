@@ -16,6 +16,8 @@ import { supabase } from '@/lib/supabase';
  * - Platform (iOS, Android, Web)
  * - Device information
  * - Deployment timestamp
+ * 
+ * CRITICAL: This module is guarded to prevent crashes in Expo Go and development builds.
  */
 
 interface VersionInfo {
@@ -65,6 +67,13 @@ function isExpoGoOrDevClient(): boolean {
   }
   
   return false;
+}
+
+/**
+ * Check if we're in a development environment (skip version logging)
+ */
+function isDevelopment(): boolean {
+  return __DEV__ || Constants.appOwnership === 'expo';
 }
 
 /**
@@ -130,8 +139,16 @@ export async function getVersionInfo(): Promise<VersionInfo> {
 /**
  * Log the current app version to Supabase
  * This is called automatically when the app starts or when deployed via EAS
+ * 
+ * CRITICAL: Skips logging in development environments to avoid noise
  */
 export async function logAppVersionToSupabase(userId?: string): Promise<void> {
+  // Skip version logging in development environments
+  if (isDevelopment()) {
+    console.debug('[VersionTracking] Skipping version logging in development environment');
+    return;
+  }
+
   try {
     console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
     console.debug('[VersionTracking] 📊 LOGGING APP VERSION TO SUPABASE');
@@ -176,14 +193,18 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
       });
 
     if (error) {
-      // Downgrade to debug - don't spam console with expected errors
-      console.debug('[VersionTracking] Could not log version to Supabase:', error.message);
-      
-      // If table doesn't exist, log instructions (debug only)
+      // Check if table doesn't exist - this is expected if migration hasn't been run
       if (error.message.includes('relation "app_versions" does not exist') || 
-          error.message.includes('Could not find the table')) {
-        console.debug('[VersionTracking] Table "app_versions" not found. Run migration: supabase/migrations/20260125_create_app_versions_table.sql');
+          error.message.includes('Could not find the table') ||
+          error.code === 'PGRST204' || 
+          error.code === 'PGRST205') {
+        console.debug('[VersionTracking] Table "app_versions" not found - version tracking disabled');
+        console.debug('[VersionTracking] To enable: Run migration supabase/migrations/20260125_create_app_versions_table.sql');
+        return;
       }
+      
+      // Other errors - log but don't crash
+      console.debug('[VersionTracking] Could not log version to Supabase:', error.message);
       return;
     }
 
@@ -200,7 +221,7 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
  * Check for EAS Updates and log new deployments
  * This should be called on app start to detect new OTA updates
  * 
- * IMPORTANT: This function is guarded to skip in Expo Go and development builds
+ * CRITICAL: This function is guarded to skip in Expo Go and development builds
  * where Updates.checkForUpdateAsync() is not available.
  */
 export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
@@ -208,8 +229,10 @@ export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
     // Guard: Skip update check in Expo Go or development client
     if (isExpoGoOrDevClient()) {
       console.debug('[VersionTracking] Skipping update check (Expo Go or dev client)');
-      // Still log the current version for tracking
-      await logAppVersionToSupabase(userId);
+      // Still log the current version for tracking (if not in dev)
+      if (!isDevelopment()) {
+        await logAppVersionToSupabase(userId);
+      }
       return;
     }
 
@@ -249,7 +272,9 @@ export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
     console.debug('[VersionTracking] Could not check for updates:', error);
     
     // Still try to log the current version even if update check fails
-    await logAppVersionToSupabase(userId);
+    if (!isDevelopment()) {
+      await logAppVersionToSupabase(userId);
+    }
   }
 }
 
