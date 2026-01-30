@@ -69,13 +69,13 @@ export interface Theme {
 
 // ═══════════════════════════════════════════════════════
 // 🌙 DARK MODE THEME
-// Brand base: #765943
+// Brand base: #765943 (ENFORCED)
 // ═══════════════════════════════════════════════════════
 
 export const darkTheme: Theme = {
   mode: 'dark',
   colors: {
-    // Core tokens - EXACT specifications
+    // Core tokens - EXACT specifications (ENFORCED)
     background: '#765943',
     surface: 'rgba(255,255,255,0.10)',
     surface2: 'rgba(255,255,255,0.14)',

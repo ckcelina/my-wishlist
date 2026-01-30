@@ -144,6 +144,17 @@ export default function WishlistsScreen() {
       alignItems: 'center',
       gap: spacing.sm,
     },
+    defaultBadge: {
+      backgroundColor: colors.accentLight,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 6,
+    },
+    defaultBadgeText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.accent,
+    },
     moreButton: {
       padding: spacing.sm,
     },
@@ -555,6 +566,7 @@ export default function WishlistsScreen() {
   const renderWishlistItem = ({ item, index }: { item: Wishlist; index: number }) => {
     const itemCountText = item.itemCount === 1 ? 'item' : 'items';
     const lastUpdatedText = formatLastUpdated(item.updatedAt);
+    const itemCountDisplay = `${item.itemCount}`;
 
     return (
       <TouchableOpacity
@@ -567,9 +579,7 @@ export default function WishlistsScreen() {
             <View style={styles.wishlistLeft}>
               <Text style={styles.wishlistName}>{item.name}</Text>
               <View style={styles.wishlistMeta}>
-                <Text style={styles.wishlistMetaText}>
-                  {item.itemCount}
-                </Text>
+                <Text style={styles.wishlistMetaText}>{itemCountDisplay}</Text>
                 <Text style={styles.wishlistMetaText}> </Text>
                 <Text style={styles.wishlistMetaText}>{itemCountText}</Text>
                 <Text style={styles.wishlistMetaText}> • </Text>
@@ -577,10 +587,17 @@ export default function WishlistsScreen() {
               </View>
             </View>
             <View style={styles.wishlistRight}>
-              {item.isDefault && <Badge variant="info" label="Default" />}
+              {item.isDefault && (
+                <View style={styles.defaultBadge}>
+                  <Text style={styles.defaultBadgeText}>Default</Text>
+                </View>
+              )}
               <TouchableOpacity
                 style={styles.moreButton}
-                onPress={(e) => openOverflowMenu(item, e)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  openOverflowMenu(item, e);
+                }}
               >
                 <IconSymbol
                   ios_icon_name="ellipsis"
@@ -703,7 +720,7 @@ export default function WishlistsScreen() {
         <FlatList
           data={wishlists}
           renderItem={renderWishlistItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => `${item.id}-${index}`}
           ListHeaderComponent={renderHeader}
           ListFooterComponent={renderFooter}
           contentContainerStyle={styles.listContent}
@@ -715,6 +732,10 @@ export default function WishlistsScreen() {
               tintColor={colors.primary}
             />
           }
+          removeClippedSubviews={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
         />
 
         <Modal
