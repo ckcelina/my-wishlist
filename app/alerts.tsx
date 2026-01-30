@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,8 @@ import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { colors, typography, spacing } from '@/styles/designSystem';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
+import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
+import { getCurrencyByCode } from '@/constants/currencies';
 import debounce from 'lodash.debounce';
 
 interface AlertSettings {
@@ -30,6 +33,11 @@ interface AlertSettings {
   quietHoursEnabled: boolean;
   quietStart: string | null;
   quietEnd: string | null;
+  priceDropThresholdType: 'any' | 'percentage' | 'amount';
+  priceDropThresholdValue: number | null;
+  checkFrequency: 'daily' | 'twice_daily' | 'hourly';
+  preferredStores: string[];
+  preferredCurrency: string;
   updatedAt: string;
 }
 
@@ -52,6 +60,11 @@ const DEFAULT_SETTINGS: Omit<AlertSettings, 'userId' | 'updatedAt'> = {
   quietHoursEnabled: false,
   quietStart: null,
   quietEnd: null,
+  priceDropThresholdType: 'any',
+  priceDropThresholdValue: null,
+  checkFrequency: 'daily',
+  preferredStores: [],
+  preferredCurrency: 'USD',
 };
 
 const styles = StyleSheet.create({
@@ -155,6 +168,117 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    width: '85%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  thresholdOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  thresholdOptionActive: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  thresholdOptionLeft: {
+    flex: 1,
+  },
+  thresholdOptionLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs / 2,
+  },
+  thresholdOptionDescription: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  thresholdInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  thresholdInput: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.sm,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  thresholdInputPrefix: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  thresholdInputSuffix: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  thresholdSaveButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+  },
+  thresholdSaveButtonText: {
+    ...typography.body,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  frequencyOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.background,
+  },
+  frequencyOptionActive: {
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  frequencyOptionLeft: {
+    flex: 1,
+  },
+  frequencyOptionLabel: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: spacing.xs / 2,
+  },
+  frequencyOptionDescription: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
 });
 
 export default function AlertsScreen() {
@@ -166,6 +290,10 @@ export default function AlertsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [itemsWithTargets, setItemsWithTargets] = useState<ItemsWithTargetsResponse | null>(null);
+  const [showThresholdModal, setShowThresholdModal] = useState(false);
+  const [showFrequencyModal, setShowFrequencyModal] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [thresholdValue, setThresholdValue] = useState('');
 
   // Debounced save function
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
@@ -275,6 +403,65 @@ export default function AlertsScreen() {
   const notifyUnderTargetValue = settings.notifyUnderTarget;
   const weeklyDigestValue = settings.weeklyDigest;
   const quietHoursEnabledValue = settings.quietHoursEnabled;
+  const priceDropThresholdTypeValue = settings.priceDropThresholdType || 'any';
+  const priceDropThresholdValueValue = settings.priceDropThresholdValue;
+  const checkFrequencyValue = settings.checkFrequency || 'daily';
+  const preferredCurrencyValue = settings.preferredCurrency || 'USD';
+
+  const thresholdTypeDisplay = priceDropThresholdTypeValue === 'any' 
+    ? 'Any price drop' 
+    : priceDropThresholdTypeValue === 'percentage' 
+    ? `${priceDropThresholdValueValue || 0}% drop` 
+    : `${preferredCurrencyValue} ${priceDropThresholdValueValue || 0} drop`;
+
+  const frequencyDisplay = checkFrequencyValue === 'daily' 
+    ? 'Once daily' 
+    : checkFrequencyValue === 'twice_daily' 
+    ? 'Twice daily' 
+    : 'Every hour';
+
+  const currencyInfo = getCurrencyByCode(preferredCurrencyValue);
+  const currencyDisplay = currencyInfo 
+    ? `${currencyInfo.symbol} ${currencyInfo.name}` 
+    : preferredCurrencyValue;
+
+  const handleThresholdTypeSelect = (type: 'any' | 'percentage' | 'amount') => {
+    console.log('[AlertsScreen] Threshold type selected:', type);
+    setSettings(prev => prev ? { ...prev, priceDropThresholdType: type } : null);
+    debouncedSaveRef.current?.({ priceDropThresholdType: type });
+    
+    if (type === 'any') {
+      setSettings(prev => prev ? { ...prev, priceDropThresholdValue: null } : null);
+      debouncedSaveRef.current?.({ priceDropThresholdValue: null });
+      setShowThresholdModal(false);
+    }
+  };
+
+  const handleThresholdValueSave = () => {
+    const value = parseFloat(thresholdValue);
+    if (isNaN(value) || value <= 0) {
+      return;
+    }
+    
+    console.log('[AlertsScreen] Threshold value saved:', value);
+    setSettings(prev => prev ? { ...prev, priceDropThresholdValue: value } : null);
+    debouncedSaveRef.current?.({ priceDropThresholdValue: value });
+    setShowThresholdModal(false);
+  };
+
+  const handleFrequencySelect = (frequency: 'daily' | 'twice_daily' | 'hourly') => {
+    console.log('[AlertsScreen] Frequency selected:', frequency);
+    setSettings(prev => prev ? { ...prev, checkFrequency: frequency } : null);
+    debouncedSaveRef.current?.({ checkFrequency: frequency });
+    setShowFrequencyModal(false);
+  };
+
+  const handleCurrencySelect = (currency: { currencyCode: string; currencyName: string }) => {
+    console.log('[AlertsScreen] Currency selected:', currency.currencyCode);
+    setSettings(prev => prev ? { ...prev, preferredCurrency: currency.currencyCode } : null);
+    debouncedSaveRef.current?.({ preferredCurrency: currency.currencyCode });
+    setShowCurrencyPicker(false);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -458,7 +645,304 @@ export default function AlertsScreen() {
             )}
           </Card>
         </View>
+
+        {/* Price Drop Threshold */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Price Drop Threshold</Text>
+          <Card>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => {
+                setThresholdValue(priceDropThresholdValueValue?.toString() || '');
+                setShowThresholdModal(true);
+              }}
+              disabled={!alertsEnabledValue || !notifyPriceDropsValue}
+            >
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Alert Threshold</Text>
+                <Text style={styles.settingDescription}>
+                  {thresholdTypeDisplay}
+                </Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </Card>
+        </View>
+
+        {/* Check Frequency */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Price Check Frequency</Text>
+          <Card>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => setShowFrequencyModal(true)}
+              disabled={!alertsEnabledValue}
+            >
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Check Frequency</Text>
+                <Text style={styles.settingDescription}>
+                  {frequencyDisplay}
+                </Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </Card>
+        </View>
+
+        {/* Preferred Currency */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Preferred Currency</Text>
+          <Card>
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => setShowCurrencyPicker(true)}
+            >
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Currency for Alerts</Text>
+                <Text style={styles.settingDescription}>
+                  {currencyDisplay}
+                </Text>
+              </View>
+              <IconSymbol
+                ios_icon_name="chevron.right"
+                android_material_icon_name="chevron-right"
+                size={20}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </Card>
+        </View>
       </ScrollView>
+
+      {/* Threshold Modal */}
+      <Modal
+        visible={showThresholdModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowThresholdModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowThresholdModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Price Drop Threshold</Text>
+            
+            <TouchableOpacity
+              style={[
+                styles.thresholdOption,
+                priceDropThresholdTypeValue === 'any' && styles.thresholdOptionActive,
+              ]}
+              onPress={() => handleThresholdTypeSelect('any')}
+            >
+              <View style={styles.thresholdOptionLeft}>
+                <Text style={styles.thresholdOptionLabel}>Any Price Drop</Text>
+                <Text style={styles.thresholdOptionDescription}>
+                  Alert me whenever the price decreases
+                </Text>
+              </View>
+              {priceDropThresholdTypeValue === 'any' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.thresholdOption,
+                priceDropThresholdTypeValue === 'percentage' && styles.thresholdOptionActive,
+              ]}
+              onPress={() => handleThresholdTypeSelect('percentage')}
+            >
+              <View style={styles.thresholdOptionLeft}>
+                <Text style={styles.thresholdOptionLabel}>Percentage Drop</Text>
+                <Text style={styles.thresholdOptionDescription}>
+                  Alert when price drops by a certain %
+                </Text>
+              </View>
+              {priceDropThresholdTypeValue === 'percentage' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+
+            {priceDropThresholdTypeValue === 'percentage' && (
+              <View style={styles.thresholdInputContainer}>
+                <TextInput
+                  style={styles.thresholdInput}
+                  value={thresholdValue}
+                  onChangeText={setThresholdValue}
+                  placeholder="e.g., 10"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.thresholdInputSuffix}>%</Text>
+                <TouchableOpacity
+                  style={styles.thresholdSaveButton}
+                  onPress={handleThresholdValueSave}
+                >
+                  <Text style={styles.thresholdSaveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[
+                styles.thresholdOption,
+                priceDropThresholdTypeValue === 'amount' && styles.thresholdOptionActive,
+              ]}
+              onPress={() => handleThresholdTypeSelect('amount')}
+            >
+              <View style={styles.thresholdOptionLeft}>
+                <Text style={styles.thresholdOptionLabel}>Amount Drop</Text>
+                <Text style={styles.thresholdOptionDescription}>
+                  Alert when price drops by a specific amount
+                </Text>
+              </View>
+              {priceDropThresholdTypeValue === 'amount' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+
+            {priceDropThresholdTypeValue === 'amount' && (
+              <View style={styles.thresholdInputContainer}>
+                <Text style={styles.thresholdInputPrefix}>{currencyInfo?.symbol || preferredCurrencyValue}</Text>
+                <TextInput
+                  style={styles.thresholdInput}
+                  value={thresholdValue}
+                  onChangeText={setThresholdValue}
+                  placeholder="e.g., 5.00"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="decimal-pad"
+                />
+                <TouchableOpacity
+                  style={styles.thresholdSaveButton}
+                  onPress={handleThresholdValueSave}
+                >
+                  <Text style={styles.thresholdSaveButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Frequency Modal */}
+      <Modal
+        visible={showFrequencyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFrequencyModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowFrequencyModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Price Check Frequency</Text>
+            
+            <TouchableOpacity
+              style={[
+                styles.frequencyOption,
+                checkFrequencyValue === 'daily' && styles.frequencyOptionActive,
+              ]}
+              onPress={() => handleFrequencySelect('daily')}
+            >
+              <View style={styles.frequencyOptionLeft}>
+                <Text style={styles.frequencyOptionLabel}>Once Daily</Text>
+                <Text style={styles.frequencyOptionDescription}>
+                  Check prices once per day
+                </Text>
+              </View>
+              {checkFrequencyValue === 'daily' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.frequencyOption,
+                checkFrequencyValue === 'twice_daily' && styles.frequencyOptionActive,
+              ]}
+              onPress={() => handleFrequencySelect('twice_daily')}
+            >
+              <View style={styles.frequencyOptionLeft}>
+                <Text style={styles.frequencyOptionLabel}>Twice Daily</Text>
+                <Text style={styles.frequencyOptionDescription}>
+                  Check prices every 12 hours
+                </Text>
+              </View>
+              {checkFrequencyValue === 'twice_daily' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.frequencyOption,
+                checkFrequencyValue === 'hourly' && styles.frequencyOptionActive,
+              ]}
+              onPress={() => handleFrequencySelect('hourly')}
+            >
+              <View style={styles.frequencyOptionLeft}>
+                <Text style={styles.frequencyOptionLabel}>Every Hour</Text>
+                <Text style={styles.frequencyOptionDescription}>
+                  Check prices hourly (Premium only)
+                </Text>
+              </View>
+              {checkFrequencyValue === 'hourly' && (
+                <IconSymbol
+                  ios_icon_name="checkmark"
+                  android_material_icon_name="check"
+                  size={20}
+                  color={colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Currency Picker */}
+      <CurrencyPicker
+        visible={showCurrencyPicker}
+        onClose={() => setShowCurrencyPicker(false)}
+        onSelect={handleCurrencySelect}
+        selectedCurrency={preferredCurrencyValue}
+      />
     </SafeAreaView>
   );
 }

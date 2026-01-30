@@ -549,6 +549,18 @@ export default function ProfileScreen() {
                   thumbColor={colors.surface}
                 />
               </View>
+
+              <Divider />
+
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push('/alerts');
+                }}
+              >
+                <Text style={styles.linkText}>Alert Settings</Text>
+              </TouchableOpacity>
             </Card>
           </Animated.View>
 

@@ -498,7 +498,26 @@ export default function ImportPreviewScreen() {
       return;
     }
     
-    console.log('[ImportPreview] Loading AI Price Search results');
+    // Check if user has set their shipping location
+    if (!userLocation || !userLocation.countryCode) {
+      console.log('[ImportPreview] User location not set, showing location modal');
+      Alert.alert(
+        'Shipping Location Required',
+        'To find prices online, we need to know where you want items shipped. Please set your shipping location first.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Set Location',
+            onPress: () => {
+              router.push('/location');
+            },
+          },
+        ]
+      );
+      return;
+    }
+    
+    console.log('[ImportPreview] Loading AI Price Search results for location:', userLocation.countryCode, userLocation.city);
     setLoadingAlternatives(true);
     
     try {
@@ -511,8 +530,8 @@ export default function ImportPreviewScreen() {
         productName: itemName,
         imageUrl: selectedImage || null,
         originalUrl: productData?.sourceUrl || null,
-        countryCode: userLocation?.countryCode || null,
-        city: userLocation?.city || null,
+        countryCode: userLocation.countryCode,
+        city: userLocation.city || null,
       });
       
       console.log('[ImportPreview] AI Price Search results:', response.offers.length, 'offers');
@@ -521,7 +540,7 @@ export default function ImportPreviewScreen() {
         setAlternativeStores(response.offers);
         setShowAlternatives(true);
       } else {
-        const message = response.message || 'No offers found for this product';
+        const message = response.message || 'No offers found for this product in your location';
         Alert.alert('No Results', message);
       }
     } catch (error) {
