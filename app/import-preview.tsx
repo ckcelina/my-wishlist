@@ -27,10 +27,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
+import { supabase } from '@/lib/supabase';
+
+// Placeholder image URL for fallback
+const PLACEHOLDER_IMAGE_URL = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80';
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
-  if (!source) return { uri: '' };
+  if (!source) return { uri: PLACEHOLDER_IMAGE_URL };
   if (typeof source === 'string') return { uri: source };
   return source as ImageSourcePropType;
 }
@@ -47,6 +51,7 @@ interface ExtractedProductData {
   alternativeStores?: AlternativeStore[];
   sourceUrl?: string;
   notes?: string;
+  inputType?: 'url' | 'image' | 'camera' | 'name' | 'manual';
 }
 
 interface AlternativeStore {
@@ -97,6 +102,7 @@ export default function ImportPreviewScreen() {
   const [productData, setProductData] = useState<ExtractedProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   
   // Editable fields
   const [itemName, setItemName] = useState('');
@@ -151,7 +157,12 @@ export default function ImportPreviewScreen() {
         
         setProductData(parsed);
         setItemName(parsed.itemName || '');
-        setSelectedImage(parsed.imageUrl || '');
+        
+        // Auto-select image based on input type
+        const autoSelectedImage = autoSelectImage(parsed);
+        setSelectedImage(autoSelectedImage);
+        console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
+        
         setStoreName(parsed.storeName || '');
         setStoreDomain(parsed.storeDomain || '');
         setPrice(parsed.price?.toString() || '');
@@ -161,7 +172,9 @@ export default function ImportPreviewScreen() {
         // Check for warnings
         const newWarnings: string[] = [];
         if (!parsed.itemName) newWarnings.push('Item name is missing');
-        if (!parsed.imageUrl) newWarnings.push('No image available');
+        if (!autoSelectedImage || autoSelectedImage === PLACEHOLDER_IMAGE_URL) {
+          newWarnings.push('No image available - using placeholder');
+        }
         if (!parsed.price) newWarnings.push('Price not detected');
         if (!parsed.storeName) newWarnings.push('Store name not detected');
         
@@ -179,6 +192,49 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Auto-select the best image based on input type
+   * Priority:
+   * 1. URL: Use extracted og:image or primary product image
+   * 2. Camera/Upload: Use the uploaded image
+   * 3. Name search: Use the best search result image
+   * 4. Fallback: Use placeholder
+   */
+  const autoSelectImage = (data: ExtractedProductData): string => {
+    const inputType = data.inputType || 'manual';
+    
+    console.log('[ImportPreview] Auto-selecting image for input type:', inputType);
+    
+    // For URL input: prefer extracted image (highest resolution)
+    if (inputType === 'url') {
+      if (data.extractedImages && data.extractedImages.length > 0) {
+        // Return the first extracted image (should be highest quality)
+        return data.extractedImages[0];
+      }
+      if (data.imageUrl) {
+        return data.imageUrl;
+      }
+    }
+    
+    // For camera/upload: use the uploaded image
+    if (inputType === 'camera' || inputType === 'image') {
+      if (data.imageUrl) {
+        return data.imageUrl;
+      }
+    }
+    
+    // For name search: use the best result image
+    if (inputType === 'name') {
+      if (data.imageUrl) {
+        return data.imageUrl;
+      }
+    }
+    
+    // Fallback to placeholder
+    console.log('[ImportPreview] No suitable image found, using placeholder');
+    return PLACEHOLDER_IMAGE_URL;
   };
 
   const fetchUserWishlists = async () => {
@@ -203,12 +259,12 @@ export default function ImportPreviewScreen() {
     if (!user) return;
     
     try {
-      console.log('[ImportPreview] Fetching user location from Supabase');
+      console.log('[ImportPreview] Fetching user location');
       const locationData = await fetchUserLocation(user.id);
       
       if (locationData) {
         setUserLocation({
-          countryCode: locationData.country_code,
+          countryCode: locationData.countryCode,
           city: locationData.city,
         });
         console.log('[ImportPreview] User location:', locationData);
@@ -297,21 +353,12 @@ export default function ImportPreviewScreen() {
   const handleChangeImage = async () => {
     console.log('[ImportPreview] User tapped Change Image');
     
-    if (productData && productData.extractedImages.length > 1) {
+    if (productData && productData.extractedImages && productData.extractedImages.length > 1) {
       // Show picker with extracted images
       setShowImagePicker(true);
     } else {
-      // Allow upload from gallery
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
-      });
-      
-      if (!result.canceled && result.assets[0]) {
-        setSelectedImage(result.assets[0].uri);
-        console.log('[ImportPreview] Image changed to:', result.assets[0].uri);
-      }
+      // Show options: upload from gallery or take photo
+      setShowImagePicker(true);
     }
   };
 
@@ -322,6 +369,8 @@ export default function ImportPreviewScreen() {
   };
 
   const handleUploadImage = async () => {
+    console.log('[ImportPreview] User tapped Upload from Gallery');
+    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -329,9 +378,89 @@ export default function ImportPreviewScreen() {
     });
     
     if (!result.canceled && result.assets[0]) {
-      setSelectedImage(result.assets[0].uri);
+      const localUri = result.assets[0].uri;
+      console.log('[ImportPreview] Image selected from gallery:', localUri);
+      
+      // Upload to Supabase Storage
+      await uploadImageToSupabase(localUri);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    console.log('[ImportPreview] User tapped Take Photo');
+    
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera permission is required to take photos');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      const localUri = result.assets[0].uri;
+      console.log('[ImportPreview] Photo taken:', localUri);
+      
+      // Upload to Supabase Storage
+      await uploadImageToSupabase(localUri);
+    }
+  };
+
+  const uploadImageToSupabase = async (localUri: string) => {
+    if (!user) {
+      Alert.alert('Error', 'You must be logged in to upload images');
+      return;
+    }
+
+    setUploadingImage(true);
+    console.log('[ImportPreview] Uploading image to Supabase Storage:', localUri);
+
+    try {
+      // Generate unique filename
+      const fileExt = localUri.split('.').pop() || 'jpg';
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      // Fetch the image as a blob
+      const response = await fetch(localUri);
+      const blob = await response.blob();
+      
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('item-images')
+        .upload(fileName, blob, {
+          contentType: `image/${fileExt}`,
+          upsert: false,
+        });
+
+      if (error) {
+        console.error('[ImportPreview] Error uploading image:', error);
+        Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+        return;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('item-images')
+        .getPublicUrl(fileName);
+
+      const publicUrl = urlData.publicUrl;
+      console.log('[ImportPreview] Image uploaded successfully:', publicUrl);
+
+      // Update selected image
+      setSelectedImage(publicUrl);
       setShowImagePicker(false);
-      console.log('[ImportPreview] Custom image uploaded:', result.assets[0].uri);
+      
+      // Remove "No image available" warning if it exists
+      setWarnings(prev => prev.filter(w => !w.includes('image')));
+    } catch (error) {
+      console.error('[ImportPreview] Error uploading image:', error);
+      Alert.alert('Upload Failed', 'Failed to upload image. Please try again.');
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -406,11 +535,27 @@ export default function ImportPreviewScreen() {
     try {
       console.log('[ImportPreview] Saving item to wishlist:', selectedWishlistId);
       
+      // Determine final image URL
+      let finalImageUrl = selectedImage;
+      
+      // If image is a local file URI, upload it first
+      if (finalImageUrl && finalImageUrl.startsWith('file://')) {
+        console.log('[ImportPreview] Uploading local image before saving');
+        await uploadImageToSupabase(finalImageUrl);
+        finalImageUrl = selectedImage; // Use the updated selectedImage after upload
+      }
+      
+      // Fallback to placeholder if no image
+      if (!finalImageUrl || finalImageUrl === '') {
+        finalImageUrl = PLACEHOLDER_IMAGE_URL;
+        console.log('[ImportPreview] No image provided, using placeholder');
+      }
+      
       // Create the wishlist item
       const newItem = await createWishlistItem({
         wishlist_id: selectedWishlistId,
         title: itemName.trim(),
-        image_url: selectedImage || null,
+        image_url: finalImageUrl,
         current_price: price ? parseFloat(price) : null,
         currency: currency,
         original_url: productData?.sourceUrl || null,
@@ -567,6 +712,9 @@ export default function ImportPreviewScreen() {
 
   const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
 
+  // Determine if we're showing placeholder
+  const isPlaceholderImage = !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL;
+
   return (
     <>
       <Stack.Screen
@@ -610,7 +758,7 @@ export default function ImportPreviewScreen() {
 
             {/* Product Image */}
             <View style={styles.imageSection}>
-              {selectedImage ? (
+              {selectedImage && !isPlaceholderImage ? (
                 <Image
                   source={resolveImageSource(selectedImage)}
                   style={styles.productImage}
@@ -631,14 +779,21 @@ export default function ImportPreviewScreen() {
               <TouchableOpacity
                 style={[styles.changeImageButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 onPress={handleChangeImage}
+                disabled={uploadingImage}
               >
-                <IconSymbol
-                  ios_icon_name="photo"
-                  android_material_icon_name="image"
-                  size={16}
-                  color={colors.accent}
-                />
-                <Text style={[styles.changeImageText, { color: colors.accent }]}>Change Image</Text>
+                {uploadingImage ? (
+                  <ActivityIndicator size="small" color={colors.accent} />
+                ) : (
+                  <>
+                    <IconSymbol
+                      ios_icon_name="photo"
+                      android_material_icon_name="image"
+                      size={16}
+                      color={colors.accent}
+                    />
+                    <Text style={[styles.changeImageText, { color: colors.accent }]}>Change Photo</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -931,47 +1086,77 @@ export default function ImportPreviewScreen() {
               <View style={styles.modalHandle} />
               <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Choose Image</Text>
               
-              <ScrollView style={styles.imageGrid}>
-                {productData?.extractedImages.map((imageUrl, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.imageOption,
-                      { borderColor: selectedImage === imageUrl ? colors.accent : colors.border },
-                    ]}
-                    onPress={() => handleSelectImage(imageUrl)}
-                  >
-                    <Image
-                      source={resolveImageSource(imageUrl)}
-                      style={styles.imageOptionImage}
-                      resizeMode="cover"
-                    />
-                    {selectedImage === imageUrl && (
-                      <View style={[styles.imageSelectedBadge, { backgroundColor: colors.accent }]}>
-                        <IconSymbol
-                          ios_icon_name="checkmark"
-                          android_material_icon_name="check"
-                          size={16}
-                          color={colors.textInverse}
+              {/* Show extracted images if available */}
+              {productData?.extractedImages && productData.extractedImages.length > 0 && (
+                <>
+                  <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Web Suggestions</Text>
+                  <ScrollView style={styles.imageGrid}>
+                    {productData.extractedImages.map((imageUrl, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.imageOption,
+                          { borderColor: selectedImage === imageUrl ? colors.accent : colors.border },
+                        ]}
+                        onPress={() => handleSelectImage(imageUrl)}
+                      >
+                        <Image
+                          source={resolveImageSource(imageUrl)}
+                          style={styles.imageOptionImage}
+                          resizeMode="cover"
                         />
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                        {selectedImage === imageUrl && (
+                          <View style={[styles.imageSelectedBadge, { backgroundColor: colors.accent }]}>
+                            <IconSymbol
+                              ios_icon_name="checkmark"
+                              android_material_icon_name="check"
+                              size={16}
+                              color={colors.textInverse}
+                            />
+                          </View>
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
 
-              <TouchableOpacity
-                style={[styles.uploadButton, { backgroundColor: colors.accent }]}
-                onPress={handleUploadImage}
-              >
-                <IconSymbol
-                  ios_icon_name="photo"
-                  android_material_icon_name="image"
-                  size={20}
-                  color={colors.textInverse}
-                />
-                <Text style={[styles.uploadButtonText, { color: colors.textInverse }]}>Upload from Gallery</Text>
-              </TouchableOpacity>
+              {/* Upload and Camera Options */}
+              <View style={styles.imageActions}>
+                <TouchableOpacity
+                  style={[styles.imageActionButton, { backgroundColor: colors.accent }]}
+                  onPress={handleUploadImage}
+                  disabled={uploadingImage}
+                >
+                  {uploadingImage ? (
+                    <ActivityIndicator size="small" color={colors.textInverse} />
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="photo"
+                        android_material_icon_name="image"
+                        size={20}
+                        color={colors.textInverse}
+                      />
+                      <Text style={[styles.imageActionText, { color: colors.textInverse }]}>Upload from Gallery</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.imageActionButton, { backgroundColor: colors.accent }]}
+                  onPress={handleTakePhoto}
+                  disabled={uploadingImage}
+                >
+                  <IconSymbol
+                    ios_icon_name="camera"
+                    android_material_icon_name="camera"
+                    size={20}
+                    color={colors.textInverse}
+                  />
+                  <Text style={[styles.imageActionText, { color: colors.textInverse }]}>Take Photo</Text>
+                </TouchableOpacity>
+              </View>
             </Pressable>
           </Pressable>
         </Modal>
@@ -1363,8 +1548,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: spacing.md,
   },
+  modalSubtitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: spacing.sm,
+  },
   imageGrid: {
     marginBottom: spacing.md,
+    maxHeight: 300,
   },
   imageOption: {
     width: '100%',
@@ -1388,7 +1579,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  uploadButton: {
+  imageActions: {
+    gap: spacing.sm,
+  },
+  imageActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1396,7 +1590,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 12,
   },
-  uploadButtonText: {
+  imageActionText: {
     fontSize: 16,
     fontWeight: '600',
   },

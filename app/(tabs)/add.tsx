@@ -153,6 +153,7 @@ export default function AddItemScreen() {
         currency: result.currency || 'USD',
         countryAvailability: result.availableCountries || [],
         sourceUrl: urlInput.trim(),
+        inputType: 'url', // Specify input type for auto-selection
       };
 
       router.push({
@@ -214,6 +215,7 @@ export default function AddItemScreen() {
         currency: result.currency || 'USD',
         countryAvailability: result.availableCountries || [],
         sourceUrl: result.productUrl || '',
+        inputType: 'camera', // Specify input type for auto-selection
       };
 
       router.push({
@@ -269,6 +271,7 @@ export default function AddItemScreen() {
         currency: result.currency || 'USD',
         countryAvailability: result.availableCountries || [],
         sourceUrl: result.productUrl || '',
+        inputType: 'image', // Specify input type for auto-selection
       };
 
       router.push({
@@ -322,6 +325,7 @@ export default function AddItemScreen() {
       currency: result.currency || 'USD',
       countryAvailability: [],
       sourceUrl: result.productUrl,
+      inputType: 'name', // Specify input type for auto-selection
     };
 
     router.push({
