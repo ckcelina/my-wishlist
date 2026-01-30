@@ -1,5 +1,6 @@
 
 import Constants from 'expo-constants';
+import { ENV } from './environmentConfig';
 
 // Types for Edge Function requests and responses
 export interface ExtractItemRequest {
@@ -119,9 +120,9 @@ export interface SearchByNameResponse {
   error?: string;
 }
 
-// Get Supabase configuration
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl;
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey;
+// Get Supabase configuration from locked environment
+const SUPABASE_URL = ENV.SUPABASE_URL;
+const SUPABASE_ANON_KEY = ENV.SUPABASE_ANON_KEY;
 
 // List of expected Edge Functions (case-sensitive)
 const EXPECTED_EDGE_FUNCTIONS = [
@@ -133,19 +134,22 @@ const EXPECTED_EDGE_FUNCTIONS = [
 ];
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn('[Supabase Edge Functions] Configuration missing');
+  console.warn('[Supabase Edge Functions] Configuration missing - check app.json');
 }
 
 /**
  * Call a Supabase Edge Function with proper error handling
- * Returns safe fallback on 404 or missing function
+ * Works identically in ALL environments (Expo Go, TestFlight, App Store)
+ * 
+ * PRODUCTION PARITY: Uses locked environment variables.
+ * Returns safe fallback on 404 or missing function.
  */
 async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
   request: TRequest
 ): Promise<TResponse> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error('Supabase configuration is missing');
+    throw new Error('Supabase configuration is missing - check app.json extra config');
   }
 
   // Verify function name is expected (case-sensitive)
@@ -156,6 +160,7 @@ async function callEdgeFunction<TRequest, TResponse>(
 
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
   console.log(`[Edge Function] Calling ${functionName}:`, request);
+  console.log(`[Edge Function] Environment: ${ENV.IS_EXPO_GO ? 'Expo Go' : ENV.IS_PRODUCTION ? 'Production' : 'Development'}`);
 
   try {
     const response = await fetch(url, {
@@ -192,6 +197,7 @@ async function callEdgeFunction<TRequest, TResponse>(
 /**
  * Extract item details from a URL
  * Returns partial data even if extraction fails
+ * Works identically in all environments
  */
 export async function extractItem(url: string): Promise<ExtractItemResponse> {
   try {
@@ -234,6 +240,7 @@ export async function extractItem(url: string): Promise<ExtractItemResponse> {
 /**
  * Find alternative stores for a product
  * Filters by user location if provided
+ * Works identically in all environments
  */
 export async function findAlternatives(
   title: string,
@@ -284,6 +291,7 @@ export async function findAlternatives(
 /**
  * Import a wishlist from a store URL
  * Returns as many items as possible even if some fail
+ * Works identically in all environments
  */
 export async function importWishlist(wishlistUrl: string): Promise<ImportWishlistResponse> {
   try {
@@ -323,6 +331,7 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
 /**
  * Identify a product from an image
  * Returns best-effort results with confidence score
+ * Works identically in all environments
  */
 export async function identifyFromImage(
   imageUrl?: string,
@@ -369,6 +378,7 @@ export async function identifyFromImage(
  * Search for products by name across multiple stores
  * Filters by user location if provided
  * Returns products with confidence scores
+ * Works identically in all environments
  */
 export async function searchByName(
   query: string,

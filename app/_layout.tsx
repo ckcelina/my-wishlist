@@ -22,7 +22,8 @@ import {
   displayVersionInfo,
   checkForUpdatesAndLog 
 } from '@/utils/versionTracking';
-import { logEnvironmentInfo } from '@/utils/environmentConfig';
+import { logEnvironmentInfo, validateEnvironmentConfig } from '@/utils/environmentConfig';
+import { runParityVerification, logEnvironmentSummary } from '@/utils/parityVerification';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -119,6 +120,15 @@ export default function RootLayout() {
     // Log environment configuration for UI parity verification
     logEnvironmentInfo();
     
+    // Validate environment configuration
+    const validation = validateEnvironmentConfig();
+    if (!validation.valid) {
+      console.error('[App] ❌ Environment configuration is invalid:');
+      validation.errors.forEach(error => console.error(`[App]    - ${error}`));
+    } else {
+      console.log('[App] ✅ Environment configuration is valid');
+    }
+    
     // Display and log version information
     getVersionInfo().then((versionInfo) => {
       displayVersionInfo(versionInfo);
@@ -169,6 +179,24 @@ export default function RootLayout() {
     verifySupabaseConnection().then((legacyStatus) => {
       console.log('[App] 📋 Legacy verification result:', legacyStatus);
     });
+    
+    // Run parity verification
+    console.log('[App] 🔍 Running parity verification...');
+    runParityVerification().then((report) => {
+      if (report.overallPassed) {
+        console.log('[App] ✅✅✅ PARITY VERIFICATION PASSED ✅✅✅');
+        console.log('[App] ✅ Expo Go and production builds are identical');
+      } else {
+        console.error('[App] ❌ PARITY VERIFICATION FAILED');
+        console.error('[App] ❌ Some checks did not pass');
+        console.error('[App] ❌ Review the report above');
+      }
+    }).catch((error) => {
+      console.error('[App] ❌ Parity verification failed with error:', error);
+    });
+    
+    // Log environment summary
+    logEnvironmentSummary();
   }, []);
 
   if (!loaded) {

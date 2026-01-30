@@ -4,20 +4,16 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { supabase } from '@/lib/supabase';
+import { ENV, FeatureFlags } from './environmentConfig';
 
 /**
- * Version Tracking Utility
+ * Version Tracking Utility - PRODUCTION PARITY ENFORCED
  * 
- * This utility automatically tracks app version information in Supabase
- * whenever the app is deployed through EAS or started. It logs:
- * - App version (from app.json)
- * - Build number (native build version)
- * - EAS Update ID (for OTA updates)
- * - Platform (iOS, Android, Web)
- * - Device information
- * - Deployment timestamp
+ * This utility tracks app version information in Supabase.
+ * It works IDENTICALLY in Expo Go and production builds.
  * 
- * CRITICAL: This module is guarded to prevent crashes in Expo Go and development builds.
+ * Graceful degradation: If features are unavailable (e.g., Updates in Expo Go),
+ * the function continues without errors.
  */
 
 interface VersionInfo {
@@ -48,47 +44,22 @@ interface DeploymentLog {
   channel: string | null;
   runtimeVersion: string | null;
   deployedAt: string;
-  environment: 'development' | 'production';
-}
-
-/**
- * Check if we're running in Expo Go or development client
- * In these environments, Updates.checkForUpdateAsync() is not available
- */
-function isExpoGoOrDevClient(): boolean {
-  // Check if running in Expo Go
-  if (Constants.appOwnership === 'expo') {
-    return true;
-  }
-  
-  // Check if in development mode
-  if (__DEV__) {
-    return true;
-  }
-  
-  return false;
-}
-
-/**
- * Check if we're in a development environment (skip version logging)
- */
-function isDevelopment(): boolean {
-  return __DEV__ || Constants.appOwnership === 'expo';
+  environment: 'development' | 'production' | 'expo-go';
 }
 
 /**
  * Get comprehensive version information about the current app
- * including EAS Update information
+ * Works identically in all environments
  */
 export async function getVersionInfo(): Promise<VersionInfo> {
-  console.debug('[VersionTracking] Gathering version information...');
+  console.log('[VersionTracking] Gathering version information...');
 
   const appVersion = Application.nativeApplicationVersion;
   const buildVersion = Application.nativeBuildVersion;
   const bundleId = Application.applicationId;
   const appName = Application.applicationName;
 
-  // Get EAS Update information
+  // Get EAS Update information (gracefully handles unavailability)
   let updateId: string | null = null;
   let channel: string | null = null;
   let runtimeVersion: string | null = null;
@@ -99,23 +70,23 @@ export async function getVersionInfo(): Promise<VersionInfo> {
       channel = Updates.channel || null;
       runtimeVersion = Updates.runtimeVersion || null;
       
-      console.debug('[VersionTracking] EAS Updates enabled');
-      console.debug('[VersionTracking] Update ID:', updateId);
-      console.debug('[VersionTracking] Channel:', channel);
-      console.debug('[VersionTracking] Runtime Version:', runtimeVersion);
+      console.log('[VersionTracking] EAS Updates enabled');
+      console.log('[VersionTracking] Update ID:', updateId);
+      console.log('[VersionTracking] Channel:', channel);
+      console.log('[VersionTracking] Runtime Version:', runtimeVersion);
     } else {
-      console.debug('[VersionTracking] EAS Updates not enabled (development mode)');
+      console.log('[VersionTracking] EAS Updates not enabled (Expo Go or development)');
     }
   } catch (error) {
-    console.debug('[VersionTracking] Could not get EAS Update info:', error);
+    console.log('[VersionTracking] Could not get EAS Update info (expected in Expo Go)');
   }
 
-  console.debug('[VersionTracking] App Version:', appVersion);
-  console.debug('[VersionTracking] Build Version:', buildVersion);
-  console.debug('[VersionTracking] Bundle ID:', bundleId);
-  console.debug('[VersionTracking] App Name:', appName);
-  console.debug('[VersionTracking] Platform:', Platform.OS);
-  console.debug('[VersionTracking] Platform Version:', Platform.Version);
+  console.log('[VersionTracking] App Version:', appVersion);
+  console.log('[VersionTracking] Build Version:', buildVersion);
+  console.log('[VersionTracking] Bundle ID:', bundleId);
+  console.log('[VersionTracking] App Name:', appName);
+  console.log('[VersionTracking] Platform:', Platform.OS);
+  console.log('[VersionTracking] Platform Version:', Platform.Version);
 
   const versionInfo: VersionInfo = {
     appVersion,
@@ -138,21 +109,23 @@ export async function getVersionInfo(): Promise<VersionInfo> {
 
 /**
  * Log the current app version to Supabase
- * This is called automatically when the app starts or when deployed via EAS
+ * Works identically in ALL environments (Expo Go, TestFlight, App Store)
  * 
- * CRITICAL: Skips logging in development environments to avoid noise
+ * PRODUCTION PARITY: This function runs in all environments.
+ * Graceful error handling ensures it never crashes the app.
  */
 export async function logAppVersionToSupabase(userId?: string): Promise<void> {
-  // Skip version logging in development environments
-  if (isDevelopment()) {
-    console.debug('[VersionTracking] Skipping version logging in development environment');
+  // Check if version tracking is enabled
+  if (!FeatureFlags.enableVersionTracking) {
+    console.log('[VersionTracking] Version tracking disabled by feature flag');
     return;
   }
 
   try {
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
-    console.debug('[VersionTracking] 📊 LOGGING APP VERSION TO SUPABASE');
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] 📊 LOGGING APP VERSION TO SUPABASE');
+    console.log('[VersionTracking] Environment:', ENV.IS_EXPO_GO ? 'Expo Go' : ENV.IS_DEVELOPMENT ? 'Development' : 'Production');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
 
     const versionInfo = await getVersionInfo();
 
@@ -168,10 +141,10 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
       channel: versionInfo.channel,
       runtimeVersion: versionInfo.runtimeVersion,
       deployedAt: new Date().toISOString(),
-      environment: __DEV__ ? 'development' : 'production',
+      environment: ENV.IS_EXPO_GO ? 'expo-go' : ENV.IS_DEVELOPMENT ? 'development' : 'production',
     };
 
-    console.debug('[VersionTracking] Deployment Log:', deploymentLog);
+    console.log('[VersionTracking] Deployment Log:', deploymentLog);
 
     // Log to Supabase app_versions table
     const { data, error } = await supabase
@@ -198,83 +171,74 @@ export async function logAppVersionToSupabase(userId?: string): Promise<void> {
           error.message.includes('Could not find the table') ||
           error.code === 'PGRST204' || 
           error.code === 'PGRST205') {
-        console.debug('[VersionTracking] Table "app_versions" not found - version tracking disabled');
-        console.debug('[VersionTracking] To enable: Run migration supabase/migrations/20260125_create_app_versions_table.sql');
+        console.log('[VersionTracking] Table "app_versions" not found - version tracking disabled');
+        console.log('[VersionTracking] To enable: Run migration supabase/migrations/20260125_create_app_versions_table.sql');
         return;
       }
       
       // Other errors - log but don't crash
-      console.debug('[VersionTracking] Could not log version to Supabase:', error.message);
+      console.log('[VersionTracking] Could not log version to Supabase:', error.message);
       return;
     }
 
-    console.debug('[VersionTracking] ✅ Successfully logged version to Supabase');
-    console.debug('[VersionTracking] Data:', data);
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] ✅ Successfully logged version to Supabase');
+    console.log('[VersionTracking] Data:', data);
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
   } catch (error) {
     // Silently fail - version tracking should never break the app
-    console.debug('[VersionTracking] Unexpected error logging version:', error);
+    console.log('[VersionTracking] Unexpected error logging version:', error);
   }
 }
 
 /**
  * Check for EAS Updates and log new deployments
- * This should be called on app start to detect new OTA updates
+ * Works identically in ALL environments
  * 
- * CRITICAL: This function is guarded to skip in Expo Go and development builds
- * where Updates.checkForUpdateAsync() is not available.
+ * PRODUCTION PARITY: Gracefully handles unavailability in Expo Go
  */
 export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
   try {
-    // Guard: Skip update check in Expo Go or development client
-    if (isExpoGoOrDevClient()) {
-      console.debug('[VersionTracking] Skipping update check (Expo Go or dev client)');
-      // Still log the current version for tracking (if not in dev)
-      if (!isDevelopment()) {
-        await logAppVersionToSupabase(userId);
-      }
+    // Always log the current version first
+    await logAppVersionToSupabase(userId);
+
+    // Check if updates are enabled
+    if (!FeatureFlags.enableUpdatesCheck) {
+      console.log('[VersionTracking] Update check disabled by feature flag');
       return;
     }
 
+    // Check if Updates API is available
     if (!Updates.isEnabled) {
-      console.debug('[VersionTracking] EAS Updates not enabled, skipping update check');
+      console.log('[VersionTracking] EAS Updates not enabled (Expo Go or development)');
       return;
     }
 
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
-    console.debug('[VersionTracking] 🔄 CHECKING FOR EAS UPDATES');
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] 🔄 CHECKING FOR EAS UPDATES');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
 
     const update = await Updates.checkForUpdateAsync();
 
     if (update.isAvailable) {
-      console.debug('[VersionTracking] ✅ New update available!');
-      console.debug('[VersionTracking] Fetching and applying update...');
+      console.log('[VersionTracking] ✅ New update available!');
+      console.log('[VersionTracking] Fetching and applying update...');
 
       await Updates.fetchUpdateAsync();
       
       // Log the new version before reloading
       await logAppVersionToSupabase(userId);
       
-      console.debug('[VersionTracking] Update downloaded, reloading app...');
+      console.log('[VersionTracking] Update downloaded, reloading app...');
       await Updates.reloadAsync();
     } else {
-      console.debug('[VersionTracking] No new updates available');
-      console.debug('[VersionTracking] Current update ID:', Updates.updateId);
-      
-      // Still log the current version
-      await logAppVersionToSupabase(userId);
+      console.log('[VersionTracking] No new updates available');
+      console.log('[VersionTracking] Current update ID:', Updates.updateId);
     }
 
-    console.debug('[VersionTracking] ═══════════════════════════════════════════════════');
+    console.log('[VersionTracking] ═══════════════════════════════════════════════════');
   } catch (error) {
-    // Downgrade to debug - expected in dev environments
-    console.debug('[VersionTracking] Could not check for updates:', error);
-    
-    // Still try to log the current version even if update check fails
-    if (!isDevelopment()) {
-      await logAppVersionToSupabase(userId);
-    }
+    // Gracefully handle errors (expected in Expo Go)
+    console.log('[VersionTracking] Could not check for updates (expected in Expo Go):', error);
   }
 }
 
@@ -291,13 +255,13 @@ export async function getLatestAppVersion(): Promise<DeploymentLog | null> {
       .single();
 
     if (error) {
-      console.debug('[VersionTracking] Error fetching latest version:', error);
+      console.log('[VersionTracking] Error fetching latest version:', error);
       return null;
     }
 
     return data as unknown as DeploymentLog;
   } catch (error) {
-    console.debug('[VersionTracking] Error fetching latest version:', error);
+    console.log('[VersionTracking] Error fetching latest version:', error);
     return null;
   }
 }
@@ -314,13 +278,13 @@ export async function getUserAppVersions(userId: string): Promise<DeploymentLog[
       .order('logged_at', { ascending: false });
 
     if (error) {
-      console.debug('[VersionTracking] Error fetching user versions:', error);
+      console.log('[VersionTracking] Error fetching user versions:', error);
       return [];
     }
 
     return data as unknown as DeploymentLog[];
   } catch (error) {
-    console.debug('[VersionTracking] Error fetching user versions:', error);
+    console.log('[VersionTracking] Error fetching user versions:', error);
     return [];
   }
 }
@@ -334,13 +298,13 @@ export async function getDeploymentStatistics(): Promise<any> {
       .rpc('get_version_statistics');
 
     if (error) {
-      console.debug('[VersionTracking] Error fetching deployment statistics:', error);
+      console.log('[VersionTracking] Error fetching deployment statistics:', error);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.debug('[VersionTracking] Error fetching deployment statistics:', error);
+    console.log('[VersionTracking] Error fetching deployment statistics:', error);
     return null;
   }
 }
@@ -360,13 +324,14 @@ export async function isAppVersionOutdated(): Promise<boolean> {
     // Compare version strings
     return currentVersion.appVersion !== latestVersion.appVersion;
   } catch (error) {
-    console.debug('[VersionTracking] Error checking version:', error);
+    console.log('[VersionTracking] Error checking version:', error);
     return false;
   }
 }
 
 /**
  * Display version information in the console
+ * Works identically in all environments
  */
 export function displayVersionInfo(versionInfo: VersionInfo): void {
   console.log('[VersionTracking] ═══════════════════════════════════════════════════');
@@ -380,7 +345,7 @@ export function displayVersionInfo(versionInfo: VersionInfo): void {
   console.log('[VersionTracking] Platform Version:', versionInfo.platformVersion);
   console.log('[VersionTracking] Device Model:', versionInfo.deviceModel);
   console.log('[VersionTracking] Expo Version:', versionInfo.expoVersion);
-  console.log('[VersionTracking] Environment:', __DEV__ ? 'Development' : 'Production');
+  console.log('[VersionTracking] Environment:', ENV.IS_EXPO_GO ? 'Expo Go' : ENV.IS_DEVELOPMENT ? 'Development' : 'Production');
   
   if (versionInfo.updateId) {
     console.log('[VersionTracking] ─────────────────────────────────────────────────────');
