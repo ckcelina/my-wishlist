@@ -1,11 +1,5 @@
 
-import { useAppTheme } from '@/contexts/ThemeContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useState, useEffect, useMemo } from 'react';
-import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import * as ImagePicker from 'expo-image-picker';
-import * as Linking from 'expo-linking';
-import * as Clipboard from 'expo-clipboard';
 import {
   View,
   Text,
@@ -24,13 +18,19 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
-import { fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
-import Constants from 'expo-constants';
-import { IconSymbol } from '@/components/IconSymbol';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
+import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import * as Linking from 'expo-linking';
+import { IconSymbol } from '@/components/IconSymbol';
+import * as ImagePicker from 'expo-image-picker';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
+import Constants from 'expo-constants';
+import { fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 
 type TabType = 'share' | 'url' | 'camera' | 'upload' | 'search';
 
@@ -50,6 +50,7 @@ interface SearchResult {
   confidence: number;
 }
 
+// Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -72,479 +73,108 @@ function extractUrlFromText(text: string): string | null {
 }
 
 export default function AddItemScreen() {
-  const { wishlistId, sharedUrl } = useLocalSearchParams<{ wishlistId?: string; sharedUrl?: string }>();
-  const router = useRouter();
   const { user } = useAuth();
-  const { theme, isDark } = useAppTheme();
-  const colors = useMemo(() => createColors(theme), [theme]);
-  const typography = useMemo(() => createTypography(theme), [theme]);
   const insets = useSafeAreaInsets();
-  
-  const [activeTab, setActiveTab] = useState<TabType>('share');
-  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [selectedWishlistId, setSelectedWishlistId] = useState<string>(wishlistId || '');
-  const [showWishlistPicker, setShowWishlistPicker] = useState(false);
+  const { theme } = useAppTheme();
+  const colors = createColors(theme);
+  const typography = createTypography(theme);
+  const router = useRouter();
+  const params = useLocalSearchParams();
 
-  // User location for filtering
-  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
-
-  // URL tab state
+  const [activeTab, setActiveTab] = useState<TabType>('url');
   const [urlInput, setUrlInput] = useState('');
   const [extracting, setExtracting] = useState(false);
-
-  // Camera tab state
-  const [cameraImageUri, setCameraImageUri] = useState<string | null>(null);
-  const [identifyingCamera, setIdentifyingCamera] = useState(false);
-
-  // Upload tab state
-  const [uploadImageUri, setUploadImageUri] = useState<string | null>(null);
-  const [identifyingUpload, setIdentifyingUpload] = useState(false);
-
-  // Search tab state
+  const [cameraImage, setCameraImage] = useState<string | null>(null);
+  const [uploadImage, setUploadImage] = useState<string | null>(null);
+  const [identifying, setIdentifying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchBrand, setSearchBrand] = useState('');
   const [searchModel, setSearchModel] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
-  // Calculate bottom padding
-  const TAB_BAR_HEIGHT = 64;
-  const scrollViewBottomPadding = TAB_BAR_HEIGHT + Math.max(insets.bottom, 20) + 16;
+  // Handle shared URL from other apps
+  const sharedUrl = params.url as string | undefined;
 
-  const styles = useMemo(() => StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    container: {
-      flex: 1,
-    },
-    header: {
-      paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md,
-      paddingBottom: spacing.sm,
-      backgroundColor: colors.background,
-    },
-    headerTitle: {
-      fontSize: 28,
-      fontWeight: '700',
-      color: colors.text,
-    },
-    headerSubtitle: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    wishlistSelector: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      backgroundColor: colors.card,
-      padding: spacing.md,
-      marginHorizontal: spacing.lg,
-      marginTop: spacing.sm,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    wishlistSelectorText: {
-      fontSize: 15,
-      color: colors.text,
-      fontWeight: '500',
-    },
-    tabBar: {
-      flexDirection: 'row',
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      backgroundColor: colors.card,
-      paddingTop: spacing.md,
-      marginTop: spacing.md,
-    },
-    tab: {
-      flex: 1,
-      paddingVertical: spacing.md,
-      alignItems: 'center',
-    },
-    tabActive: {
-      borderBottomWidth: 2,
-      borderBottomColor: colors.accent,
-    },
-    tabText: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      fontWeight: '500',
-    },
-    tabTextActive: {
-      color: colors.accent,
-      fontWeight: '700',
-    },
-    scrollContent: {
-      paddingBottom: scrollViewBottomPadding,
-    },
-    content: {
-      padding: spacing.lg,
-    },
-    formCard: {
-      backgroundColor: colors.card,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      borderWidth: isDark ? 1 : 0,
-      borderColor: isDark ? colors.divider : 'transparent',
-      ...(theme.mode === 'light' && {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 2,
-      }),
-    },
-    tipCard: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.card,
-      borderRadius: 12,
-      padding: spacing.md,
-      marginBottom: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.sm,
-    },
-    tipText: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      flex: 1,
-      lineHeight: 18,
-    },
-    instructionCard: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.card,
-      borderRadius: 12,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    instructionTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: spacing.md,
-    },
-    instructionStep: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginBottom: spacing.md,
-      gap: spacing.sm,
-    },
-    stepNumber: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: colors.accent,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    stepNumberText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
-    },
-    stepText: {
-      flex: 1,
-      fontSize: 14,
-      color: colors.text,
-      lineHeight: 20,
-    },
-    label: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: spacing.sm,
-    },
-    input: {
-      borderWidth: 1.5,
-      borderColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.2)' : colors.border,
-      borderRadius: 12,
-      padding: spacing.md,
-      fontSize: 16,
-      color: colors.text,
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.background,
-      marginBottom: spacing.md,
-    },
-    button: {
-      backgroundColor: colors.accent,
-      padding: spacing.md,
-      borderRadius: 12,
-      alignItems: 'center',
-      marginTop: spacing.sm,
-      minHeight: 48,
-      justifyContent: 'center',
-      ...(theme.mode === 'light' && {
-        shadowColor: colors.shadow,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 1,
-        shadowRadius: 4,
-        elevation: 2,
-      }),
-    },
-    buttonDisabled: {
-      opacity: 0.5,
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.15)' : colors.border,
-    },
-    buttonText: {
-      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    imagePickerButton: {
-      borderWidth: 2,
-      borderColor: colors.border,
-      borderStyle: 'dashed',
-      borderRadius: 12,
-      padding: 40,
-      alignItems: 'center',
-      marginBottom: spacing.md,
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.03)' : colors.background,
-    },
-    imagePickerText: {
-      fontSize: 14,
-      color: colors.textSecondary,
-      marginTop: spacing.sm,
-    },
-    selectedImage: {
-      width: '100%',
-      height: 200,
-      borderRadius: 12,
-      marginBottom: spacing.md,
-    },
-    removeImageButton: {
-      position: 'absolute',
-      top: 8,
-      right: 8,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      borderRadius: 20,
-      width: 32,
-      height: 32,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    searchResultCard: {
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.05)' : colors.background,
-      borderRadius: 12,
-      padding: spacing.md,
-      marginBottom: spacing.md,
-      borderWidth: 1,
-      borderColor: colors.border,
-      flexDirection: 'row',
-      gap: spacing.md,
-    },
-    searchResultImage: {
-      width: 80,
-      height: 80,
-      borderRadius: 8,
-      backgroundColor: colors.card,
-    },
-    searchResultInfo: {
-      flex: 1,
-    },
-    searchResultTitle: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: colors.text,
-      marginBottom: spacing.xs,
-    },
-    searchResultPrice: {
-      fontSize: 14,
-      color: colors.accent,
-      fontWeight: '600',
-      marginBottom: spacing.xs,
-    },
-    searchResultStore: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: spacing.xs,
-    },
-    confidenceBadge: {
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : colors.card,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-      alignSelf: 'flex-start',
-    },
-    confidenceText: {
-      fontSize: 11,
-      color: colors.textSecondary,
-      fontWeight: '600',
-    },
-    selectButton: {
-      backgroundColor: colors.accent,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 8,
-      alignSelf: 'flex-start',
-      marginTop: spacing.sm,
-    },
-    selectButtonText: {
-      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
-    },
-    modalContent: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: spacing.lg,
-      maxHeight: '70%',
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: '700',
-      color: colors.text,
-      marginBottom: spacing.md,
-    },
-    wishlistOption: {
-      padding: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    wishlistOptionText: {
-      fontSize: 16,
-      color: colors.text,
-    },
-    wishlistOptionSelected: {
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.1)' : colors.background,
-    },
-  }), [colors, typography, theme, scrollViewBottomPadding, isDark]);
+  useEffect(() => {
+    if (!user) {
+      console.log('[AddItem] No user, redirecting to auth');
+      router.replace('/auth');
+    }
+  }, [user]);
 
   useEffect(() => {
     if (sharedUrl) {
-      console.log('Received shared URL:', sharedUrl);
+      console.log('[AddItem] Received shared URL:', sharedUrl);
       setUrlInput(sharedUrl);
       setActiveTab('url');
     }
   }, [sharedUrl]);
 
   useEffect(() => {
-    const loadWishlists = async () => {
-      if (!user) return;
-      
-      try {
-        const data = await fetchWishlists(user.id);
-        setWishlists(data);
-        
-        if (!selectedWishlistId && data.length > 0) {
-          const defaultWishlist = data.find(w => w.isDefault) || data[0];
-          setSelectedWishlistId(defaultWishlist.id);
-        }
-      } catch (error) {
-        console.error('Failed to load wishlists:', error);
+    // Request camera permissions on mount
+    (async () => {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('[AddItem] Camera permission not granted');
       }
-    };
-
-    loadWishlists();
-  }, [user]);
-
-  useEffect(() => {
-    const loadUserLocation = async () => {
-      if (!user) return;
-      
-      try {
-        const location = await fetchUserLocation(user.id);
-        if (location) {
-          setUserLocation({
-            countryCode: location.countryCode,
-            city: location.city,
-          });
-          console.log('User location loaded:', location.countryCode, location.city);
-        }
-      } catch (error) {
-        console.error('Failed to load user location:', error);
-      }
-    };
-
-    loadUserLocation();
-  }, [user]);
-
-  useEffect(() => {
-    const checkClipboard = async () => {
-      if (Platform.OS !== 'web') {
-        const clipboardText = await Clipboard.getStringAsync();
-        const extractedUrl = extractUrlFromText(clipboardText);
-        if (extractedUrl && isValidUrl(extractedUrl)) {
-          console.log('Found URL in clipboard:', extractedUrl);
-          Alert.alert(
-            'URL Found',
-            'We found a URL in your clipboard. Would you like to use it?',
-            [
-              { text: 'No', style: 'cancel' },
-              {
-                text: 'Yes',
-                onPress: () => {
-                  setUrlInput(extractedUrl);
-                  setActiveTab('url');
-                },
-              },
-            ]
-          );
-        }
-      }
-    };
-
-    checkClipboard();
+    })();
   }, []);
 
+  const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
+
   const handleExtractItem = async () => {
-    if (!urlInput.trim() || !isValidUrl(urlInput)) {
-      Alert.alert('Error', 'Please enter a valid URL');
+    if (!urlInput.trim()) {
+      Alert.alert('Missing URL', 'Please enter a product URL');
       return;
     }
 
-    console.log('Extracting item from URL:', urlInput);
+    if (!isValidUrl(urlInput.trim())) {
+      Alert.alert('Invalid URL', 'Please enter a valid URL starting with http:// or https://');
+      return;
+    }
+
+    console.log('[AddItem] Extracting item from URL:', urlInput);
     setExtracting(true);
 
     try {
-      const result = await extractItem(urlInput);
+      const result = await extractItem(urlInput.trim());
+      console.log('[AddItem] Extraction result:', result);
 
-      if (result.error && !result.title) {
-        Alert.alert('Error', result.error || 'Failed to extract item details');
-        setExtracting(false);
-        return;
-      }
+      // Navigate to import preview with extracted data
+      const productData = {
+        itemName: result.title || '',
+        imageUrl: result.images?.[0] || '',
+        extractedImages: result.images || [],
+        storeName: result.storeName || '',
+        storeDomain: result.storeDomain || '',
+        price: result.price || null,
+        currency: result.currency || 'USD',
+        countryAvailability: result.availableCountries || [],
+        sourceUrl: urlInput.trim(),
+      };
 
-      // Navigate to import preview screen
       router.push({
         pathname: '/import-preview',
         params: {
-          items: JSON.stringify([{
-            title: result.title || 'Unknown Item',
-            imageUrl: result.imageUrl,
-            price: result.price,
-            currency: result.currency || 'USD',
-            productUrl: urlInput,
-          }]),
-          storeName: result.sourceDomain || 'Store',
+          data: JSON.stringify(productData),
         },
       });
-
-      console.log('Item extracted successfully');
     } catch (error: any) {
-      console.error('Failed to extract item:', error);
-      Alert.alert('Error', 'Failed to extract item details. Please try again.');
+      console.error('[AddItem] Error extracting item:', error);
+      Alert.alert('Extraction Failed', error.message || 'Failed to extract product information. Please try again.');
     } finally {
       setExtracting(false);
     }
   };
 
   const handleTakePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    console.log('[AddItem] User tapped Take Photo');
     
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      Alert.alert('Permission Required', 'Camera permission is required to take photos');
       return;
     }
 
@@ -555,52 +185,54 @@ export default function AddItemScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      console.log('User took photo');
-      setCameraImageUri(result.assets[0].uri);
+      setCameraImage(result.assets[0].uri);
+      console.log('[AddItem] Photo taken:', result.assets[0].uri);
     }
   };
 
   const handleIdentifyFromCamera = async () => {
-    if (!cameraImageUri) return;
+    if (!cameraImage) {
+      Alert.alert('No Photo', 'Please take a photo first');
+      return;
+    }
 
-    console.log('Identifying product from camera image');
-    setIdentifyingCamera(true);
+    console.log('[AddItem] Identifying product from camera image');
+    setIdentifying(true);
 
     try {
-      const result = await identifyFromImage(cameraImageUri);
+      const result = await identifyFromImage(cameraImage);
+      console.log('[AddItem] Identification result:', result);
 
-      if (result.error && !result.bestGuessTitle) {
-        Alert.alert('Error', result.error || 'Failed to identify product');
-        setIdentifyingCamera(false);
-        return;
-      }
+      // Navigate to import preview with identified data
+      const productData = {
+        itemName: result.title || '',
+        imageUrl: cameraImage,
+        extractedImages: [cameraImage],
+        storeName: result.storeName || '',
+        storeDomain: result.storeDomain || '',
+        price: result.price || null,
+        currency: result.currency || 'USD',
+        countryAvailability: result.availableCountries || [],
+        sourceUrl: result.productUrl || '',
+      };
 
-      if (result.bestGuessTitle) {
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            items: JSON.stringify([{
-              title: result.bestGuessTitle,
-              imageUrl: cameraImageUri,
-              price: null,
-              currency: 'USD',
-              productUrl: result.suggestedProducts[0]?.likelyUrl || '',
-            }]),
-            storeName: 'Camera',
-          },
-        });
-      } else {
-        Alert.alert('No Product Found', 'Could not identify a product in this image.');
-      }
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          data: JSON.stringify(productData),
+        },
+      });
     } catch (error: any) {
-      console.error('Failed to identify product:', error);
-      Alert.alert('Error', 'Failed to identify product. Please try again.');
+      console.error('[AddItem] Error identifying product:', error);
+      Alert.alert('Identification Failed', error.message || 'Failed to identify product. Please try again.');
     } finally {
-      setIdentifyingCamera(false);
+      setIdentifying(false);
     }
   };
 
   const handleUploadImage = async () => {
+    console.log('[AddItem] User tapped Upload Image');
+    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -608,507 +240,508 @@ export default function AddItemScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      console.log('User uploaded image');
-      setUploadImageUri(result.assets[0].uri);
+      setUploadImage(result.assets[0].uri);
+      console.log('[AddItem] Image uploaded:', result.assets[0].uri);
     }
   };
 
   const handleIdentifyFromUpload = async () => {
-    if (!uploadImageUri) return;
+    if (!uploadImage) {
+      Alert.alert('No Image', 'Please upload an image first');
+      return;
+    }
 
-    console.log('Identifying product from uploaded image');
-    setIdentifyingUpload(true);
+    console.log('[AddItem] Identifying product from uploaded image');
+    setIdentifying(true);
 
     try {
-      const result = await identifyFromImage(uploadImageUri);
+      const result = await identifyFromImage(uploadImage);
+      console.log('[AddItem] Identification result:', result);
 
-      if (result.error && !result.bestGuessTitle) {
-        Alert.alert('Error', result.error || 'Failed to identify product');
-        setIdentifyingUpload(false);
-        return;
-      }
+      // Navigate to import preview with identified data
+      const productData = {
+        itemName: result.title || '',
+        imageUrl: uploadImage,
+        extractedImages: [uploadImage],
+        storeName: result.storeName || '',
+        storeDomain: result.storeDomain || '',
+        price: result.price || null,
+        currency: result.currency || 'USD',
+        countryAvailability: result.availableCountries || [],
+        sourceUrl: result.productUrl || '',
+      };
 
-      if (result.bestGuessTitle) {
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            items: JSON.stringify([{
-              title: result.bestGuessTitle,
-              imageUrl: uploadImageUri,
-              price: null,
-              currency: 'USD',
-              productUrl: result.suggestedProducts[0]?.likelyUrl || '',
-            }]),
-            storeName: 'Gallery',
-          },
-        });
-      } else {
-        Alert.alert('No Product Found', 'Could not identify a product in this image.');
-      }
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          data: JSON.stringify(productData),
+        },
+      });
     } catch (error: any) {
-      console.error('Failed to identify product:', error);
-      Alert.alert('Error', 'Failed to identify product. Please try again.');
+      console.error('[AddItem] Error identifying product:', error);
+      Alert.alert('Identification Failed', error.message || 'Failed to identify product. Please try again.');
     } finally {
-      setIdentifyingUpload(false);
+      setIdentifying(false);
     }
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
-      Alert.alert('Error', 'Please enter a product name');
+      Alert.alert('Missing Query', 'Please enter a product name');
       return;
     }
 
-    console.log('Searching for products:', searchQuery);
+    console.log('[AddItem] Searching for:', searchQuery);
     setSearching(true);
-    setSearchResults([]);
 
     try {
-      const fullQuery = [searchQuery, searchBrand, searchModel].filter(Boolean).join(' ');
-      
-      const result = await searchByName(fullQuery, {
-        countryCode: userLocation?.countryCode,
-        city: userLocation?.city || undefined,
-        limit: 10,
-      });
+      const result = await searchByName(searchQuery.trim(), searchBrand.trim() || undefined, searchModel.trim() || undefined);
+      console.log('[AddItem] Search results:', result);
 
-      if (result.error && result.results.length === 0) {
-        Alert.alert('No Results', result.error || 'Could not find any products matching your search.');
-        setSearching(false);
-        return;
-      }
-
-      setSearchResults(result.results);
-      console.log('Found', result.results.length, 'search results');
+      setSearchResults(result.results || []);
+      setShowSearchResults(true);
     } catch (error: any) {
-      console.error('Search failed:', error);
-      Alert.alert('Error', 'Search failed. Please try again.');
+      console.error('[AddItem] Error searching:', error);
+      Alert.alert('Search Failed', error.message || 'Failed to search for products. Please try again.');
     } finally {
       setSearching(false);
     }
   };
 
   const handleSelectSearchResult = (result: SearchResult) => {
-    console.log('User selected search result:', result.title);
+    console.log('[AddItem] User selected search result:', result.title);
+
+    // Navigate to import preview with search result data
+    const productData = {
+      itemName: result.title,
+      imageUrl: result.imageUrl || '',
+      extractedImages: result.imageUrl ? [result.imageUrl] : [],
+      storeName: '',
+      storeDomain: result.storeDomain,
+      price: result.price,
+      currency: result.currency || 'USD',
+      countryAvailability: [],
+      sourceUrl: result.productUrl,
+    };
+
     router.push({
       pathname: '/import-preview',
       params: {
-        items: JSON.stringify([{
-          title: result.title,
-          imageUrl: result.imageUrl,
-          price: result.price,
-          currency: result.currency || 'USD',
-          productUrl: result.productUrl,
-        }]),
-        storeName: result.storeDomain,
+        data: JSON.stringify(productData),
       },
     });
   };
 
-  const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
-  const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
-
   const renderShareTab = () => {
+    const deepLinkUrl = Linking.createURL('add');
+    
     return (
-      <View style={styles.content}>
-        <View style={styles.instructionCard}>
-          <Text style={styles.instructionTitle}>How to add items from other apps</Text>
-          
-          <View style={styles.instructionStep}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>1</Text>
-            </View>
-            <Text style={styles.stepText}>
-              Open any shopping app or website (Amazon, eBay, etc.)
-            </Text>
-          </View>
-
-          <View style={styles.instructionStep}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>2</Text>
-            </View>
-            <Text style={styles.stepText}>
-              Find the product you want to save
-            </Text>
-          </View>
-
-          <View style={styles.instructionStep}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>3</Text>
-            </View>
-            <Text style={styles.stepText}>
-              Tap the Share button (usually looks like {Platform.OS === 'ios' ? '⬆️' : '⋮'})
-            </Text>
-          </View>
-
-          <View style={styles.instructionStep}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>4</Text>
-            </View>
-            <Text style={styles.stepText}>
-              Select "My Wishlist" from the share menu
-            </Text>
-          </View>
-
-          <View style={styles.instructionStep}>
-            <View style={styles.stepNumber}>
-              <Text style={styles.stepNumberText}>5</Text>
-            </View>
-            <Text style={styles.stepText}>
-              We'll automatically extract the product details and add it to your wishlist!
-            </Text>
-          </View>
+      <View style={styles.tabContent}>
+        <View style={styles.instructionsCard}>
+          <IconSymbol
+            ios_icon_name="square.and.arrow.up"
+            android_material_icon_name="share"
+            size={48}
+            color={colors.accent}
+          />
+          <Text style={styles.instructionsTitle}>Share from any app</Text>
+          <Text style={styles.instructionsText}>
+            1. Open any shopping app or website{'\n'}
+            2. Tap the Share button{'\n'}
+            3. Select "My Wishlist"{'\n'}
+            4. We'll extract the product details automatically
+          </Text>
         </View>
 
-        <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="lightbulb" android_material_icon_name="lightbulb" size={20} color={colors.accent} />
-          <Text style={styles.tipText}>
-            Tip: This works with most shopping websites and apps. If it doesn't work, try copying the product URL and using the "From URL" tab instead.
-          </Text>
+        <View style={styles.deepLinkCard}>
+          <Text style={styles.deepLinkLabel}>Deep Link URL:</Text>
+          <Text style={styles.deepLinkUrl} numberOfLines={1}>{deepLinkUrl}</Text>
+          <TouchableOpacity
+            style={styles.copyButton}
+            onPress={async () => {
+              await Clipboard.setStringAsync(deepLinkUrl);
+              Alert.alert('Copied', 'Deep link URL copied to clipboard');
+            }}
+          >
+            <IconSymbol
+              ios_icon_name="doc.on.doc"
+              android_material_icon_name="content-copy"
+              size={16}
+              color={colors.accent}
+            />
+            <Text style={styles.copyButtonText}>Copy</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
   };
 
-  const renderUrlTab = () => {
-    const urlTrimmed = urlInput.trim();
-    const isValidHttpUrl = urlTrimmed.startsWith('http://') || urlTrimmed.startsWith('https://');
-    const canExtract = isValidHttpUrl && !extracting;
-
-    return (
-      <View style={styles.content}>
-        <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
-          <Text style={styles.tipText}>
-            Paste a product URL from any online store and we'll extract the details automatically.
+  const renderUrlTab = () => (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.tabContent}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.urlTabInner}>
+          <Text style={styles.tabTitle}>Paste Product URL</Text>
+          <Text style={styles.tabSubtitle}>
+            Copy a product link from any website and paste it here
           </Text>
-        </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Product URL</Text>
           <TextInput
-            style={styles.input}
-            placeholder="https://example.com/product"
-            placeholderTextColor={placeholderColor}
+            style={styles.urlInput}
             value={urlInput}
             onChangeText={setUrlInput}
+            placeholder="https://example.com/product"
+            placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
-            editable={!extracting}
+            multiline
           />
 
           <TouchableOpacity
-            style={[styles.button, !canExtract && styles.buttonDisabled]}
+            style={[styles.extractButton, extracting && styles.extractButtonDisabled]}
             onPress={handleExtractItem}
-            disabled={!canExtract}
+            disabled={extracting}
           >
             {extracting ? (
-              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+              <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Text style={styles.buttonText}>Extract & Preview</Text>
+              <>
+                <IconSymbol
+                  ios_icon_name="wand.and.stars"
+                  android_material_icon_name="auto-fix-high"
+                  size={20}
+                  color={colors.textInverse}
+                />
+                <Text style={styles.extractButtonText}>Extract Product</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
-      </View>
-    );
-  };
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
+  );
 
-  const renderCameraTab = () => {
-    return (
-      <View style={styles.content}>
-        <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
-          <Text style={styles.tipText}>
-            Take a photo of any product and we'll identify it using AI.
-          </Text>
+  const renderCameraTab = () => (
+    <View style={styles.tabContent}>
+      <Text style={styles.tabTitle}>Take a Photo</Text>
+      <Text style={styles.tabSubtitle}>
+        Take a photo of the product and we'll identify it
+      </Text>
+
+      {cameraImage ? (
+        <View style={styles.imagePreview}>
+          <Image
+            source={resolveImageSource(cameraImage)}
+            style={styles.previewImage}
+            resizeMode="contain"
+          />
+          <TouchableOpacity
+            style={styles.retakeButton}
+            onPress={() => setCameraImage(null)}
+          >
+            <IconSymbol
+              ios_icon_name="xmark.circle"
+              android_material_icon_name="close"
+              size={24}
+              color={colors.error}
+            />
+          </TouchableOpacity>
         </View>
+      ) : (
+        <TouchableOpacity style={styles.cameraButton} onPress={handleTakePhoto}>
+          <IconSymbol
+            ios_icon_name="camera"
+            android_material_icon_name="camera"
+            size={64}
+            color={colors.accent}
+          />
+          <Text style={styles.cameraButtonText}>Take Photo</Text>
+        </TouchableOpacity>
+      )}
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Take Photo</Text>
-
-          {cameraImageUri ? (
-            <View>
-              <Image
-                source={resolveImageSource(cameraImageUri)}
-                style={styles.selectedImage}
-                resizeMode="cover"
-              />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => setCameraImageUri(null)}
-              >
-                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+      {cameraImage && (
+        <TouchableOpacity
+          style={[styles.identifyButton, identifying && styles.identifyButtonDisabled]}
+          onPress={handleIdentifyFromCamera}
+          disabled={identifying}
+        >
+          {identifying ? (
+            <ActivityIndicator size="small" color={colors.textInverse} />
           ) : (
-            <TouchableOpacity style={styles.imagePickerButton} onPress={handleTakePhoto}>
-              <IconSymbol ios_icon_name="camera" android_material_icon_name="camera" size={32} color={colors.textSecondary} />
-              <Text style={styles.imagePickerText}>Tap to take photo</Text>
-            </TouchableOpacity>
-          )}
-
-          {cameraImageUri && (
-            <TouchableOpacity
-              style={[styles.button, identifyingCamera && styles.buttonDisabled]}
-              onPress={handleIdentifyFromCamera}
-              disabled={identifyingCamera}
-            >
-              {identifyingCamera ? (
-                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-              ) : (
-                <Text style={styles.buttonText}>Identify & Preview</Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const renderUploadTab = () => {
-    return (
-      <View style={styles.content}>
-        <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
-          <Text style={styles.tipText}>
-            Upload a photo from your gallery and we'll identify the product using AI.
-          </Text>
-        </View>
-
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Upload Image</Text>
-
-          {uploadImageUri ? (
-            <View>
-              <Image
-                source={resolveImageSource(uploadImageUri)}
-                style={styles.selectedImage}
-                resizeMode="cover"
+            <>
+              <IconSymbol
+                ios_icon_name="sparkles"
+                android_material_icon_name="auto-fix-high"
+                size={20}
+                color={colors.textInverse}
               />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => setUploadImageUri(null)}
-              >
-                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
+              <Text style={styles.identifyButtonText}>Identify Product</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  const renderUploadTab = () => (
+    <View style={styles.tabContent}>
+      <Text style={styles.tabTitle}>Upload Image</Text>
+      <Text style={styles.tabSubtitle}>
+        Upload a product image from your gallery
+      </Text>
+
+      {uploadImage ? (
+        <View style={styles.imagePreview}>
+          <Image
+            source={resolveImageSource(uploadImage)}
+            style={styles.previewImage}
+            resizeMode="contain"
+          />
+          <TouchableOpacity
+            style={styles.retakeButton}
+            onPress={() => setUploadImage(null)}
+          >
+            <IconSymbol
+              ios_icon_name="xmark.circle"
+              android_material_icon_name="close"
+              size={24}
+              color={colors.error}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity style={styles.uploadButton} onPress={handleUploadImage}>
+          <IconSymbol
+            ios_icon_name="photo"
+            android_material_icon_name="image"
+            size={64}
+            color={colors.accent}
+          />
+          <Text style={styles.uploadButtonText}>Choose from Gallery</Text>
+        </TouchableOpacity>
+      )}
+
+      {uploadImage && (
+        <TouchableOpacity
+          style={[styles.identifyButton, identifying && styles.identifyButtonDisabled]}
+          onPress={handleIdentifyFromUpload}
+          disabled={identifying}
+        >
+          {identifying ? (
+            <ActivityIndicator size="small" color={colors.textInverse} />
           ) : (
-            <TouchableOpacity style={styles.imagePickerButton} onPress={handleUploadImage}>
-              <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={32} color={colors.textSecondary} />
-              <Text style={styles.imagePickerText}>Tap to select image</Text>
-            </TouchableOpacity>
+            <>
+              <IconSymbol
+                ios_icon_name="sparkles"
+                android_material_icon_name="auto-fix-high"
+                size={20}
+                color={colors.textInverse}
+              />
+              <Text style={styles.identifyButtonText}>Identify Product</Text>
+            </>
           )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
 
-          {uploadImageUri && (
-            <TouchableOpacity
-              style={[styles.button, identifyingUpload && styles.buttonDisabled]}
-              onPress={handleIdentifyFromUpload}
-              disabled={identifyingUpload}
-            >
-              {identifyingUpload ? (
-                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-              ) : (
-                <Text style={styles.buttonText}>Identify & Preview</Text>
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  const renderSearchTab = () => {
-    return (
-      <View style={styles.content}>
-        <View style={styles.tipCard}>
-          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
-          <Text style={styles.tipText}>
-            Search for products by name and we'll find purchasable options in your country.
+  const renderSearchTab = () => (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.tabContent}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.searchTabInner}>
+          <Text style={styles.tabTitle}>Search by Name</Text>
+          <Text style={styles.tabSubtitle}>
+            Enter the product name and optional details
           </Text>
-        </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Product Name *</Text>
+          <Text style={styles.inputLabel}>Product Name *</Text>
           <TextInput
-            style={styles.input}
-            placeholder="e.g., iPhone 15 Pro"
-            placeholderTextColor={placeholderColor}
+            style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholder="e.g., iPhone 15 Pro"
+            placeholderTextColor={colors.textTertiary}
           />
 
-          <Text style={styles.label}>Brand (optional)</Text>
+          <Text style={styles.inputLabel}>Brand (optional)</Text>
           <TextInput
-            style={styles.input}
-            placeholder="e.g., Apple"
-            placeholderTextColor={placeholderColor}
+            style={styles.searchInput}
             value={searchBrand}
             onChangeText={setSearchBrand}
+            placeholder="e.g., Apple"
+            placeholderTextColor={colors.textTertiary}
           />
 
-          <Text style={styles.label}>Model / Keywords (optional)</Text>
+          <Text style={styles.inputLabel}>Model (optional)</Text>
           <TextInput
-            style={styles.input}
-            placeholder="e.g., 256GB, blue"
-            placeholderTextColor={placeholderColor}
+            style={styles.searchInput}
             value={searchModel}
             onChangeText={setSearchModel}
+            placeholder="e.g., 256GB"
+            placeholderTextColor={colors.textTertiary}
           />
 
-          {userLocation && (
-            <View style={styles.tipCard}>
-              <IconSymbol ios_icon_name="location" android_material_icon_name="location-on" size={16} color={colors.accent} />
-              <Text style={styles.tipText}>
-                Searching for products available in {userLocation.countryCode}
-                {userLocation.city ? `, ${userLocation.city}` : ''}
-              </Text>
-            </View>
-          )}
-
           <TouchableOpacity
-            style={[styles.button, (!searchQuery.trim() || searching) && styles.buttonDisabled]}
+            style={[styles.searchButton, searching && styles.searchButtonDisabled]}
             onPress={handleSearch}
-            disabled={!searchQuery.trim() || searching}
+            disabled={searching}
           >
             {searching ? (
-              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
+              <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Text style={styles.buttonText}>Search Products</Text>
+              <>
+                <IconSymbol
+                  ios_icon_name="magnifyingglass"
+                  android_material_icon_name="search"
+                  size={20}
+                  color={colors.textInverse}
+                />
+                <Text style={styles.searchButtonText}>Search</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
-
-        {searchResults.map((result, index) => (
-          <TouchableOpacity
-            key={index}
-            style={styles.searchResultCard}
-            onPress={() => handleSelectSearchResult(result)}
-          >
-            {result.imageUrl && (
-              <Image
-                source={resolveImageSource(result.imageUrl)}
-                style={styles.searchResultImage}
-                resizeMode="cover"
-              />
-            )}
-            <View style={styles.searchResultInfo}>
-              <Text style={styles.searchResultTitle}>{result.title}</Text>
-              {result.price !== null && (
-                <Text style={styles.searchResultPrice}>
-                  {result.currency} {result.price.toFixed(2)}
-                </Text>
-              )}
-              <Text style={styles.searchResultStore}>{result.storeDomain}</Text>
-              <View style={styles.confidenceBadge}>
-                <Text style={styles.confidenceText}>
-                  {Math.round(result.confidence * 100)}% match
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
+  );
 
   return (
     <>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Add Item</Text>
-          <Text style={styles.headerSubtitle}>
-            Choose how you'd like to add items to your wishlist
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.wishlistSelector}
-          onPress={() => setShowWishlistPicker(true)}
-        >
-          <Text style={styles.wishlistSelectorText}>
-            {selectedWishlist ? selectedWishlist.name : 'Select Wishlist'}
-          </Text>
-          <IconSymbol ios_icon_name="chevron.down" android_material_icon_name="arrow-drop-down" size={20} color={colors.text} />
-        </TouchableOpacity>
-
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'share' && styles.tabActive]}
-            onPress={() => setActiveTab('share')}
-          >
-            <Text style={[styles.tabText, activeTab === 'share' && styles.tabTextActive]}>Share</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'url' && styles.tabActive]}
-            onPress={() => setActiveTab('url')}
-          >
-            <Text style={[styles.tabText, activeTab === 'url' && styles.tabTextActive]}>URL</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'camera' && styles.tabActive]}
-            onPress={() => setActiveTab('camera')}
-          >
-            <Text style={[styles.tabText, activeTab === 'camera' && styles.tabTextActive]}>Camera</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'upload' && styles.tabActive]}
-            onPress={() => setActiveTab('upload')}
-          >
-            <Text style={[styles.tabText, activeTab === 'upload' && styles.tabTextActive]}>Upload</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'search' && styles.tabActive]}
-            onPress={() => setActiveTab('search')}
-          >
-            <Text style={[styles.tabText, activeTab === 'search' && styles.tabTextActive]}>Search</Text>
-          </TouchableOpacity>
-        </View>
-
-        <KeyboardAvoidingView
-          style={styles.container}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <ScrollView 
-              style={styles.container}
-              contentContainerStyle={styles.scrollContent}
-              keyboardShouldPersistTaps="handled"
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+        {/* Tab Selector */}
+        <View style={styles.tabSelector}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'share' && styles.tabActive]}
+              onPress={() => setActiveTab('share')}
             >
-              {activeTab === 'share' && renderShareTab()}
-              {activeTab === 'url' && renderUrlTab()}
-              {activeTab === 'camera' && renderCameraTab()}
-              {activeTab === 'upload' && renderUploadTab()}
-              {activeTab === 'search' && renderSearchTab()}
-            </ScrollView>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
+              <IconSymbol
+                ios_icon_name="square.and.arrow.up"
+                android_material_icon_name="share"
+                size={20}
+                color={activeTab === 'share' ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'share' && styles.tabTextActive]}>Share</Text>
+            </TouchableOpacity>
 
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'url' && styles.tabActive]}
+              onPress={() => setActiveTab('url')}
+            >
+              <IconSymbol
+                ios_icon_name="link"
+                android_material_icon_name="link"
+                size={20}
+                color={activeTab === 'url' ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'url' && styles.tabTextActive]}>URL</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'camera' && styles.tabActive]}
+              onPress={() => setActiveTab('camera')}
+            >
+              <IconSymbol
+                ios_icon_name="camera"
+                android_material_icon_name="camera"
+                size={20}
+                color={activeTab === 'camera' ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'camera' && styles.tabTextActive]}>Camera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'upload' && styles.tabActive]}
+              onPress={() => setActiveTab('upload')}
+            >
+              <IconSymbol
+                ios_icon_name="photo"
+                android_material_icon_name="image"
+                size={20}
+                color={activeTab === 'upload' ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'upload' && styles.tabTextActive]}>Upload</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tab, activeTab === 'search' && styles.tabActive]}
+              onPress={() => setActiveTab('search')}
+            >
+              <IconSymbol
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search"
+                size={20}
+                color={activeTab === 'search' ? colors.accent : colors.textSecondary}
+              />
+              <Text style={[styles.tabText, activeTab === 'search' && styles.tabTextActive]}>Search</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+
+        {/* Tab Content */}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          {activeTab === 'share' && renderShareTab()}
+          {activeTab === 'url' && renderUrlTab()}
+          {activeTab === 'camera' && renderCameraTab()}
+          {activeTab === 'upload' && renderUploadTab()}
+          {activeTab === 'search' && renderSearchTab()}
+        </ScrollView>
+
+        {/* Search Results Modal */}
         <Modal
-          visible={showWishlistPicker}
+          visible={showSearchResults}
           transparent
           animationType="slide"
-          onRequestClose={() => setShowWishlistPicker(false)}
+          onRequestClose={() => setShowSearchResults(false)}
         >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowWishlistPicker(false)}>
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>Select Wishlist</Text>
-              <ScrollView>
-                {wishlists.map((wishlist) => (
+          <Pressable style={styles.modalOverlay} onPress={() => setShowSearchResults(false)}>
+            <Pressable style={[styles.resultsModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHandle} />
+              <Text style={styles.modalTitle}>Search Results</Text>
+              
+              <ScrollView style={styles.resultsList}>
+                {searchResults.map((result, index) => (
                   <TouchableOpacity
-                    key={wishlist.id}
-                    style={[
-                      styles.wishlistOption,
-                      selectedWishlistId === wishlist.id && styles.wishlistOptionSelected,
-                    ]}
+                    key={index}
+                    style={[styles.resultCard, { backgroundColor: colors.background, borderColor: colors.border }]}
                     onPress={() => {
-                      setSelectedWishlistId(wishlist.id);
-                      setShowWishlistPicker(false);
+                      setShowSearchResults(false);
+                      handleSelectSearchResult(result);
                     }}
                   >
-                    <Text style={styles.wishlistOptionText}>{wishlist.name}</Text>
+                    {result.imageUrl && (
+                      <Image
+                        source={resolveImageSource(result.imageUrl)}
+                        style={styles.resultImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <View style={styles.resultInfo}>
+                      <Text style={[styles.resultTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                        {result.title}
+                      </Text>
+                      <Text style={[styles.resultDomain, { color: colors.textSecondary }]}>
+                        {result.storeDomain}
+                      </Text>
+                      {result.price && (
+                        <Text style={[styles.resultPrice, { color: colors.accent }]}>
+                          {result.currency} {result.price.toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
+                    <IconSymbol
+                      ios_icon_name="chevron.right"
+                      android_material_icon_name="chevron-right"
+                      size={20}
+                      color={colors.textTertiary}
+                    />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1118,4 +751,302 @@ export default function AddItemScreen() {
       </SafeAreaView>
     </>
   );
+}
+
+function createStyles(colors: ReturnType<typeof createColors>, typography: ReturnType<typeof createTypography>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    tabSelector: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    tabScrollContent: {
+      paddingHorizontal: spacing.md,
+      gap: spacing.xs,
+    },
+    tab: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: 20,
+    },
+    tabActive: {
+      backgroundColor: colors.accentLight,
+    },
+    tabText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+    },
+    tabTextActive: {
+      color: colors.accent,
+      fontWeight: '600',
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      padding: spacing.lg,
+    },
+    tabContent: {
+      flex: 1,
+    },
+    instructionsCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.xl,
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    instructionsTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    instructionsText: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+    deepLinkCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: spacing.md,
+    },
+    deepLinkLabel: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+    },
+    deepLinkUrl: {
+      fontSize: 14,
+      color: colors.textPrimary,
+      marginBottom: spacing.sm,
+    },
+    copyButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      alignSelf: 'flex-start',
+    },
+    copyButtonText: {
+      fontSize: 14,
+      color: colors.accent,
+      fontWeight: '500',
+    },
+    urlTabInner: {
+      flex: 1,
+    },
+    tabTitle: {
+      fontSize: 24,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginBottom: spacing.xs,
+    },
+    tabSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginBottom: spacing.lg,
+    },
+    urlInput: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: spacing.md,
+      fontSize: 16,
+      color: colors.textPrimary,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minHeight: 100,
+      textAlignVertical: 'top',
+      marginBottom: spacing.lg,
+    },
+    extractButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: spacing.md,
+    },
+    extractButtonDisabled: {
+      opacity: 0.5,
+    },
+    extractButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textInverse,
+    },
+    imagePreview: {
+      width: '100%',
+      height: 300,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      marginBottom: spacing.lg,
+      position: 'relative',
+    },
+    previewImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 12,
+    },
+    retakeButton: {
+      position: 'absolute',
+      top: spacing.sm,
+      right: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: spacing.xs,
+    },
+    cameraButton: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.xl,
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+    },
+    cameraButtonText: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: colors.accent,
+      marginTop: spacing.sm,
+    },
+    uploadButton: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.xl,
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+      borderWidth: 2,
+      borderColor: colors.border,
+      borderStyle: 'dashed',
+    },
+    uploadButtonText: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: colors.accent,
+      marginTop: spacing.sm,
+    },
+    identifyButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: spacing.md,
+    },
+    identifyButtonDisabled: {
+      opacity: 0.5,
+    },
+    identifyButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textInverse,
+    },
+    searchTabInner: {
+      flex: 1,
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.textSecondary,
+      marginBottom: spacing.xs,
+      marginTop: spacing.md,
+    },
+    searchInput: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: spacing.md,
+      fontSize: 16,
+      color: colors.textPrimary,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    searchButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      backgroundColor: colors.accent,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginTop: spacing.lg,
+    },
+    searchButtonDisabled: {
+      opacity: 0.5,
+    },
+    searchButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.textInverse,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'flex-end',
+    },
+    resultsModal: {
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: spacing.lg,
+      maxHeight: '80%',
+    },
+    modalHandle: {
+      width: 40,
+      height: 4,
+      backgroundColor: '#ccc',
+      borderRadius: 2,
+      alignSelf: 'center',
+      marginBottom: spacing.md,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginBottom: spacing.md,
+    },
+    resultsList: {
+      flex: 1,
+    },
+    resultCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.sm,
+      borderRadius: 12,
+      marginBottom: spacing.sm,
+      borderWidth: 1,
+    },
+    resultImage: {
+      width: 60,
+      height: 60,
+      borderRadius: 8,
+      marginRight: spacing.sm,
+    },
+    resultInfo: {
+      flex: 1,
+    },
+    resultTitle: {
+      fontSize: 14,
+      fontWeight: '500',
+      marginBottom: spacing.xs / 2,
+    },
+    resultDomain: {
+      fontSize: 12,
+      marginBottom: spacing.xs / 2,
+    },
+    resultPrice: {
+      fontSize: 14,
+      fontWeight: '600',
+    },
+  });
 }

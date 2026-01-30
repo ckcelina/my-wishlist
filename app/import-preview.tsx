@@ -13,1161 +13,748 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Switch,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
-import { Logo } from '@/components/Logo';
 import { useAuth } from '@/contexts/AuthContext';
-import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
-import { BACKEND_URL, authenticatedPost, authenticatedGet } from '@/utils/api';
-import { dedupeById } from '@/utils/deduplication';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import * as ImagePicker from 'expo-image-picker';
+import { authenticatedPost, authenticatedGet } from '@/utils/api';
+import { fetchWishlists } from '@/lib/supabase-helpers';
+import { createWishlistItem } from '@/lib/supabase-helpers';
 
-interface ImportedItem {
-  tempId: string;
-  title: string;
-  imageUrl: string | null;
-  price: number | null;
-  currency: string | null;
-  productUrl: string;
-  sourceDomain?: string;
-  duplicateGroupId?: string;
-  status?: 'new' | 'duplicate' | 'unavailable';
-}
-
-interface Wishlist {
-  id: string;
-  name: string;
-}
-
-interface DuplicateGroup {
-  groupId: string;
-  members: string[];
-  confidence: number;
-  canonicalTitle: string;
-  reason: string;
-}
-
-interface AutoGroup {
-  groupId: string;
-  groupName: string;
-  memberTempIds: string[];
-  confidence: number;
-  collapsed: boolean;
-  proposedWishlistName: string;
-}
-
-type OrganizeMode = 'merge' | 'new' | 'split';
-type GroupByOption = 'store' | 'category' | 'person' | 'occasion' | 'price';
-
+// Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
   return source as ImageSourcePropType;
 }
 
+interface ExtractedProductData {
+  itemName: string;
+  imageUrl: string;
+  extractedImages: string[];
+  storeName: string;
+  storeDomain: string;
+  price: number | null;
+  currency: string;
+  countryAvailability: string[];
+  alternativeStores?: AlternativeStore[];
+  sourceUrl?: string;
+  notes?: string;
+}
+
+interface AlternativeStore {
+  storeName: string;
+  storeDomain: string;
+  price: number;
+  currency: string;
+  shippingCountries: string[];
+  url: string;
+}
+
+interface Wishlist {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+}
+
+interface UserLocation {
+  countryCode: string;
+  city: string | null;
+}
+
 export default function ImportPreviewScreen() {
   const router = useRouter();
   const { user } = useAuth();
-  const { storeName, items: itemsParam } = useLocalSearchParams();
+  const { theme } = useAppTheme();
+  const colors = createColors(theme);
+  const typography = createTypography(theme);
   
-  const [items, setItems] = useState<ImportedItem[]>([]);
-  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [organizeMode, setOrganizeMode] = useState<OrganizeMode>('new');
-  const [newWishlistName, setNewWishlistName] = useState('');
+  const params = useLocalSearchParams();
+  
+  // Parse extracted data from params
+  const [productData, setProductData] = useState<ExtractedProductData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  
+  // Editable fields
+  const [itemName, setItemName] = useState('');
+  const [selectedImage, setSelectedImage] = useState('');
+  const [storeName, setStoreName] = useState('');
+  const [storeDomain, setStoreDomain] = useState('');
+  const [price, setPrice] = useState('');
+  const [currency, setCurrency] = useState('USD');
+  const [notes, setNotes] = useState('');
   const [selectedWishlistId, setSelectedWishlistId] = useState('');
-  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [loading, setLoading] = useState(false);
+  
+  // UI state
+  const [showImagePicker, setShowImagePicker] = useState(false);
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
-  const [duplicateGroups, setDuplicateGroups] = useState<DuplicateGroup[]>([]);
-  const [findingDuplicates, setFindingDuplicates] = useState(false);
-  const [showItemDetails, setShowItemDetails] = useState(false);
-  const [selectedItemForEdit, setSelectedItemForEdit] = useState<ImportedItem | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [showAutoGroupOptions, setShowAutoGroupOptions] = useState(false);
-  const [autoGrouping, setAutoGrouping] = useState(false);
-  const [autoGroups, setAutoGroups] = useState<AutoGroup[]>([]);
-  const [groupedMode, setGroupedMode] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
-  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [isProductCorrect, setIsProductCorrect] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(false);
+  
+  // Data
+  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
+  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
+  const [alternativeStores, setAlternativeStores] = useState<AlternativeStore[]>([]);
+  const [loadingAlternatives, setLoadingAlternatives] = useState(false);
+  
+  // Warnings
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   useEffect(() => {
-    if (itemsParam && typeof itemsParam === 'string') {
-      try {
-        const parsedItems = JSON.parse(itemsParam);
-        // Add tempId and sourceDomain to each item
-        const itemsWithIds = parsedItems.map((item: any, index: number) => {
-          const tempId = `temp-${Date.now()}-${index}`;
-          let sourceDomain = '';
-          try {
-            sourceDomain = new URL(item.productUrl).hostname.replace('www.', '');
-          } catch (e) {
-            console.error('[ImportPreview] Invalid URL:', item.productUrl);
-          }
-          return {
-            ...item,
-            tempId,
-            sourceDomain,
-            status: 'new' as const,
-          };
-        });
-        
-        // Apply deduplication to prevent duplicate items
-        const deduplicatedItems = dedupeById(itemsWithIds, 'tempId');
-        setItems(deduplicatedItems);
-        const allIds = new Set(deduplicatedItems.map((item: ImportedItem) => item.tempId));
-        setSelectedItems(allIds);
-      } catch (error) {
-        console.error('[ImportPreview] Error parsing items:', error);
-        Alert.alert('Error', 'Failed to load items');
-        router.back();
-      }
-    }
-
-    if (storeName && typeof storeName === 'string') {
-      const defaultName = `${storeName} Wishlist`;
-      setNewWishlistName(defaultName);
-    }
-  }, [itemsParam, storeName]);
+    console.log('[ImportPreview] Initializing with params:', params);
+    initializeScreen();
+  }, [params]);
 
   useEffect(() => {
-    fetchWishlists();
-    fetchUserLocation();
+    if (user) {
+      fetchUserWishlists();
+      fetchUserLocationData();
+    }
   }, [user]);
 
-  const fetchUserLocation = async () => {
-    if (!user) return;
-
+  const initializeScreen = async () => {
     try {
-      console.log('[ImportPreview] Fetching user location');
-      const response = await authenticatedGet<{
-        id: string;
-        userId: string;
-        countryCode: string;
-        countryName: string;
-        city: string | null;
-        region: string | null;
-        postalCode: string | null;
-        area: string | null;
-        addressLine: string | null;
-        updatedAt: string;
-      }>('/api/users/location');
-
-      if (response) {
-        const location = {
-          countryCode: response.countryCode,
-          city: response.city,
-        };
-        setUserLocation(location);
-        console.log('[ImportPreview] User location:', location);
-        checkItemsAvailability(location);
-      }
-    } catch (error) {
-      console.error('[ImportPreview] Error fetching user location:', error);
-      // Location is optional, continue without it
-    }
-  };
-
-  const checkItemsAvailability = async (location: { countryCode: string; city: string | null }) => {
-    if (items.length === 0) return;
-
-    console.log('[ImportPreview] Checking item availability for location:', location);
-    setCheckingAvailability(true);
-
-    try {
-      // Get unique source domains
-      const domains = [...new Set(items.map(item => item.sourceDomain).filter(Boolean))];
-
-      // Check availability for each domain
-      const availabilityChecks = await Promise.all(
-        domains.map(async (domain) => {
-          try {
-            const response = await authenticatedPost<{ available: boolean }>('/api/stores/check-availability', {
-              domain,
-              countryCode: location.countryCode,
-              city: location.city,
-            });
-            return { domain, available: response.available };
-          } catch (error) {
-            console.error('[ImportPreview] Error checking availability for:', domain, error);
-            return { domain, available: true }; // Default to available on error
-          }
-        })
-      );
-
-      // Update items with availability status
-      const availabilityMap = new Map(availabilityChecks.map(check => [check.domain, check.available]));
-      
-      const updatedItems = items.map(item => {
-        if (!item.sourceDomain) return item;
+      // Parse product data from params
+      const dataParam = params.data;
+      if (dataParam && typeof dataParam === 'string') {
+        const parsed = JSON.parse(dataParam);
+        console.log('[ImportPreview] Parsed product data:', parsed);
         
-        const available = availabilityMap.get(item.sourceDomain);
-        if (available === false) {
-          return {
-            ...item,
-            status: 'unavailable' as const,
-          };
+        setProductData(parsed);
+        setItemName(parsed.itemName || '');
+        setSelectedImage(parsed.imageUrl || '');
+        setStoreName(parsed.storeName || '');
+        setStoreDomain(parsed.storeDomain || '');
+        setPrice(parsed.price?.toString() || '');
+        setCurrency(parsed.currency || 'USD');
+        setNotes(parsed.notes || '');
+        
+        // Check for warnings
+        const newWarnings: string[] = [];
+        if (!parsed.itemName) newWarnings.push('Item name is missing');
+        if (!parsed.imageUrl) newWarnings.push('No image available');
+        if (!parsed.price) newWarnings.push('Price not detected');
+        if (!parsed.storeName) newWarnings.push('Store name not detected');
+        
+        setWarnings(newWarnings);
+        
+        // Load alternatives if available
+        if (parsed.alternativeStores && parsed.alternativeStores.length > 0) {
+          setAlternativeStores(parsed.alternativeStores);
         }
-        return item;
-      });
-
-      // Apply deduplication after updating availability
-      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
-      setItems(deduplicatedItems);
-      console.log('[ImportPreview] Availability check completed');
+      }
     } catch (error) {
-      console.error('[ImportPreview] Error checking items availability:', error);
+      console.error('[ImportPreview] Error parsing product data:', error);
+      Alert.alert('Error', 'Failed to load product data');
+      router.back();
     } finally {
-      setCheckingAvailability(false);
+      setLoading(false);
     }
   };
 
-  const fetchWishlists = async () => {
-    if (!user) {
-      console.log('[ImportPreview] No user, skipping wishlist fetch');
-      return;
-    }
-
+  const fetchUserWishlists = async () => {
+    if (!user) return;
+    
     try {
-      console.log('[ImportPreview] Fetching wishlists from:', `${BACKEND_URL}/api/wishlists`);
-      const response = await fetch(`${BACKEND_URL}/api/wishlists`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch wishlists');
-      }
-
-      const data = await response.json();
+      console.log('[ImportPreview] Fetching wishlists');
+      const data = await fetchWishlists(user.id);
       setWishlists(data);
       
-      if (data.length > 0 && !selectedWishlistId) {
-        setSelectedWishlistId(data[0].id);
+      // Set default wishlist
+      const defaultWishlist = data.find(w => w.isDefault) || data[0];
+      if (defaultWishlist) {
+        setSelectedWishlistId(defaultWishlist.id);
       }
     } catch (error) {
       console.error('[ImportPreview] Error fetching wishlists:', error);
     }
   };
 
-  const toggleItemSelection = (tempId: string) => {
-    console.log('[ImportPreview] User toggled item selection:', tempId);
-    const newSelected = new Set(selectedItems);
-    if (newSelected.has(tempId)) {
-      newSelected.delete(tempId);
+  const fetchUserLocationData = async () => {
+    if (!user) return;
+    
+    try {
+      console.log('[ImportPreview] Fetching user location');
+      const response = await authenticatedGet<{
+        countryCode: string;
+        city: string | null;
+      }>('/api/users/location');
+      
+      setUserLocation(response);
+      console.log('[ImportPreview] User location:', response);
+    } catch (error) {
+      console.error('[ImportPreview] Error fetching location:', error);
+      // Location is optional, continue without it
+    }
+  };
+
+  const handleChangeImage = async () => {
+    console.log('[ImportPreview] User tapped Change Image');
+    
+    if (productData && productData.extractedImages.length > 1) {
+      // Show picker with extracted images
+      setShowImagePicker(true);
     } else {
-      newSelected.add(tempId);
-    }
-    setSelectedItems(newSelected);
-  };
-
-  const handleFindDuplicates = async () => {
-    console.log('[ImportPreview] Finding duplicates with AI');
-    setFindingDuplicates(true);
-
-    try {
-      const itemsForDetection = items.map(item => ({
-        tempId: item.tempId,
-        title: item.title,
-        imageUrl: item.imageUrl || undefined,
-        productUrl: item.productUrl,
-        sourceDomain: item.sourceDomain || undefined,
-      }));
-
-      console.log('[ImportPreview] Sending items to duplicate detection:', itemsForDetection.length);
-      const response = await authenticatedPost<{ groups: DuplicateGroup[] }>(
-        '/api/detect-duplicates',
-        { items: itemsForDetection }
-      );
-
-      console.log('[ImportPreview] Found duplicate groups:', response.groups.length);
-      setDuplicateGroups(response.groups);
-
-      // Update items with duplicate status
-      const updatedItems = items.map(item => {
-        const group = response.groups.find(g => g.members.includes(item.tempId));
-        if (group) {
-          return {
-            ...item,
-            duplicateGroupId: group.groupId,
-            status: 'duplicate' as const,
-          };
-        }
-        return item;
+      // Allow upload from gallery
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
       });
       
-      // Apply deduplication after marking duplicates
-      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
-      setItems(deduplicatedItems);
-
-      if (response.groups.length > 0) {
-        Alert.alert(
-          'Duplicates Found',
-          `Found ${response.groups.length} group(s) of potential duplicates. Tap on items marked as duplicates to review.`
-        );
-      } else {
-        Alert.alert('No Duplicates', 'No duplicate items were found.');
+      if (!result.canceled && result.assets[0]) {
+        setSelectedImage(result.assets[0].uri);
+        console.log('[ImportPreview] Image changed to:', result.assets[0].uri);
       }
-    } catch (error) {
-      console.error('[ImportPreview] Error finding duplicates:', error);
-      Alert.alert('Error', 'Failed to detect duplicates. Please try again.');
-    } finally {
-      setFindingDuplicates(false);
     }
   };
 
-  const handleAutoGroup = async (groupBy: GroupByOption) => {
-    console.log('[ImportPreview] Auto-grouping by:', groupBy);
-    setAutoGrouping(true);
-
-    try {
-      const itemsForGrouping = items.map(item => ({
-        tempId: item.tempId,
-        title: item.title,
-        imageUrl: item.imageUrl || undefined,
-        productUrl: item.productUrl,
-        sourceDomain: item.sourceDomain || undefined,
-        price: item.price || undefined,
-        currency: item.currency || 'USD',
-      }));
-
-      console.log('[ImportPreview] Sending items for auto-grouping');
-      const response = await authenticatedPost<{
-        groups: { groupName: string; memberTempIds: string[]; confidence: number }[];
-        autoMode?: string;
-      }>('/api/auto-group-import-items', {
-        items: itemsForGrouping,
-        mode: groupBy,
-      });
-
-      console.log('[ImportPreview] Auto-grouped into:', response.groups.length, 'groups');
-      if (response.autoMode) {
-        console.log('[ImportPreview] Auto-selected mode:', response.autoMode);
-      }
-      
-      // Convert to AutoGroup format
-      const groups: AutoGroup[] = response.groups.map((group, index) => ({
-        groupId: `group_${Date.now()}_${index}`,
-        groupName: group.groupName,
-        memberTempIds: group.memberTempIds,
-        confidence: group.confidence,
-        collapsed: false,
-        proposedWishlistName: group.groupName,
-      }));
-
-      setAutoGroups(groups);
-      setGroupedMode(true);
-      
-      // Automatically switch to split mode when grouping is applied
-      setOrganizeMode('split');
-      
-      // Show results to user
-      const groupSummary = groups
-        .map(g => `${g.groupName}: ${g.memberTempIds.length} items`)
-        .join('\n');
-      
-      Alert.alert(
-        'Auto-Grouping Complete',
-        `Items grouped into ${groups.length} categories:\n\n${groupSummary}\n\nYou can now create separate wishlists for each group.`,
-        [{ text: 'OK' }]
-      );
-    } catch (error) {
-      console.error('[ImportPreview] Error auto-grouping:', error);
-      Alert.alert('Error', 'Failed to auto-group items. Please try again.');
-    } finally {
-      setAutoGrouping(false);
-      setShowAutoGroupOptions(false);
-    }
+  const handleSelectImage = (imageUrl: string) => {
+    console.log('[ImportPreview] Image selected:', imageUrl);
+    setSelectedImage(imageUrl);
+    setShowImagePicker(false);
   };
 
-  const toggleGroupCollapse = (groupId: string) => {
-    console.log('[ImportPreview] Toggling group collapse:', groupId);
-    setAutoGroups(prevGroups =>
-      prevGroups.map(group =>
-        group.groupId === groupId ? { ...group, collapsed: !group.collapsed } : group
-      )
-    );
-  };
-
-  const updateGroupName = (groupId: string, newName: string) => {
-    console.log('[ImportPreview] Updating group name:', groupId, newName);
-    setAutoGroups(prevGroups =>
-      prevGroups.map(group =>
-        group.groupId === groupId ? { ...group, proposedWishlistName: newName } : group
-      )
-    );
-  };
-
-  const moveItemToGroup = (tempId: string, targetGroupId: string) => {
-    console.log('[ImportPreview] Moving item to group:', tempId, targetGroupId);
-    
-    setAutoGroups(prevGroups => {
-      // Remove item from all groups
-      const groupsWithoutItem = prevGroups.map(group => ({
-        ...group,
-        memberTempIds: group.memberTempIds.filter(id => id !== tempId),
-      }));
-
-      // Add item to target group
-      return groupsWithoutItem.map(group =>
-        group.groupId === targetGroupId
-          ? { ...group, memberTempIds: [...group.memberTempIds, tempId] }
-          : group
-      );
+  const handleUploadImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.8,
     });
-  };
-
-  const handleEditItem = (item: ImportedItem) => {
-    console.log('[ImportPreview] Opening item details for:', item.title);
-    setSelectedItemForEdit(item);
-    setShowItemDetails(true);
-  };
-
-  const handleSaveItemEdit = async (updatedItem: ImportedItem) => {
-    console.log('[ImportPreview] Saving item edits:', updatedItem.tempId);
     
-    try {
-      await authenticatedPost('/api/import-items/update', {
-        tempId: updatedItem.tempId,
-        title: updatedItem.title,
-        imageUrl: updatedItem.imageUrl,
-        productUrl: updatedItem.productUrl,
-        price: updatedItem.price,
-        currency: updatedItem.currency,
-      });
-
-      // Update local state
-      const updatedItems = items.map(item =>
-        item.tempId === updatedItem.tempId ? updatedItem : item
-      );
-      
-      // Apply deduplication after update
-      const deduplicatedItems = dedupeById(updatedItems, 'tempId');
-      setItems(deduplicatedItems);
-      setShowItemDetails(false);
-      setSelectedItemForEdit(null);
-    } catch (error) {
-      console.error('[ImportPreview] Error updating item:', error);
-      Alert.alert('Error', 'Failed to update item. Please try again.');
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+      setShowImagePicker(false);
+      console.log('[ImportPreview] Custom image uploaded:', result.assets[0].uri);
     }
   };
 
-  const handleExcludeItem = (tempId: string) => {
-    console.log('[ImportPreview] Excluding item from import:', tempId);
-    const newSelected = new Set(selectedItems);
-    newSelected.delete(tempId);
-    setSelectedItems(newSelected);
-    setShowItemDetails(false);
-    setSelectedItemForEdit(null);
-  };
-
-  const handleImport = async () => {
-    if (selectedItems.size === 0) {
-      Alert.alert('No Items Selected', 'Please select at least one item to import');
-      return;
-    }
-
-    if (organizeMode === 'merge' && !selectedWishlistId) {
-      Alert.alert('No Wishlist Selected', 'Please select a wishlist to merge into');
-      return;
-    }
-
-    if (organizeMode === 'new' && !newWishlistName.trim()) {
-      Alert.alert('Invalid Name', 'Please enter a name for the new wishlist');
-      return;
-    }
-
-    if (organizeMode === 'split' && autoGroups.length === 0) {
-      Alert.alert('No Groups', 'Please use Auto-group to organize items before splitting');
-      return;
-    }
-
-    console.log('[ImportPreview] User tapped Import Items');
-    setLoading(true);
-
-    try {
-      // Get selected items
-      const selectedItemsArray = items.filter(item => selectedItems.has(item.tempId));
-      console.log('[ImportPreview] Importing items:', selectedItemsArray.length);
-
-      // Prepare items for import
-      const itemsForImport = selectedItemsArray.map(item => ({
-        tempId: item.tempId,
-        title: item.title,
-        imageUrl: item.imageUrl || undefined,
-        productUrl: item.productUrl,
-        price: item.price || undefined,
-        currency: item.currency || 'USD',
-        sourceDomain: item.sourceDomain || undefined,
-      }));
-
-      // Prepare import request based on mode
-      const importRequest: any = {
-        mode: organizeMode,
-        items: itemsForImport,
-      };
-
-      // Add user location if available
-      if (userLocation) {
-        importRequest.countryCode = userLocation.countryCode;
-        importRequest.city = userLocation.city;
-      }
-
-      if (organizeMode === 'merge') {
-        importRequest.wishlistId = selectedWishlistId;
-      } else if (organizeMode === 'new') {
-        importRequest.wishlistName = newWishlistName.trim();
-      } else if (organizeMode === 'split') {
-        // Prepare groups for split mode
-        importRequest.groups = autoGroups.map(group => ({
-          groupName: group.proposedWishlistName.trim(),
-          memberTempIds: group.memberTempIds.filter(id => selectedItems.has(id)),
-        }));
-      }
-
-      console.log('[ImportPreview] Executing import with mode:', organizeMode);
-      const result = await authenticatedPost<{
-        success: boolean;
-        createdCount: number;
-        destinationWishlists: { id: string; name: string }[];
-        itemAvailability?: {
-          tempId: string;
-          sourceDomain: string;
-          available: boolean;
-          reason?: string;
-        }[];
-        warnings: string[];
-      }>('/api/import-execute', importRequest);
-
-      console.log('[ImportPreview] Import completed:', result.createdCount, 'items created');
-
-      // Log availability information if present
-      if (result.itemAvailability && result.itemAvailability.length > 0) {
-        const unavailableItems = result.itemAvailability.filter(item => !item.available);
-        if (unavailableItems.length > 0) {
-          console.log('[ImportPreview] Items with availability issues:', unavailableItems.length);
-        }
-      }
-
-      if (organizeMode === 'split') {
-        // Navigate to import summary screen for split mode
-        // Calculate item counts per wishlist from groups
-        const wishlistItemCounts = new Map<string, number>();
-        autoGroups.forEach(group => {
-          const selectedInGroup = group.memberTempIds.filter(id => selectedItems.has(id)).length;
-          const wishlist = result.destinationWishlists.find(w => 
-            w.name === group.proposedWishlistName.trim()
-          );
-          if (wishlist) {
-            wishlistItemCounts.set(wishlist.id, selectedInGroup);
-          }
-        });
-
-        const createdWishlists = result.destinationWishlists.map(w => ({
-          id: w.id,
-          name: w.name,
-          itemCount: wishlistItemCounts.get(w.id) || 0,
-        }));
-
-        router.replace({
-          pathname: '/import-summary',
-          params: {
-            wishlists: JSON.stringify(createdWishlists),
-            failedItems: JSON.stringify(result.warnings || []),
+  const handleRetryExtraction = () => {
+    console.log('[ImportPreview] User tapped Retry Extraction');
+    Alert.alert(
+      'Retry Extraction',
+      'Would you like to try extracting the product information again?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Retry',
+          onPress: () => {
+            // Navigate back to add screen to retry
+            router.back();
           },
-        });
-      } else {
-        // For merge/create mode, show success and navigate to wishlist
-        const targetWishlistId = result.destinationWishlists[0]?.id;
-        
-        if (result.warnings && result.warnings.length > 0) {
-          console.warn('[ImportPreview] Import warnings:', result.warnings);
-        }
-
-        Alert.alert(
-          'Success',
-          `Successfully imported ${result.createdCount} item${result.createdCount !== 1 ? 's' : ''}`,
-          [
-            {
-              text: 'View Wishlist',
-              onPress: () => {
-                if (targetWishlistId) {
-                  router.replace(`/wishlist/${targetWishlistId}`);
-                } else {
-                  router.replace('/(tabs)/wishlists');
-                }
-              },
-            },
-          ]
-        );
-      }
-    } catch (error: any) {
-      console.error('[ImportPreview] Error importing items:', error);
-      Alert.alert('Import Failed', error.message || 'Failed to import items. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatPrice = (price: number | null, currency: string | null) => {
-    if (price === null) {
-      return 'Price not available';
-    }
-    const currencySymbol = currency === 'USD' ? '$' : currency || '';
-    const priceText = `${currencySymbol}${price.toFixed(2)}`;
-    return priceText;
+        },
+      ]
+    );
   };
 
   const handleReportProblem = () => {
-    console.log('[ImportPreview] User tapped Report a Problem button');
+    console.log('[ImportPreview] User tapped Report a Problem');
     router.push({
       pathname: '/report-problem',
       params: {
         context: 'import_preview',
+        itemName: itemName,
+        sourceUrl: productData?.sourceUrl || '',
       },
     });
   };
 
+  const handleConfirmAndAdd = async () => {
+    console.log('[ImportPreview] User tapped Confirm & Add');
+    
+    // Validation
+    if (!itemName.trim()) {
+      Alert.alert('Missing Information', 'Please enter an item name');
+      return;
+    }
+    
+    if (!isProductCorrect) {
+      Alert.alert(
+        'Confirm Product',
+        'Please confirm that this is the correct product before adding it to your wishlist',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    if (!selectedWishlistId) {
+      Alert.alert('No Wishlist Selected', 'Please select a wishlist');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
+      console.log('[ImportPreview] Saving item to wishlist:', selectedWishlistId);
+      
+      // Create the wishlist item
+      const newItem = await createWishlistItem({
+        wishlist_id: selectedWishlistId,
+        title: itemName.trim(),
+        image_url: selectedImage || null,
+        current_price: price ? parseFloat(price) : null,
+        currency: currency,
+        original_url: productData?.sourceUrl || null,
+        source_domain: storeDomain || null,
+        notes: notes.trim() || null,
+      });
+      
+      console.log('[ImportPreview] Item saved successfully:', newItem.id);
+      
+      Alert.alert(
+        'Success',
+        'Item added to your wishlist!',
+        [
+          {
+            text: 'View Wishlist',
+            onPress: () => {
+              router.replace(`/wishlist/${selectedWishlistId}`);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('[ImportPreview] Error saving item:', error);
+      Alert.alert('Error', 'Failed to add item. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLoadAlternatives = async () => {
+    if (!itemName || !userLocation) return;
+    
+    console.log('[ImportPreview] Loading alternative stores');
+    setLoadingAlternatives(true);
+    
+    try {
+      // Call find-alternatives edge function
+      const response = await authenticatedPost<{
+        alternatives: AlternativeStore[];
+      }>('/api/find-alternatives', {
+        productName: itemName,
+        countryCode: userLocation.countryCode,
+        city: userLocation.city,
+      });
+      
+      // Filter to stores that ship to user's location
+      const filtered = response.alternatives.filter(store =>
+        store.shippingCountries.includes(userLocation.countryCode)
+      );
+      
+      setAlternativeStores(filtered);
+      setShowAlternatives(true);
+      console.log('[ImportPreview] Loaded alternatives:', filtered.length);
+    } catch (error) {
+      console.error('[ImportPreview] Error loading alternatives:', error);
+      Alert.alert('Error', 'Failed to load alternative stores');
+    } finally {
+      setLoadingAlternatives(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
   const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
   const selectedWishlistName = selectedWishlist?.name || 'Select wishlist';
-  const storeNameText = storeName || 'Store';
-  const selectedCountText = `${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'} selected`;
-  const sourceDomain = items.length > 0 && items[0].sourceDomain ? items[0].sourceDomain : '';
   
-  const importButtonText = organizeMode === 'split' 
-    ? `Import & Organize (${autoGroups.length} wishlists)`
-    : `Import ${selectedItems.size} ${selectedItems.size === 1 ? 'item' : 'items'}`;
+  const availableInUserCountry = userLocation && productData?.countryAvailability?.includes(userLocation.countryCode);
+  const priceDisplay = price ? `${currency} ${parseFloat(price).toFixed(2)}` : 'Price not available';
+
+  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
 
   return (
     <>
       <Stack.Screen
         options={{
-          title: 'Import Preview',
+          title: 'Confirm Product',
           headerBackTitle: 'Back',
-          headerRight: () => (
-            <TouchableOpacity onPress={handleReportProblem} style={{ marginRight: 8 }}>
-              <IconSymbol
-                ios_icon_name="questionmark.circle"
-                android_material_icon_name="help"
-                size={24}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          ),
         }}
       />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {/* Source Card */}
-          <View style={styles.sourceCard}>
-            <View style={styles.sourceHeader}>
-              <View style={styles.sourceIcon}>
-                <Logo size="small" style={styles.sourceLogoImage} />
-              </View>
-              <View style={styles.sourceInfo}>
-                <Text style={styles.sourceName}>{storeNameText}</Text>
-                <Text style={styles.sourceSubtitle}>
-                  {sourceDomain} • {items.length} items found
-                </Text>
-              </View>
-            </View>
-            <TouchableOpacity
-              style={styles.openLinkButton}
-              onPress={() => {
-                // Open original wishlist URL if available
-                Alert.alert('Open Link', 'This would open the original wishlist URL');
-              }}
-            >
-              <Text style={styles.openLinkText}>Open link</Text>
-              <IconSymbol
-                ios_icon_name="arrow.up.right"
-                android_material_icon_name="open-in-new"
-                size={16}
-                color={colors.accent}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Organization Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Where should these items go?</Text>
-            
-            <TouchableOpacity
-              style={[styles.radioOption, organizeMode === 'merge' && styles.radioOptionSelected]}
-              onPress={() => setOrganizeMode('merge')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.radioButton}>
-                {organizeMode === 'merge' && <View style={styles.radioButtonInner} />}
-              </View>
-              <View style={styles.radioContent}>
-                <Text style={styles.radioLabel}>Merge into existing wishlist</Text>
-                {organizeMode === 'merge' && (
-                  <TouchableOpacity
-                    style={styles.dropdownButton}
-                    onPress={() => setShowWishlistPicker(true)}
-                  >
-                    <Text style={styles.dropdownText}>{selectedWishlistName}</Text>
-                    <IconSymbol
-                      ios_icon_name="arrow-drop-down"
-                      android_material_icon_name="arrow-drop-down"
-                      size={20}
-                      color={colors.textSecondary}
-                    />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.radioOption, organizeMode === 'new' && styles.radioOptionSelected]}
-              onPress={() => setOrganizeMode('new')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.radioButton}>
-                {organizeMode === 'new' && <View style={styles.radioButtonInner} />}
-              </View>
-              <View style={styles.radioContent}>
-                <Text style={styles.radioLabel}>Create a new wishlist</Text>
-                {organizeMode === 'new' && (
-                  <TextInput
-                    style={styles.nameInput}
-                    placeholder="Wishlist name"
-                    placeholderTextColor={colors.textTertiary}
-                    value={newWishlistName}
-                    onChangeText={setNewWishlistName}
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardView}
+        >
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Warnings Section */}
+            {warnings.length > 0 && (
+              <View style={[styles.warningCard, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
+                <View style={styles.warningHeader}>
+                  <IconSymbol
+                    ios_icon_name="exclamationmark.triangle"
+                    android_material_icon_name="warning"
+                    size={20}
+                    color={colors.error}
                   />
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.radioOption, organizeMode === 'split' && styles.radioOptionSelected]}
-              onPress={() => {
-                if (autoGroups.length === 0) {
-                  Alert.alert(
-                    'Auto-group Required',
-                    'Please use the Auto-group feature to organize items before splitting into multiple wishlists.'
-                  );
-                } else {
-                  setOrganizeMode('split');
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.radioButton}>
-                {organizeMode === 'split' && <View style={styles.radioButtonInner} />}
-              </View>
-              <View style={styles.radioContent}>
-                <Text style={styles.radioLabel}>Split into multiple wishlists</Text>
-                <Text style={styles.radioSubtext}>
-                  Use Auto-group to organize items first
+                  <Text style={[styles.warningTitle, { color: colors.error }]}>Incomplete Information</Text>
+                </View>
+                {warnings.map((warning, index) => (
+                  <Text key={index} style={[styles.warningText, { color: colors.error }]}>
+                    • {warning}
+                  </Text>
+                ))}
+                <Text style={[styles.warningSubtext, { color: colors.textSecondary }]}>
+                  You can still add this item by filling in the missing details manually
                 </Text>
-                {organizeMode === 'split' && autoGroups.length > 0 && (
-                  <View style={styles.splitInfo}>
-                    <IconSymbol
-                      ios_icon_name="info.circle"
-                      android_material_icon_name="info"
-                      size={16}
-                      color={colors.accent}
-                    />
-                    <Text style={styles.splitInfoText}>
-                      {autoGroups.length} wishlists will be created
-                    </Text>
-                  </View>
-                )}
               </View>
-            </TouchableOpacity>
-          </View>
+            )}
 
-          {/* Smart Tools Row */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Smart Tools</Text>
-            <View style={styles.smartToolsRow}>
+            {/* Product Image */}
+            <View style={styles.imageSection}>
+              {selectedImage ? (
+                <Image
+                  source={resolveImageSource(selectedImage)}
+                  style={styles.productImage}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={[styles.imagePlaceholder, { backgroundColor: colors.surface }]}>
+                  <IconSymbol
+                    ios_icon_name="photo"
+                    android_material_icon_name="image"
+                    size={48}
+                    color={colors.textTertiary}
+                  />
+                  <Text style={[styles.placeholderText, { color: colors.textTertiary }]}>No image</Text>
+                </View>
+              )}
+              
               <TouchableOpacity
-                style={styles.toolButton}
-                onPress={() => setShowAutoGroupOptions(!showAutoGroupOptions)}
-                disabled={autoGrouping}
+                style={[styles.changeImageButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleChangeImage}
               >
                 <IconSymbol
-                  ios_icon_name="wand.and.stars"
-                  android_material_icon_name="auto-fix-high"
-                  size={20}
+                  ios_icon_name="photo"
+                  android_material_icon_name="image"
+                  size={16}
                   color={colors.accent}
                 />
-                <Text style={styles.toolButtonText}>Auto-group</Text>
+                <Text style={[styles.changeImageText, { color: colors.accent }]}>Change Image</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Editable Fields */}
+            <View style={styles.fieldsSection}>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Item Name *</Text>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                value={itemName}
+                onChangeText={setItemName}
+                placeholder="Enter item name"
+                placeholderTextColor={colors.textTertiary}
+              />
+
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Store</Text>
+              <View style={styles.storeRow}>
+                <TextInput
+                  style={[styles.textInput, styles.storeNameInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={storeName}
+                  onChangeText={setStoreName}
+                  placeholder="Store name"
+                  placeholderTextColor={colors.textTertiary}
+                />
+                <TextInput
+                  style={[styles.textInput, styles.storeDomainInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={storeDomain}
+                  onChangeText={setStoreDomain}
+                  placeholder="domain.com"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Price & Currency</Text>
+              <View style={styles.priceRow}>
+                <TextInput
+                  style={[styles.textInput, styles.priceInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={price}
+                  onChangeText={setPrice}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="decimal-pad"
+                />
+                <TouchableOpacity
+                  style={[styles.currencyButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => setShowCurrencyPicker(true)}
+                >
+                  <Text style={[styles.currencyText, { color: colors.textPrimary }]}>{currency}</Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.down"
+                    android_material_icon_name="arrow-drop-down"
+                    size={16}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Country Availability */}
+              {userLocation && (
+                <View style={styles.availabilitySection}>
+                  <View style={styles.availabilityRow}>
+                    <IconSymbol
+                      ios_icon_name={availableInUserCountry ? 'checkmark.circle' : 'info.circle'}
+                      android_material_icon_name={availableInUserCountry ? 'check-circle' : 'info'}
+                      size={20}
+                      color={availableInUserCountry ? colors.success : colors.warning}
+                    />
+                    <Text style={[styles.availabilityText, { color: colors.textPrimary }]}>
+                      {availableInUserCountry
+                        ? `Available in ${userLocation.countryCode}`
+                        : `May not be available in ${userLocation.countryCode}`}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Wishlist</Text>
+              <TouchableOpacity
+                style={[styles.wishlistButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => setShowWishlistPicker(true)}
+              >
+                <Text style={[styles.wishlistButtonText, { color: colors.textPrimary }]}>{selectedWishlistName}</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.down"
+                  android_material_icon_name="arrow-drop-down"
+                  size={20}
+                  color={colors.textSecondary}
+                />
               </TouchableOpacity>
 
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Notes (optional)</Text>
+              <TextInput
+                style={[styles.textInput, styles.notesInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Add any notes about this item"
+                placeholderTextColor={colors.textTertiary}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* Other Stores & Prices */}
+            {alternativeStores.length > 0 && (
+              <View style={styles.alternativesSection}>
+                <View style={styles.alternativesHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Other stores & prices</Text>
+                  <Text style={[styles.alternativesCount, { color: colors.textSecondary }]}>
+                    {alternativeStores.length} {alternativeStores.length === 1 ? 'store' : 'stores'}
+                  </Text>
+                </View>
+                
+                {alternativeStores.map((store, index) => {
+                  const storePrice = `${store.currency} ${store.price.toFixed(2)}`;
+                  return (
+                    <View key={index} style={[styles.alternativeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <View style={styles.alternativeInfo}>
+                        <Text style={[styles.alternativeStoreName, { color: colors.textPrimary }]}>{store.storeName}</Text>
+                        <Text style={[styles.alternativeDomain, { color: colors.textSecondary }]}>{store.storeDomain}</Text>
+                      </View>
+                      <View style={styles.alternativeRight}>
+                        <Text style={[styles.alternativePrice, { color: colors.accent }]}>{storePrice}</Text>
+                        <TouchableOpacity
+                          onPress={async () => {
+                            const { openStoreLink } = await import('@/utils/openStoreLink');
+                            await openStoreLink(store.url, {
+                              source: 'import_preview_alternatives',
+                              storeDomain: store.storeDomain,
+                            });
+                          }}
+                        >
+                          <IconSymbol
+                            ios_icon_name="arrow.up.forward"
+                            android_material_icon_name="open-in-new"
+                            size={16}
+                            color={colors.accent}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Load Alternatives Button */}
+            {alternativeStores.length === 0 && itemName && userLocation && (
               <TouchableOpacity
-                style={styles.toolButton}
-                onPress={handleFindDuplicates}
-                disabled={findingDuplicates}
+                style={[styles.loadAlternativesButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleLoadAlternatives}
+                disabled={loadingAlternatives}
               >
-                {findingDuplicates ? (
+                {loadingAlternatives ? (
                   <ActivityIndicator size="small" color={colors.accent} />
                 ) : (
-                  <IconSymbol
-                    ios_icon_name="doc.on.doc"
-                    android_material_icon_name="content-copy"
-                    size={20}
-                    color={colors.accent}
-                  />
+                  <>
+                    <IconSymbol
+                      ios_icon_name="magnifyingglass"
+                      android_material_icon_name="search"
+                      size={20}
+                      color={colors.accent}
+                    />
+                    <Text style={[styles.loadAlternativesText, { color: colors.accent }]}>Find other stores</Text>
+                  </>
                 )}
-                <Text style={styles.toolButtonText}>Find duplicates</Text>
               </TouchableOpacity>
+            )}
 
-              <TouchableOpacity
-                style={[styles.toolButton, selectionMode && styles.toolButtonActive]}
-                onPress={() => setSelectionMode(!selectionMode)}
-              >
+            {/* Confirmation Toggle */}
+            <View style={[styles.confirmationSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.confirmationLeft}>
                 <IconSymbol
                   ios_icon_name="checkmark.circle"
                   android_material_icon_name="check-circle"
-                  size={20}
-                  color={selectionMode ? colors.textInverse : colors.accent}
+                  size={24}
+                  color={isProductCorrect ? colors.success : colors.textTertiary}
                 />
-                <Text style={[styles.toolButtonText, selectionMode && styles.toolButtonTextActive]}>
-                  Select
+                <Text style={[styles.confirmationText, { color: colors.textPrimary }]}>
+                  This is the correct product
                 </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Auto-group options */}
-            {showAutoGroupOptions && (
-              <View style={styles.autoGroupOptions}>
-                <Text style={styles.autoGroupTitle}>Group by:</Text>
-                <View style={styles.autoGroupChips}>
-                  <TouchableOpacity
-                    style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('store')}
-                    disabled={autoGrouping}
-                  >
-                    <Text style={styles.autoGroupChipText}>By Store</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('category')}
-                    disabled={autoGrouping}
-                  >
-                    <Text style={styles.autoGroupChipText}>By Category</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('person')}
-                    disabled={autoGrouping}
-                  >
-                    <Text style={styles.autoGroupChipText}>By Person</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('occasion')}
-                    disabled={autoGrouping}
-                  >
-                    <Text style={styles.autoGroupChipText}>By Occasion</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.autoGroupChip}
-                    onPress={() => handleAutoGroup('price')}
-                    disabled={autoGrouping}
-                  >
-                    <Text style={styles.autoGroupChipText}>By Price Range</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
-            )}
-          </View>
-
-          {/* Items List */}
-          <View style={styles.section}>
-            <View style={styles.itemsHeader}>
-              <Text style={styles.sectionTitle}>Items</Text>
-              <Text style={styles.selectedCount}>{selectedCountText}</Text>
+              <Switch
+                value={isProductCorrect}
+                onValueChange={setIsProductCorrect}
+                trackColor={{ false: colors.border, true: colors.success }}
+                thumbColor={colors.surface}
+              />
             </View>
 
-            {groupedMode && organizeMode === 'split' ? (
-              // Grouped view with collapsible sections
-              <>
-                {autoGroups.map((group) => {
-                  const groupItems = items.filter(item => group.memberTempIds.includes(item.tempId));
-                  const selectedInGroup = groupItems.filter(item => selectedItems.has(item.tempId)).length;
-                  const groupSelectedText = `${selectedInGroup}/${groupItems.length} selected`;
+            {/* Spacer for footer */}
+            <View style={{ height: 120 }} />
+          </ScrollView>
 
-                  return (
-                    <Fragment key={group.groupId}>
-                      <View style={styles.groupHeader}>
-                        <TouchableOpacity
-                          style={styles.groupHeaderLeft}
-                          onPress={() => toggleGroupCollapse(group.groupId)}
-                          activeOpacity={0.7}
-                        >
-                          <IconSymbol
-                            ios_icon_name={group.collapsed ? 'chevron.right' : 'chevron.down'}
-                            android_material_icon_name={group.collapsed ? 'chevron-right' : 'expand-more'}
-                            size={20}
-                            color={colors.textPrimary}
-                          />
-                          <View style={styles.groupHeaderInfo}>
-                            <TextInput
-                              style={styles.groupNameInput}
-                              value={group.proposedWishlistName}
-                              onChangeText={(text) => updateGroupName(group.groupId, text)}
-                              placeholder="Wishlist name"
-                              placeholderTextColor={colors.textTertiary}
-                            />
-                            <Text style={styles.groupSubtext}>{groupSelectedText}</Text>
-                          </View>
-                        </TouchableOpacity>
-                      </View>
-
-                      {!group.collapsed && groupItems.map((item) => {
-                        const isSelected = selectedItems.has(item.tempId);
-                        const priceDisplay = formatPrice(item.price, item.currency);
-                        const isDuplicate = item.status === 'duplicate';
-
-                        return (
-                          <Fragment key={item.tempId}>
-                            <TouchableOpacity
-                              style={[styles.itemCard, styles.itemCardGrouped, isSelected && styles.itemCardSelected]}
-                              onPress={() => toggleItemSelection(item.tempId)}
-                              onLongPress={() => handleEditItem(item)}
-                              activeOpacity={0.7}
-                            >
-                              <View style={styles.checkbox}>
-                                {isSelected && (
-                                  <IconSymbol
-                                    ios_icon_name="check"
-                                    android_material_icon_name="check"
-                                    size={18}
-                                    color={colors.accent}
-                                  />
-                                )}
-                              </View>
-
-                              {item.imageUrl && (
-                                <Image
-                                  source={resolveImageSource(item.imageUrl)}
-                                  style={styles.itemImage}
-                                  resizeMode="cover"
-                                />
-                              )}
-
-                              <View style={styles.itemInfo}>
-                                <Text style={styles.itemTitle} numberOfLines={2}>
-                                  {item.title}
-                                </Text>
-                                <View style={styles.itemMeta}>
-                                  <Text style={styles.itemPrice}>{priceDisplay}</Text>
-                                  {item.sourceDomain && (
-                                    <View style={styles.storeTag}>
-                                      <Text style={styles.storeTagText}>{item.sourceDomain}</Text>
-                                    </View>
-                                  )}
-                                </View>
-                                {isDuplicate && (
-                                  <View style={styles.statusChip}>
-                                    <Text style={styles.statusChipText}>Possible duplicate</Text>
-                                  </View>
-                                )}
-                                {item.status === 'unavailable' && (
-                                  <TouchableOpacity
-                                    style={[styles.statusChip, styles.statusChipWarning]}
-                                    onPress={() => {
-                                      Alert.alert(
-                                        'Delivery Not Available',
-                                        'This store may not deliver to your location. You can still save it, and we\'ll find alternatives that do deliver.',
-                                        [{ text: 'OK' }]
-                                      );
-                                    }}
-                                    activeOpacity={0.7}
-                                  >
-                                    <IconSymbol
-                                      ios_icon_name="info.circle"
-                                      android_material_icon_name="info"
-                                      size={12}
-                                      color={colors.error}
-                                    />
-                                    <Text style={styles.statusChipText}>May not deliver to your location</Text>
-                                  </TouchableOpacity>
-                                )}
-                                <TouchableOpacity
-                                  style={styles.viewInStoreButton}
-                                  onPress={async (e) => {
-                                    e.stopPropagation();
-                                    const { openStoreLink } = await import('@/utils/openStoreLink');
-                                    await openStoreLink(item.productUrl, {
-                                      source: 'import_preview',
-                                      storeDomain: item.sourceDomain,
-                                      itemId: item.tempId,
-                                      itemTitle: item.title,
-                                    });
-                                  }}
-                                  activeOpacity={0.7}
-                                >
-                                  <Text style={styles.viewInStoreText}>View in store</Text>
-                                  <IconSymbol
-                                    ios_icon_name="arrow.up.forward"
-                                    android_material_icon_name="open-in-new"
-                                    size={12}
-                                    color={colors.accent}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-
-                              <IconSymbol
-                                ios_icon_name="ellipsis"
-                                android_material_icon_name="more-vert"
-                                size={20}
-                                color={colors.textTertiary}
-                              />
-                            </TouchableOpacity>
-                          </Fragment>
-                        );
-                      })}
-                    </Fragment>
-                  );
-                })}
-              </>
-            ) : (
-              // Flat list view
-              <>
-                {items.map((item) => {
-                  const isSelected = selectedItems.has(item.tempId);
-                  const priceDisplay = formatPrice(item.price, item.currency);
-                  const showCheckbox = selectionMode || organizeMode === 'split';
-                  const isDuplicate = item.status === 'duplicate';
-
-                  return (
-                    <Fragment key={item.tempId}>
-                      <TouchableOpacity
-                        style={[styles.itemCard, isSelected && styles.itemCardSelected]}
-                        onPress={() => {
-                          if (showCheckbox) {
-                            toggleItemSelection(item.tempId);
-                          } else {
-                            handleEditItem(item);
-                          }
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        {showCheckbox && (
-                          <View style={styles.checkbox}>
-                            {isSelected && (
-                              <IconSymbol
-                                ios_icon_name="check"
-                                android_material_icon_name="check"
-                                size={18}
-                                color={colors.accent}
-                              />
-                            )}
-                          </View>
-                        )}
-
-                        {item.imageUrl && (
-                          <Image
-                            source={resolveImageSource(item.imageUrl)}
-                            style={styles.itemImage}
-                            resizeMode="cover"
-                          />
-                        )}
-
-                        <View style={styles.itemInfo}>
-                          <Text style={styles.itemTitle} numberOfLines={2}>
-                            {item.title}
-                          </Text>
-                          <View style={styles.itemMeta}>
-                            <Text style={styles.itemPrice}>{priceDisplay}</Text>
-                            {item.sourceDomain && (
-                              <View style={styles.storeTag}>
-                                <Text style={styles.storeTagText}>{item.sourceDomain}</Text>
-                              </View>
-                            )}
-                          </View>
-                          {isDuplicate && (
-                            <View style={styles.statusChip}>
-                              <Text style={styles.statusChipText}>Possible duplicate</Text>
-                            </View>
-                          )}
-                          {item.status === 'unavailable' && (
-                            <View style={[styles.statusChip, styles.statusChipWarning]}>
-                              <Text style={styles.statusChipText}>May not deliver to your location</Text>
-                            </View>
-                          )}
-                          <TouchableOpacity
-                            style={styles.viewInStoreButton}
-                            onPress={async (e) => {
-                              e.stopPropagation();
-                              const { openStoreLink } = await import('@/utils/openStoreLink');
-                              await openStoreLink(item.productUrl, {
-                                source: 'import_preview',
-                                storeDomain: item.sourceDomain,
-                                itemId: item.tempId,
-                                itemTitle: item.title,
-                              });
-                            }}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={styles.viewInStoreText}>View in store</Text>
-                            <IconSymbol
-                              ios_icon_name="arrow.up.forward"
-                              android_material_icon_name="open-in-new"
-                              size={12}
-                              color={colors.accent}
-                            />
-                          </TouchableOpacity>
-                        </View>
-
-                        <IconSymbol
-                          ios_icon_name="chevron.right"
-                          android_material_icon_name="chevron-right"
-                          size={20}
-                          color={colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                    </Fragment>
-                  );
-                })}
-              </>
-            )}
-          </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.reportLink} onPress={handleReportProblem}>
-            <IconSymbol
-              ios_icon_name="exclamationmark.triangle"
-              android_material_icon_name="report"
-              size={16}
-              color={colors.textSecondary}
-            />
-            <Text style={styles.reportLinkText}>Report a Problem</Text>
-          </TouchableOpacity>
-
-          <View style={styles.footerButtons}>
+          {/* Footer Actions */}
+          <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
             <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => router.back()}
-              disabled={loading}
+              style={[styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={handleRetryExtraction}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <IconSymbol
+                ios_icon_name="arrow.clockwise"
+                android_material_icon_name="refresh"
+                size={16}
+                color={colors.textPrimary}
+              />
+              <Text style={[styles.secondaryButtonText, { color: colors.textPrimary }]}>Retry Extraction</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.importButton, (selectedItems.size === 0 || loading) && styles.importButtonDisabled]}
-              onPress={handleImport}
-              disabled={selectedItems.size === 0 || loading}
-              activeOpacity={0.8}
+              style={[styles.tertiaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={handleReportProblem}
             >
-              {loading ? (
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle"
+                android_material_icon_name="report"
+                size={16}
+                color={colors.textSecondary}
+              />
+              <Text style={[styles.tertiaryButtonText, { color: colors.textSecondary }]}>Report Problem</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                { backgroundColor: colors.accent },
+                (!isProductCorrect || !itemName.trim() || saving) && styles.primaryButtonDisabled,
+              ]}
+              onPress={handleConfirmAndAdd}
+              disabled={!isProductCorrect || !itemName.trim() || saving}
+            >
+              {saving ? (
                 <ActivityIndicator size="small" color={colors.textInverse} />
               ) : (
-                <Text style={styles.importButtonText}>{importButtonText}</Text>
+                <>
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.textInverse}
+                  />
+                  <Text style={[styles.primaryButtonText, { color: colors.textInverse }]}>Confirm & Add</Text>
+                </>
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
 
+        {/* Image Picker Modal */}
+        <Modal
+          visible={showImagePicker}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowImagePicker(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setShowImagePicker(false)}>
+            <Pressable style={[styles.modalContent, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHandle} />
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Choose Image</Text>
+              
+              <ScrollView style={styles.imageGrid}>
+                {productData?.extractedImages.map((imageUrl, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.imageOption,
+                      { borderColor: selectedImage === imageUrl ? colors.accent : colors.border },
+                    ]}
+                    onPress={() => handleSelectImage(imageUrl)}
+                  >
+                    <Image
+                      source={resolveImageSource(imageUrl)}
+                      style={styles.imageOptionImage}
+                      resizeMode="cover"
+                    />
+                    {selectedImage === imageUrl && (
+                      <View style={[styles.imageSelectedBadge, { backgroundColor: colors.accent }]}>
+                        <IconSymbol
+                          ios_icon_name="checkmark"
+                          android_material_icon_name="check"
+                          size={16}
+                          color={colors.textInverse}
+                        />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.uploadButton, { backgroundColor: colors.accent }]}
+                onPress={handleUploadImage}
+              >
+                <IconSymbol
+                  ios_icon_name="photo"
+                  android_material_icon_name="image"
+                  size={20}
+                  color={colors.textInverse}
+                />
+                <Text style={[styles.uploadButtonText, { color: colors.textInverse }]}>Upload from Gallery</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Wishlist Picker Modal */}
         <Modal
           visible={showWishlistPicker}
           transparent
@@ -1175,157 +762,71 @@ export default function ImportPreviewScreen() {
           onRequestClose={() => setShowWishlistPicker(false)}
         >
           <Pressable style={styles.modalOverlay} onPress={() => setShowWishlistPicker(false)}>
-            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-              <Text style={styles.modalTitle}>Select Wishlist</Text>
-              <ScrollView style={styles.wishlistList}>
-                {wishlists.map((wishlist, index) => (
-                  <Fragment key={index}>
-                    <TouchableOpacity
-                      style={[
-                        styles.wishlistOption,
-                        selectedWishlistId === wishlist.id && styles.wishlistOptionSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedWishlistId(wishlist.id);
-                        setShowWishlistPicker(false);
-                      }}
-                    >
-                      <Text style={styles.wishlistOptionText}>{wishlist.name}</Text>
-                      {selectedWishlistId === wishlist.id && (
-                        <IconSymbol
-                          ios_icon_name="check"
-                          android_material_icon_name="check"
-                          size={20}
-                          color={colors.accent}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  </Fragment>
+            <Pressable style={[styles.pickerModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Wishlist</Text>
+              <ScrollView style={styles.pickerList}>
+                {wishlists.map((wishlist) => (
+                  <TouchableOpacity
+                    key={wishlist.id}
+                    style={[
+                      styles.pickerOption,
+                      { backgroundColor: selectedWishlistId === wishlist.id ? colors.accentLight : 'transparent' },
+                    ]}
+                    onPress={() => {
+                      setSelectedWishlistId(wishlist.id);
+                      setShowWishlistPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>{wishlist.name}</Text>
+                    {selectedWishlistId === wishlist.id && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={20}
+                        color={colors.accent}
+                      />
+                    )}
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
 
-        {/* Item Details Bottom Sheet */}
+        {/* Currency Picker Modal */}
         <Modal
-          visible={showItemDetails}
+          visible={showCurrencyPicker}
           transparent
-          animationType="slide"
-          onRequestClose={() => setShowItemDetails(false)}
+          animationType="fade"
+          onRequestClose={() => setShowCurrencyPicker(false)}
         >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowItemDetails(false)}>
-            <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.bottomSheetHandle} />
-              <ScrollView style={styles.bottomSheetContent}>
-                {selectedItemForEdit && (
-                  <>
-                    <Text style={styles.bottomSheetTitle}>Item Details</Text>
-
-                    {selectedItemForEdit.imageUrl && (
-                      <Image
-                        source={resolveImageSource(selectedItemForEdit.imageUrl)}
-                        style={styles.detailImage}
-                        resizeMode="contain"
+          <Pressable style={styles.modalOverlay} onPress={() => setShowCurrencyPicker(false)}>
+            <Pressable style={[styles.pickerModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Currency</Text>
+              <ScrollView style={styles.pickerList}>
+                {currencies.map((curr) => (
+                  <TouchableOpacity
+                    key={curr}
+                    style={[
+                      styles.pickerOption,
+                      { backgroundColor: currency === curr ? colors.accentLight : 'transparent' },
+                    ]}
+                    onPress={() => {
+                      setCurrency(curr);
+                      setShowCurrencyPicker(false);
+                    }}
+                  >
+                    <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>{curr}</Text>
+                    {currency === curr && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={20}
+                        color={colors.accent}
                       />
                     )}
-
-                    <Text style={styles.detailLabel}>Title</Text>
-                    <TextInput
-                      style={styles.detailInput}
-                      value={selectedItemForEdit.title}
-                      onChangeText={(text) =>
-                        setSelectedItemForEdit({ ...selectedItemForEdit, title: text })
-                      }
-                      multiline
-                    />
-
-                    <Text style={styles.detailLabel}>Product Link</Text>
-                    <View style={styles.linkPreview}>
-                      <Text style={styles.linkText} numberOfLines={1}>
-                        {selectedItemForEdit.productUrl}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={async () => {
-                          const { openStoreLink } = await import('@/utils/openStoreLink');
-                          await openStoreLink(selectedItemForEdit.productUrl, {
-                            source: 'import_preview',
-                            storeDomain: selectedItemForEdit.sourceDomain,
-                            itemId: selectedItemForEdit.tempId,
-                            itemTitle: selectedItemForEdit.title,
-                          });
-                        }}
-                      >
-                        <IconSymbol
-                          ios_icon_name="arrow.up.forward"
-                          android_material_icon_name="open-in-new"
-                          size={16}
-                          color={colors.accent}
-                        />
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.priceRow}>
-                      <View style={styles.priceField}>
-                        <Text style={styles.detailLabel}>Price</Text>
-                        <TextInput
-                          style={styles.detailInput}
-                          value={selectedItemForEdit.price?.toString() || ''}
-                          onChangeText={(text) =>
-                            setSelectedItemForEdit({
-                              ...selectedItemForEdit,
-                              price: parseFloat(text) || null,
-                            })
-                          }
-                          keyboardType="decimal-pad"
-                        />
-                      </View>
-                      <View style={styles.currencyField}>
-                        <Text style={styles.detailLabel}>Currency</Text>
-                        <TextInput
-                          style={styles.detailInput}
-                          value={selectedItemForEdit.currency || 'USD'}
-                          onChangeText={(text) =>
-                            setSelectedItemForEdit({ ...selectedItemForEdit, currency: text })
-                          }
-                        />
-                      </View>
-                    </View>
-
-                    {selectedItemForEdit.duplicateGroupId && (
-                      <View style={styles.duplicateSection}>
-                        <Text style={styles.detailLabel}>Duplicate Suggestions</Text>
-                        <View style={styles.duplicateWarning}>
-                          <IconSymbol
-                            ios_icon_name="exclamationmark.triangle"
-                            android_material_icon_name="warning"
-                            size={20}
-                            color={colors.warning}
-                          />
-                          <Text style={styles.duplicateWarningText}>
-                            This item may be a duplicate
-                          </Text>
-                        </View>
-                      </View>
-                    )}
-
-                    <View style={styles.bottomSheetActions}>
-                      <TouchableOpacity
-                        style={styles.excludeButton}
-                        onPress={() => handleExcludeItem(selectedItemForEdit.tempId)}
-                      >
-                        <Text style={styles.excludeButtonText}>Exclude from import</Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={styles.saveButton}
-                        onPress={() => handleSaveItemEdit(selectedItemForEdit)}
-                      >
-                        <Text style={styles.saveButtonText}>Save changes</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
+                  </TouchableOpacity>
+                ))}
               </ScrollView>
             </Pressable>
           </Pressable>
@@ -1337,550 +838,351 @@ export default function ImportPreviewScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    ...containerStyles.screen,
+    flex: 1,
+  },
+  keyboardView: {
+    flex: 1,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: spacing.md,
-    paddingBottom: 100,
   },
-  sourceCard: {
-    backgroundColor: colors.surface,
+  warningCard: {
     borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.border,
   },
-  sourceHeader: {
+  warningHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xs,
     marginBottom: spacing.sm,
   },
-  sourceIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentLight,
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  warningText: {
+    fontSize: 14,
+    marginBottom: spacing.xs / 2,
+  },
+  warningSubtext: {
+    fontSize: 12,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  imageSection: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    overflow: 'hidden',
-  },
-  sourceLogoImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  sourceInfo: {
-    flex: 1,
-  },
-  sourceName: {
-    ...typography.titleMedium,
-    marginBottom: spacing.xs,
-  },
-  sourceSubtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  openLinkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.sm,
-    gap: spacing.xs,
-  },
-  openLinkText: {
-    ...typography.bodyMedium,
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  section: {
     marginBottom: spacing.xl,
   },
-  sectionTitle: {
-    ...typography.titleSmall,
+  productImage: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
     marginBottom: spacing.md,
   },
-  smartToolsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  toolButton: {
-    flex: 1,
-    flexDirection: 'row',
+  imagePlaceholder: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 20,
+    marginBottom: spacing.md,
+  },
+  placeholderText: {
+    fontSize: 14,
+    marginTop: spacing.sm,
+  },
+  changeImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    gap: spacing.xs,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.border,
   },
-  toolButtonActive: {
-    backgroundColor: colors.accent,
-    borderColor: colors.accent,
-  },
-  toolButtonText: {
-    ...typography.bodySmall,
-    color: colors.textPrimary,
+  changeImageText: {
+    fontSize: 14,
     fontWeight: '500',
   },
-  toolButtonTextActive: {
-    color: colors.textInverse,
+  fieldsSection: {
+    marginBottom: spacing.xl,
   },
-  autoGroupOptions: {
+  fieldLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: spacing.xs,
     marginTop: spacing.md,
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  autoGroupTitle: {
-    ...typography.bodyMedium,
-    fontWeight: '500',
-    marginBottom: spacing.sm,
-  },
-  autoGroupChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-  },
-  autoGroupChip: {
-    backgroundColor: colors.accentLight,
-    borderRadius: 16,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.accent,
-  },
-  autoGroupChipText: {
-    ...typography.bodySmall,
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.border,
-    marginBottom: spacing.sm,
-  },
-  radioOptionSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentLight,
-  },
-  radioButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    marginTop: 2,
-  },
-  radioButtonInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.accent,
-  },
-  radioContent: {
-    flex: 1,
-  },
-  radioLabel: {
-    ...typography.bodyLarge,
-    fontWeight: '500',
-    marginBottom: spacing.xs,
-  },
-  radioSubtext: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  splitInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    gap: spacing.xs,
-    backgroundColor: colors.accentLight,
-    borderRadius: 8,
-    padding: spacing.xs,
-  },
-  splitInfoText: {
-    ...typography.bodySmall,
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.background,
+  textInput: {
     borderRadius: 8,
     padding: spacing.sm,
-    marginTop: spacing.xs,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dropdownText: {
-    ...typography.bodyMedium,
-    flex: 1,
-  },
-  nameInput: {
-    ...inputStyles.base,
-    marginTop: spacing.xs,
-  },
-  itemsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  selectedCount: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  groupHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: spacing.sm,
-  },
-  groupHeaderInfo: {
-    flex: 1,
-  },
-  groupNameInput: {
-    ...typography.bodyLarge,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    padding: 0,
-    marginBottom: spacing.xs,
-  },
-  groupSubtext: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  itemCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    marginBottom: spacing.sm,
-    borderWidth: 2,
-    borderColor: colors.border,
-  },
-  itemCardGrouped: {
-    marginLeft: spacing.lg,
+    fontSize: 16,
     borderWidth: 1,
   },
-  itemCardSelected: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accentLight,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-  },
-  itemImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: colors.background,
-    marginRight: spacing.sm,
-  },
-  itemInfo: {
-    flex: 1,
-  },
-  itemTitle: {
-    ...typography.bodyMedium,
-    fontWeight: '500',
-    marginBottom: spacing.xs,
-  },
-  itemMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
-  },
-  itemPrice: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  storeTag: {
-    backgroundColor: colors.background,
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.xs,
-  },
-  storeTagText: {
-    ...typography.bodySmall,
-    fontSize: 10,
-    color: colors.textTertiary,
-  },
-  statusChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs / 2,
-    backgroundColor: colors.warningLight,
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: spacing.xs,
-    alignSelf: 'flex-start',
-  },
-  statusChipWarning: {
-    backgroundColor: colors.errorLight,
-  },
-  statusChipText: {
-    ...typography.bodySmall,
-    fontSize: 10,
-    color: colors.warning,
-    fontWeight: '500',
-  },
-  viewInStoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs / 2,
-    marginTop: spacing.xs,
-  },
-  viewInStoreText: {
-    ...typography.bodySmall,
-    fontSize: 12,
-    color: colors.accent,
-    fontWeight: '500',
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: spacing.md,
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  reportLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xs,
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  reportLinkText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-  },
-  footerButtons: {
+  storeRow: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  cancelButton: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cancelButtonText: {
-    ...typography.buttonMedium,
-    color: colors.textPrimary,
-  },
-  importButton: {
+  storeNameInput: {
     flex: 2,
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadowMedium,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  importButtonDisabled: {
-    opacity: 0.5,
-  },
-  importButtonText: {
-    ...typography.buttonLarge,
-    color: colors.textInverse,
-  },
-  modalOverlay: {
+  storeDomainInput: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: spacing.lg,
-    width: '85%',
-    maxWidth: 400,
-    maxHeight: '70%',
-  },
-  modalTitle: {
-    ...typography.titleMedium,
-    marginBottom: spacing.md,
-  },
-  wishlistList: {
-    maxHeight: 400,
-  },
-  wishlistOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    borderRadius: 8,
-    marginBottom: spacing.xs,
-  },
-  wishlistOptionSelected: {
-    backgroundColor: colors.accentLight,
-  },
-  wishlistOptionText: {
-    ...typography.bodyLarge,
-    flex: 1,
-  },
-  bottomSheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '80%',
-    marginTop: 'auto',
-  },
-  bottomSheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  bottomSheetContent: {
-    padding: spacing.lg,
-  },
-  bottomSheetTitle: {
-    ...typography.titleLarge,
-    marginBottom: spacing.lg,
-  },
-  detailImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    backgroundColor: colors.background,
-    marginBottom: spacing.lg,
-  },
-  detailLabel: {
-    ...typography.labelMedium,
-    marginBottom: spacing.xs,
-    color: colors.textSecondary,
-  },
-  detailInput: {
-    ...inputStyles.base,
-    marginBottom: spacing.md,
-  },
-  linkPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: spacing.sm,
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  linkText: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    flex: 1,
-  },
-  linkButton: {
-    ...typography.bodySmall,
-    color: colors.accent,
-    fontWeight: '500',
   },
   priceRow: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  priceField: {
-    flex: 2,
-  },
-  currencyField: {
+  priceInput: {
     flex: 1,
   },
-  duplicateSection: {
-    marginTop: spacing.md,
-  },
-  duplicateWarning: {
+  currencyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.warningLight,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
     borderRadius: 8,
-    padding: spacing.sm,
-    gap: spacing.sm,
+    borderWidth: 1,
+    minWidth: 100,
+    justifyContent: 'center',
   },
-  duplicateWarningText: {
-    ...typography.bodySmall,
-    color: colors.warning,
+  currencyText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  availabilitySection: {
+    marginTop: spacing.md,
+  },
+  availabilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  availabilityText: {
+    fontSize: 14,
+  },
+  wishlistButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  wishlistButtonText: {
+    fontSize: 16,
+  },
+  notesInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  alternativesSection: {
+    marginBottom: spacing.xl,
+  },
+  alternativesHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  alternativesCount: {
+    fontSize: 14,
+  },
+  alternativeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+  },
+  alternativeInfo: {
     flex: 1,
   },
-  bottomSheetActions: {
-    marginTop: spacing.xl,
+  alternativeStoreName: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: spacing.xs / 2,
+  },
+  alternativeDomain: {
+    fontSize: 12,
+  },
+  alternativeRight: {
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+  },
+  alternativePrice: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadAlternativesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+  },
+  loadAlternativesText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  confirmationSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+  },
+  confirmationLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  confirmationText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  footer: {
+    padding: spacing.md,
+    borderTopWidth: 1,
     gap: spacing.sm,
   },
-  excludeButton: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
+  primaryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 12,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.error,
   },
-  excludeButtonText: {
-    ...typography.buttonMedium,
-    color: colors.error,
+  secondaryButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
-  saveButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
+  tertiaryButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  saveButtonText: {
-    ...typography.buttonMedium,
-    color: colors.textInverse,
+  tertiaryButtonText: {
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.lg,
+    maxHeight: '80%',
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#ccc',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: spacing.md,
+  },
+  imageGrid: {
+    marginBottom: spacing.md,
+  },
+  imageOption: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+    borderWidth: 3,
+    overflow: 'hidden',
+  },
+  imageOptionImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageSelectedBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 12,
+  },
+  uploadButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pickerModal: {
+    marginHorizontal: spacing.lg,
+    marginVertical: 'auto',
+    borderRadius: 16,
+    padding: spacing.lg,
+    maxHeight: '60%',
+  },
+  pickerList: {
+    maxHeight: 400,
+  },
+  pickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.xs,
+  },
+  pickerOptionText: {
+    fontSize: 16,
   },
 });
