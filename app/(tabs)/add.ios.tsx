@@ -20,27 +20,19 @@ import {
   Keyboard,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { useAuth } from '@/contexts/AuthContext';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
-import { createWishlistItem, fetchWishlists } from '@/lib/supabase-helpers';
+import { fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { StatusBar } from 'expo-status-bar';
 
-type TabType = 'url' | 'camera' | 'upload' | 'search' | 'manual';
-
-interface ExtractedItem {
-  title: string;
-  imageUrl: string | null;
-  price: string | null;
-  currency: string;
-  originalUrl: string;
-  sourceDomain: string;
-}
+type TabType = 'share' | 'url' | 'camera' | 'upload' | 'search';
 
 interface Wishlist {
   id: string;
@@ -88,15 +80,17 @@ export default function AddItemScreen() {
   const typography = useMemo(() => createTypography(theme), [theme]);
   const insets = useSafeAreaInsets();
   
-  const [activeTab, setActiveTab] = useState<TabType>('url');
+  const [activeTab, setActiveTab] = useState<TabType>('share');
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [selectedWishlistId, setSelectedWishlistId] = useState<string>(wishlistId || '');
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
 
+  // User location for filtering
+  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
+
   // URL tab state
   const [urlInput, setUrlInput] = useState('');
   const [extracting, setExtracting] = useState(false);
-  const [extractedItem, setExtractedItem] = useState<ExtractedItem | null>(null);
 
   // Camera tab state
   const [cameraImageUri, setCameraImageUri] = useState<string | null>(null);
@@ -109,19 +103,9 @@ export default function AddItemScreen() {
   // Search tab state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchBrand, setSearchBrand] = useState('');
-  const [searchKeywords, setSearchKeywords] = useState('');
+  const [searchModel, setSearchModel] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-
-  // Manual tab state
-  const [manualTitle, setManualTitle] = useState('');
-  const [manualBrand, setManualBrand] = useState('');
-  const [manualPrice, setManualPrice] = useState('');
-  const [manualCurrency, setManualCurrency] = useState('USD');
-  const [manualStoreLink, setManualStoreLink] = useState('');
-  const [manualImageUrl, setManualImageUrl] = useState('');
-  const [manualNotes, setManualNotes] = useState('');
-  const [savingManual, setSavingManual] = useState(false);
 
   const styles = useMemo(() => StyleSheet.create({
     safeArea: {
@@ -182,7 +166,7 @@ export default function AddItemScreen() {
       borderBottomColor: colors.accent,
     },
     tabText: {
-      fontSize: 13,
+      fontSize: 12,
       color: colors.textSecondary,
       fontWeight: '500',
     },
@@ -229,6 +213,45 @@ export default function AddItemScreen() {
       flex: 1,
       lineHeight: 18,
     },
+    instructionCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.card,
+      borderRadius: 12,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    instructionTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    instructionStep: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: spacing.md,
+      gap: spacing.sm,
+    },
+    stepNumber: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepNumberText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
+    },
+    stepText: {
+      flex: 1,
+      fontSize: 14,
+      color: colors.text,
+      lineHeight: 20,
+    },
     label: {
       fontSize: 14,
       fontWeight: '600',
@@ -244,10 +267,6 @@ export default function AddItemScreen() {
       color: colors.text,
       backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.08)' : colors.background,
       marginBottom: spacing.md,
-    },
-    textArea: {
-      height: 100,
-      textAlignVertical: 'top',
     },
     button: {
       backgroundColor: colors.accent,
@@ -271,20 +290,6 @@ export default function AddItemScreen() {
     },
     buttonText: {
       color: theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    secondaryButton: {
-      backgroundColor: theme.mode === 'dark' ? 'rgba(255,255,255,0.12)' : colors.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      padding: spacing.md,
-      borderRadius: 12,
-      alignItems: 'center',
-      marginTop: spacing.sm,
-    },
-    secondaryButtonText: {
-      color: colors.text,
       fontSize: 16,
       fontWeight: '600',
     },
@@ -429,6 +434,27 @@ export default function AddItemScreen() {
   }, [user]);
 
   useEffect(() => {
+    const loadUserLocation = async () => {
+      if (!user) return;
+      
+      try {
+        const location = await fetchUserLocation(user.id);
+        if (location) {
+          setUserLocation({
+            countryCode: location.countryCode,
+            city: location.city,
+          });
+          console.log('User location loaded:', location.countryCode, location.city);
+        }
+      } catch (error) {
+        console.error('Failed to load user location:', error);
+      }
+    };
+
+    loadUserLocation();
+  }, [user]);
+
+  useEffect(() => {
     const checkClipboard = async () => {
       const clipboardText = await Clipboard.getStringAsync();
       const extractedUrl = extractUrlFromText(clipboardText);
@@ -472,16 +498,19 @@ export default function AddItemScreen() {
         return;
       }
 
-      const urlObj = new URL(urlInput);
-      const sourceDomain = urlObj.hostname.replace('www.', '');
-
-      setExtractedItem({
-        title: result.title || 'Unknown Item',
-        imageUrl: result.imageUrl,
-        price: result.price !== null ? result.price.toString() : null,
-        currency: result.currency || 'USD',
-        originalUrl: urlInput,
-        sourceDomain,
+      // Navigate to import preview screen
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          items: JSON.stringify([{
+            title: result.title || 'Unknown Item',
+            imageUrl: result.imageUrl,
+            price: result.price,
+            currency: result.currency || 'USD',
+            productUrl: urlInput,
+          }]),
+          storeName: result.sourceDomain || 'Store',
+        },
       });
 
       console.log('Item extracted successfully');
@@ -490,38 +519,6 @@ export default function AddItemScreen() {
       Alert.alert('Error', 'Failed to extract item details. Please try again.');
     } finally {
       setExtracting(false);
-    }
-  };
-
-  const handleSaveExtractedItem = async () => {
-    if (!extractedItem || !selectedWishlistId) {
-      Alert.alert('Error', 'Missing item or wishlist information');
-      return;
-    }
-
-    console.log('Saving extracted item to wishlist:', selectedWishlistId);
-    setSavingManual(true);
-
-    try {
-      await createWishlistItem({
-        wishlist_id: selectedWishlistId,
-        title: extractedItem.title,
-        image_url: extractedItem.imageUrl,
-        current_price: extractedItem.price,
-        currency: extractedItem.currency,
-        original_url: extractedItem.originalUrl,
-        source_domain: extractedItem.sourceDomain,
-      });
-
-      console.log('Item saved successfully');
-      Alert.alert('Success', 'Item added to your wishlist!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (error: any) {
-      console.error('Failed to save item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
-      setSavingManual(false);
     }
   };
 
@@ -562,11 +559,16 @@ export default function AddItemScreen() {
 
       if (result.bestGuessTitle) {
         router.push({
-          pathname: '/confirm-product',
+          pathname: '/import-preview',
           params: {
-            imageUrl: cameraImageUri,
-            identificationResult: JSON.stringify(result),
-            wishlistId: selectedWishlistId,
+            items: JSON.stringify([{
+              title: result.bestGuessTitle,
+              imageUrl: cameraImageUri,
+              price: null,
+              currency: 'USD',
+              productUrl: result.suggestedProducts[0]?.likelyUrl || '',
+            }]),
+            storeName: 'Camera',
           },
         });
       } else {
@@ -610,11 +612,16 @@ export default function AddItemScreen() {
 
       if (result.bestGuessTitle) {
         router.push({
-          pathname: '/confirm-product',
+          pathname: '/import-preview',
           params: {
-            imageUrl: uploadImageUri,
-            identificationResult: JSON.stringify(result),
-            wishlistId: selectedWishlistId,
+            items: JSON.stringify([{
+              title: result.bestGuessTitle,
+              imageUrl: uploadImageUri,
+              price: null,
+              currency: 'USD',
+              productUrl: result.suggestedProducts[0]?.likelyUrl || '',
+            }]),
+            storeName: 'Gallery',
           },
         });
       } else {
@@ -639,9 +646,11 @@ export default function AddItemScreen() {
     setSearchResults([]);
 
     try {
-      const fullQuery = [searchQuery, searchBrand, searchKeywords].filter(Boolean).join(' ');
+      const fullQuery = [searchQuery, searchBrand, searchModel].filter(Boolean).join(' ');
       
       const result = await searchByName(fullQuery, {
+        countryCode: userLocation?.countryCode,
+        city: userLocation?.city || undefined,
         limit: 10,
       });
 
@@ -664,86 +673,96 @@ export default function AddItemScreen() {
   const handleSelectSearchResult = (result: SearchResult) => {
     console.log('User selected search result:', result.title);
     router.push({
-      pathname: '/confirm-product',
+      pathname: '/import-preview',
       params: {
-        title: result.title,
-        price: result.price?.toString() || '',
-        currency: result.currency || 'USD',
-        storeLink: result.productUrl || '',
-        imageUrl: result.imageUrl || '',
-        storeDomain: result.storeDomain,
-        confidence: result.confidence.toString(),
-        wishlistId: selectedWishlistId,
+        items: JSON.stringify([{
+          title: result.title,
+          imageUrl: result.imageUrl,
+          price: result.price,
+          currency: result.currency || 'USD',
+          productUrl: result.productUrl,
+        }]),
+        storeName: result.storeDomain,
       },
     });
-  };
-
-  const handleSaveManualItem = async () => {
-    if (!manualTitle.trim()) {
-      Alert.alert('Error', 'Please enter an item title');
-      return;
-    }
-
-    if (!selectedWishlistId) {
-      Alert.alert('Error', 'No wishlist selected');
-      return;
-    }
-
-    console.log('Saving manual item to wishlist:', selectedWishlistId);
-    setSavingManual(true);
-
-    try {
-      await createWishlistItem({
-        wishlist_id: selectedWishlistId,
-        title: manualTitle,
-        brand: manualBrand || null,
-        image_url: manualImageUrl || null,
-        current_price: manualPrice || null,
-        currency: manualCurrency,
-        original_url: manualStoreLink || null,
-        notes: manualNotes || null,
-      });
-
-      console.log('Manual item saved successfully');
-      Alert.alert('Success', 'Item added to your wishlist!', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (error: any) {
-      console.error('Failed to save manual item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
-      setSavingManual(false);
-    }
-  };
-
-  const handlePickManualImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      console.log('User picked image for manual entry');
-      setManualImageUrl(result.assets[0].uri);
-    }
   };
 
   const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
   const placeholderColor = theme.mode === 'dark' ? 'rgba(255,255,255,0.55)' : colors.textSecondary;
 
+  const renderShareTab = () => {
+    return (
+      <View style={styles.content}>
+        <View style={styles.instructionCard}>
+          <Text style={styles.instructionTitle}>How to add items from other apps</Text>
+          
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>1</Text>
+            </View>
+            <Text style={styles.stepText}>
+              Open any shopping app or website (Amazon, eBay, etc.)
+            </Text>
+          </View>
+
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>2</Text>
+            </View>
+            <Text style={styles.stepText}>
+              Find the product you want to save
+            </Text>
+          </View>
+
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>3</Text>
+            </View>
+            <Text style={styles.stepText}>
+              Tap the Share button (⬆️)
+            </Text>
+          </View>
+
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>4</Text>
+            </View>
+            <Text style={styles.stepText}>
+              Select "My Wishlist" from the share menu
+            </Text>
+          </View>
+
+          <View style={styles.instructionStep}>
+            <View style={styles.stepNumber}>
+              <Text style={styles.stepNumberText}>5</Text>
+            </View>
+            <Text style={styles.stepText}>
+              We'll automatically extract the product details and add it to your wishlist!
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.tipCard}>
+          <IconSymbol ios_icon_name="lightbulb" android_material_icon_name="lightbulb" size={20} color={colors.accent} />
+          <Text style={styles.tipText}>
+            Tip: This works with most shopping websites and apps. If it doesn't work, try copying the product URL and using the "From URL" tab instead.
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   const renderUrlTab = () => {
     const urlTrimmed = urlInput.trim();
     const isValidHttpUrl = urlTrimmed.startsWith('http://') || urlTrimmed.startsWith('https://');
     const canExtract = isValidHttpUrl && !extracting;
-    const canSave = extractedItem !== null && !savingManual;
 
     return (
       <View style={styles.content}>
         <View style={styles.tipCard}>
           <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
           <Text style={styles.tipText}>
-            Tip: Use Share → My Wishlist from any app to add items instantly.
+            Paste a product URL from any online store and we'll extract the details automatically.
           </Text>
         </View>
 
@@ -769,55 +788,10 @@ export default function AddItemScreen() {
             {extracting ? (
               <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
-              <Text style={styles.buttonText}>Extract Item Details</Text>
+              <Text style={styles.buttonText}>Extract & Preview</Text>
             )}
           </TouchableOpacity>
         </View>
-
-        {extractedItem && (
-          <>
-            <View style={styles.formCard}>
-              {extractedItem.imageUrl && (
-                <Image
-                  source={resolveImageSource(extractedItem.imageUrl)}
-                  style={styles.selectedImage}
-                  resizeMode="cover"
-                />
-              )}
-
-              <Text style={styles.label}>Title</Text>
-              <TextInput
-                style={styles.input}
-                value={extractedItem.title}
-                onChangeText={(text) => setExtractedItem({ ...extractedItem, title: text })}
-                placeholder="Item title"
-                placeholderTextColor={placeholderColor}
-              />
-
-              <Text style={styles.label}>Price</Text>
-              <TextInput
-                style={styles.input}
-                value={extractedItem.price || ''}
-                onChangeText={(text) => setExtractedItem({ ...extractedItem, price: text })}
-                placeholder="0.00"
-                placeholderTextColor={placeholderColor}
-                keyboardType="decimal-pad"
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, !canSave && styles.buttonDisabled]}
-              onPress={handleSaveExtractedItem}
-              disabled={!canSave}
-            >
-              {savingManual ? (
-                <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-              ) : (
-                <Text style={styles.buttonText}>Add to Wishlist</Text>
-              )}
-            </TouchableOpacity>
-          </>
-        )}
       </View>
     );
   };
@@ -825,6 +799,13 @@ export default function AddItemScreen() {
   const renderCameraTab = () => {
     return (
       <View style={styles.content}>
+        <View style={styles.tipCard}>
+          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
+          <Text style={styles.tipText}>
+            Take a photo of any product and we'll identify it using AI.
+          </Text>
+        </View>
+
         <View style={styles.formCard}>
           <Text style={styles.label}>Take Photo</Text>
 
@@ -858,7 +839,7 @@ export default function AddItemScreen() {
               {identifyingCamera ? (
                 <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
-                <Text style={styles.buttonText}>Identify Product</Text>
+                <Text style={styles.buttonText}>Identify & Preview</Text>
               )}
             </TouchableOpacity>
           )}
@@ -870,6 +851,13 @@ export default function AddItemScreen() {
   const renderUploadTab = () => {
     return (
       <View style={styles.content}>
+        <View style={styles.tipCard}>
+          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
+          <Text style={styles.tipText}>
+            Upload a photo from your gallery and we'll identify the product using AI.
+          </Text>
+        </View>
+
         <View style={styles.formCard}>
           <Text style={styles.label}>Upload Image</Text>
 
@@ -903,7 +891,7 @@ export default function AddItemScreen() {
               {identifyingUpload ? (
                 <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
               ) : (
-                <Text style={styles.buttonText}>Identify Product</Text>
+                <Text style={styles.buttonText}>Identify & Preview</Text>
               )}
             </TouchableOpacity>
           )}
@@ -915,6 +903,13 @@ export default function AddItemScreen() {
   const renderSearchTab = () => {
     return (
       <View style={styles.content}>
+        <View style={styles.tipCard}>
+          <IconSymbol ios_icon_name="info.circle" android_material_icon_name="info" size={20} color={colors.accent} />
+          <Text style={styles.tipText}>
+            Search for products by name and we'll find purchasable options in your country.
+          </Text>
+        </View>
+
         <View style={styles.formCard}>
           <Text style={styles.label}>Product Name *</Text>
           <TextInput
@@ -934,14 +929,24 @@ export default function AddItemScreen() {
             onChangeText={setSearchBrand}
           />
 
-          <Text style={styles.label}>Keywords (optional)</Text>
+          <Text style={styles.label}>Model / Keywords (optional)</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g., 256GB, blue"
             placeholderTextColor={placeholderColor}
-            value={searchKeywords}
-            onChangeText={setSearchKeywords}
+            value={searchModel}
+            onChangeText={setSearchModel}
           />
+
+          {userLocation && (
+            <View style={styles.tipCard}>
+              <IconSymbol ios_icon_name="location" android_material_icon_name="location-on" size={16} color={colors.accent} />
+              <Text style={styles.tipText}>
+                Searching for products available in {userLocation.countryCode}
+                {userLocation.city ? `, ${userLocation.city}` : ''}
+              </Text>
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.button, (!searchQuery.trim() || searching) && styles.buttonDisabled]}
@@ -951,7 +956,7 @@ export default function AddItemScreen() {
             {searching ? (
               <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
             ) : (
-              <Text style={styles.buttonText}>Search</Text>
+              <Text style={styles.buttonText}>Search Products</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -989,100 +994,6 @@ export default function AddItemScreen() {
     );
   };
 
-  const renderManualTab = () => {
-    const canSave = manualTitle.trim().length > 0 && !savingManual;
-
-    return (
-      <View style={styles.content}>
-        <View style={styles.formCard}>
-          <Text style={styles.label}>Name *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Item name"
-            placeholderTextColor={placeholderColor}
-            value={manualTitle}
-            onChangeText={setManualTitle}
-          />
-
-          <Text style={styles.label}>Brand (optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Brand name"
-            placeholderTextColor={placeholderColor}
-            value={manualBrand}
-            onChangeText={setManualBrand}
-          />
-
-          <Text style={styles.label}>Price (optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="0.00"
-            placeholderTextColor={placeholderColor}
-            value={manualPrice}
-            onChangeText={setManualPrice}
-            keyboardType="decimal-pad"
-          />
-
-          <Text style={styles.label}>Store Link (optional)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="https://..."
-            placeholderTextColor={placeholderColor}
-            value={manualStoreLink}
-            onChangeText={setManualStoreLink}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-          />
-
-          <Text style={styles.label}>Image (optional)</Text>
-          {manualImageUrl ? (
-            <View>
-              <Image
-                source={resolveImageSource(manualImageUrl)}
-                style={styles.selectedImage}
-                resizeMode="cover"
-              />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => setManualImageUrl('')}
-              >
-                <IconSymbol ios_icon_name="xmark" android_material_icon_name="close" size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={styles.imagePickerButton} onPress={handlePickManualImage}>
-              <IconSymbol ios_icon_name="photo" android_material_icon_name="image" size={32} color={colors.textSecondary} />
-              <Text style={styles.imagePickerText}>Tap to add image</Text>
-            </TouchableOpacity>
-          )}
-
-          <Text style={styles.label}>Notes (optional)</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            placeholder="Add any notes about this item"
-            placeholderTextColor={placeholderColor}
-            value={manualNotes}
-            onChangeText={setManualNotes}
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[styles.button, !canSave && styles.buttonDisabled]}
-            onPress={handleSaveManualItem}
-            disabled={!canSave}
-          >
-            {savingManual ? (
-              <ActivityIndicator color={theme.mode === 'dark' ? '#3b2a1f' : '#FFFFFF'} />
-            ) : (
-              <Text style={styles.buttonText}>Add to Wishlist</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
-
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
@@ -1090,7 +1001,7 @@ export default function AddItemScreen() {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Add Item</Text>
           <Text style={styles.headerSubtitle}>
-            Add from a link, photo, search, or enter details manually
+            Choose how you'd like to add items to your wishlist
           </Text>
         </View>
 
@@ -1105,6 +1016,12 @@ export default function AddItemScreen() {
         </TouchableOpacity>
 
         <View style={styles.tabBar}>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'share' && styles.tabActive]}
+            onPress={() => setActiveTab('share')}
+          >
+            <Text style={[styles.tabText, activeTab === 'share' && styles.tabTextActive]}>Share</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'url' && styles.tabActive]}
             onPress={() => setActiveTab('url')}
@@ -1129,12 +1046,6 @@ export default function AddItemScreen() {
           >
             <Text style={[styles.tabText, activeTab === 'search' && styles.tabTextActive]}>Search</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'manual' && styles.tabActive]}
-            onPress={() => setActiveTab('manual')}
-          >
-            <Text style={[styles.tabText, activeTab === 'manual' && styles.tabTextActive]}>Manual</Text>
-          </TouchableOpacity>
         </View>
 
         <KeyboardAvoidingView
@@ -1148,11 +1059,11 @@ export default function AddItemScreen() {
               contentContainerStyle={styles.scrollContent}
               keyboardShouldPersistTaps="handled"
             >
+              {activeTab === 'share' && renderShareTab()}
               {activeTab === 'url' && renderUrlTab()}
               {activeTab === 'camera' && renderCameraTab()}
               {activeTab === 'upload' && renderUploadTab()}
               {activeTab === 'search' && renderSearchTab()}
-              {activeTab === 'manual' && renderManualTab()}
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>

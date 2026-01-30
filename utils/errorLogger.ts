@@ -1,4 +1,3 @@
-
 // Global error logging for runtime errors
 // Captures console.log/warn/error and sends to Natively server for AI debugging
 
@@ -18,16 +17,6 @@ const clearLogAfterDelay = (logKey: string) => {
 const MUTED_MESSAGES = [
   'each child in a list should have a unique "key" prop',
   'Each child in a list should have a unique "key" prop',
-  // Mute expected errors from version tracking and edge functions
-  'checkForUpdateAsync',
-  'Updates.checkForUpdateAsync',
-  'relation "app_versions" does not exist',
-  'Could not find the table',
-  'PGRST204',
-  'PGRST205',
-  'Edge Function',
-  'not found (404)',
-  'function may not be deployed',
 ];
 
 // Check if a message should be muted
@@ -349,9 +338,6 @@ export const setupErrorLogging = () => {
       const sourceFile = source ? source.split('/').pop() : 'unknown';
       const errorMessage = `RUNTIME ERROR: ${message} at ${sourceFile}:${lineno}:${colno}`;
 
-      // Skip muted messages
-      if (shouldMuteMessage(errorMessage)) return false;
-
       queueLog('error', errorMessage, `${sourceFile}:${lineno}:${colno}`);
       sendErrorToParent('error', 'JavaScript Runtime Error', {
         message,
@@ -366,10 +352,6 @@ export const setupErrorLogging = () => {
     if (Platform.OS === 'web') {
       window.addEventListener('unhandledrejection', (event) => {
         const message = `UNHANDLED PROMISE REJECTION: ${event.reason}`;
-        
-        // Skip muted messages
-        if (shouldMuteMessage(message)) return;
-        
         queueLog('error', message, '');
         sendErrorToParent('error', 'Unhandled Promise Rejection', { reason: event.reason });
       });
