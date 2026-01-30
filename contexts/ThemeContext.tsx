@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, ReactNode, useState, useEffect } from 'react';
+import React, { createContext, useContext, ReactNode, useState, useEffect, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Theme, lightTheme, darkTheme } from '@/styles/theme';
@@ -11,6 +11,7 @@ interface ThemeContextType {
   isDark: boolean;
   themePreference: ThemePreference;
   setThemePreference: (preference: ThemePreference) => Promise<void>;
+  isHydrated: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -31,16 +32,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
         if (isMounted && stored && (stored === 'light' || stored === 'dark' || stored === 'system')) {
           setThemePreferenceState(stored as ThemePreference);
-          console.log('[ThemeContext] Loaded theme preference:', stored);
-        } else {
-          console.log('[ThemeContext] No stored preference, using system default');
         }
       } catch (error) {
         console.error('[ThemeContext] Error loading theme preference:', error);
       } finally {
         if (isMounted) {
           setIsHydrated(true);
-          console.log('[ThemeContext] Theme hydration complete');
         }
       }
     };
@@ -56,20 +53,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     try {
       await AsyncStorage.setItem(THEME_STORAGE_KEY, preference);
       setThemePreferenceState(preference);
-      console.log('[ThemeContext] Theme preference saved:', preference);
     } catch (error) {
       console.error('[ThemeContext] Error saving theme preference:', error);
     }
   };
 
-  // Determine actual theme based on preference
-  const isDark = themePreference === 'system' 
-    ? systemColorScheme === 'dark'
-    : themePreference === 'dark';
+  // Determine actual theme based on preference - memoized to prevent re-renders
+  const isDark = useMemo(() => {
+    return themePreference === 'system' 
+      ? systemColorScheme === 'dark'
+      : themePreference === 'dark';
+  }, [themePreference, systemColorScheme]);
   
-  const theme = isDark ? darkTheme : lightTheme;
+  const theme = useMemo(() => {
+    return isDark ? darkTheme : lightTheme;
+  }, [isDark]);
 
-  console.log('[ThemeContext] Current theme:', theme.mode, '| Preference:', themePreference, '| Hydrated:', isHydrated);
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    theme,
+    isDark,
+    themePreference,
+    setThemePreference,
+    isHydrated,
+  }), [theme, isDark, themePreference, isHydrated]);
 
   // Show default theme while hydrating (prevents flicker)
   if (!isHydrated) {
@@ -81,7 +88,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         theme: defaultTheme, 
         isDark: defaultIsDark, 
         themePreference: 'system',
-        setThemePreference 
+        setThemePreference,
+        isHydrated: false,
       }}>
         {children}
       </ThemeContext.Provider>
@@ -89,7 +97,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, isDark, themePreference, setThemePreference }}>
+    <ThemeContext.Provider value={contextValue}>
       {children}
     </ThemeContext.Provider>
   );

@@ -4,7 +4,6 @@ import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
 import { getCachedData, setCachedData } from '@/utils/cache';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
-import { Badge } from '@/components/design-system/Badge';
 import { ListItemSkeleton } from '@/components/design-system/LoadingSkeleton';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
@@ -18,7 +17,7 @@ import { Logo } from '@/components/Logo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/design-system/Card';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { dedupeById, normalizeList } from '@/utils/deduplication';
+import { dedupeById } from '@/utils/deduplication';
 import {
   View,
   Text,
@@ -99,7 +98,7 @@ export default function WishlistsScreen() {
     },
     title: {
       ...typography.h1,
-      color: colors.text,
+      color: colors.textPrimary,
       marginBottom: spacing.xs,
     },
     subtitle: {
@@ -127,7 +126,7 @@ export default function WishlistsScreen() {
     },
     wishlistName: {
       ...typography.h3,
-      color: colors.text,
+      color: colors.textPrimary,
       marginBottom: spacing.xs,
     },
     wishlistMeta: {
@@ -179,18 +178,18 @@ export default function WishlistsScreen() {
     },
     modalTitle: {
       ...typography.h2,
-      color: colors.text,
+      color: colors.textPrimary,
       marginBottom: spacing.md,
     },
     modalInput: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surface2,
       borderWidth: 1.5,
       borderColor: colors.border,
       borderRadius: 12,
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.md,
       fontSize: 16,
-      color: colors.text,
+      color: colors.textPrimary,
       marginBottom: spacing.md,
     },
     modalButtons: {
@@ -231,7 +230,7 @@ export default function WishlistsScreen() {
     },
     menuItemText: {
       ...typography.body,
-      color: colors.text,
+      color: colors.textPrimary,
     },
     menuItemDanger: {
       color: colors.error,
@@ -243,25 +242,18 @@ export default function WishlistsScreen() {
   }), [colors, typography, insets.bottom]);
 
   const initializeDefaultWishlist = useCallback(async () => {
-    if (!user?.id || initializing) {
-      console.log('[WishlistsScreen] Cannot initialize default wishlist - user:', user?.id, 'initializing:', initializing);
+    if (!user?.id || initializing || hasInitializedRef.current) {
       return;
     }
 
     setInitializing(true);
     try {
-      console.log('[WishlistsScreen] Creating default wishlist for new user:', user.id);
-      
       const wishlistData = {
         user_id: user.id,
         name: 'My Wishlist',
       };
       
-      console.log('[WishlistsScreen] Wishlist data:', wishlistData);
-      
       const newWishlist = await createWishlist(wishlistData);
-
-      console.log('[WishlistsScreen] Default wishlist created successfully:', newWishlist.id);
       
       // Refresh the list
       await fetchWishlistsFromNetwork();
@@ -270,8 +262,6 @@ export default function WishlistsScreen() {
       router.push(`/wishlist/${newWishlist.id}`);
     } catch (err) {
       console.error('[WishlistsScreen] Error creating default wishlist:', err);
-      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
-      
       const errorMessage = err instanceof Error ? err.message : 'Failed to create default wishlist';
       Alert.alert('Error', errorMessage);
     } finally {
@@ -280,14 +270,7 @@ export default function WishlistsScreen() {
   }, [user, initializing, router]);
 
   const fetchWishlistsFromNetwork = useCallback(async () => {
-    if (!user?.id) {
-      console.log('[WishlistsScreen] No user ID, skipping fetch');
-      return;
-    }
-
-    // Prevent duplicate fetches
-    if (isFetchingRef.current) {
-      console.log('[WishlistsScreen] Fetch already in progress, skipping');
+    if (!user?.id || isFetchingRef.current) {
       return;
     }
 
@@ -297,7 +280,6 @@ export default function WishlistsScreen() {
       setLoading(true);
       setError(null);
 
-      console.log('[WishlistsScreen] Fetching wishlists from Supabase for user:', user.id);
       const data = await getWishlistWithItemCount(user.id);
 
       const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
@@ -309,32 +291,28 @@ export default function WishlistsScreen() {
         updatedAt: w.updatedAt,
       }));
 
-      // Apply deduplication and normalization
-      const normalizedWishlists = normalizeList(formattedWishlists, 'id', 'updatedAt');
-
-      console.log('[WishlistsScreen] Fetched wishlists:', normalizedWishlists.length);
+      // Apply deduplication
+      const deduplicatedWishlists = dedupeById(formattedWishlists, 'id');
 
       // Set state with deduplicated data
-      setWishlists(normalizedWishlists);
-      await setCachedData('wishlists', normalizedWishlists);
+      setWishlists(deduplicatedWishlists);
+      await setCachedData('wishlists', deduplicatedWishlists);
       
       // If user has no wishlists, create a default one
-      if (normalizedWishlists.length === 0 && !initializing) {
-        console.log('[WishlistsScreen] No wishlists found, creating default wishlist');
+      if (deduplicatedWishlists.length === 0 && !initializing && !hasInitializedRef.current) {
+        hasInitializedRef.current = true;
         await initializeDefaultWishlist();
         return;
       }
     } catch (err) {
       console.error('[WishlistsScreen] Error fetching wishlists:', err);
-      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
       setError(err instanceof Error ? err.message : 'Failed to load wishlists');
 
       // Try to load from cache
       const cached = await getCachedData<Wishlist[]>('wishlists');
       if (cached) {
-        console.log('[WishlistsScreen] Using cached wishlists');
-        const normalizedCached = dedupeById(cached, 'id');
-        setWishlists(normalizedCached);
+        const deduplicatedCached = dedupeById(cached, 'id');
+        setWishlists(deduplicatedCached);
       }
     } finally {
       setLoading(false);
@@ -345,18 +323,9 @@ export default function WishlistsScreen() {
 
   // Setup realtime subscription (only once)
   const setupRealtimeSubscription = useCallback(() => {
-    if (!user?.id) {
-      console.log('[WishlistsScreen] No user, skipping realtime subscription');
+    if (!user?.id || subscriptionRef.current) {
       return;
     }
-
-    // Prevent duplicate subscriptions
-    if (subscriptionRef.current) {
-      console.log('[WishlistsScreen] Realtime subscription already exists, skipping');
-      return;
-    }
-
-    console.log('[WishlistsScreen] Setting up realtime subscription for user:', user.id);
 
     const channel = supabase
       .channel('wishlists-changes')
@@ -369,22 +338,17 @@ export default function WishlistsScreen() {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
-          console.log('[WishlistsScreen] Realtime update received:', payload.eventType);
-          
           // Debounce realtime updates to prevent multiple rapid fetches
           if (realtimeDebounceRef.current) {
             clearTimeout(realtimeDebounceRef.current);
           }
 
           realtimeDebounceRef.current = setTimeout(() => {
-            console.log('[WishlistsScreen] Debounced realtime update - refetching wishlists');
             fetchWishlistsFromNetwork();
           }, 500); // Wait 500ms before refetching
         }
       )
-      .subscribe((status) => {
-        console.log('[WishlistsScreen] Realtime subscription status:', status);
-      });
+      .subscribe();
 
     subscriptionRef.current = channel;
   }, [user, fetchWishlistsFromNetwork]);
@@ -392,7 +356,6 @@ export default function WishlistsScreen() {
   // Cleanup realtime subscription
   const cleanupRealtimeSubscription = useCallback(() => {
     if (subscriptionRef.current) {
-      console.log('[WishlistsScreen] Cleaning up realtime subscription');
       supabase.removeChannel(subscriptionRef.current);
       subscriptionRef.current = null;
     }
@@ -406,7 +369,6 @@ export default function WishlistsScreen() {
   // Initial fetch and subscription setup
   useEffect(() => {
     if (user && !hasInitializedRef.current) {
-      console.log('[WishlistsScreen] User authenticated, initializing');
       hasInitializedRef.current = true;
       fetchWishlistsFromNetwork();
       setupRealtimeSubscription();
@@ -414,7 +376,6 @@ export default function WishlistsScreen() {
 
     // Cleanup on unmount
     return () => {
-      console.log('[WishlistsScreen] Component unmounting, cleaning up');
       cleanupRealtimeSubscription();
       hasInitializedRef.current = false;
       isFetchingRef.current = false;
@@ -422,7 +383,6 @@ export default function WishlistsScreen() {
   }, [user, fetchWishlistsFromNetwork, setupRealtimeSubscription, cleanupRealtimeSubscription]);
 
   const handleRefresh = useCallback(() => {
-    console.log('[WishlistsScreen] User triggered refresh');
     setRefreshing(true);
     fetchWishlistsFromNetwork();
   }, [fetchWishlistsFromNetwork]);
@@ -441,18 +401,12 @@ export default function WishlistsScreen() {
     }
 
     try {
-      console.log('[WishlistsScreen] Creating wishlist:', trimmedName, 'for user:', user.id);
-      
       const wishlistData = {
         user_id: user.id,
         name: trimmedName,
       };
       
-      console.log('[WishlistsScreen] Wishlist data:', wishlistData);
-      
-      const newWishlist = await createWishlist(wishlistData);
-      
-      console.log('[WishlistsScreen] Wishlist created successfully:', newWishlist);
+      await createWishlist(wishlistData);
 
       setCreateModalVisible(false);
       setNewWishlistName('');
@@ -460,8 +414,6 @@ export default function WishlistsScreen() {
       Alert.alert('Success', 'Wishlist created successfully');
     } catch (err) {
       console.error('[WishlistsScreen] Error creating wishlist:', err);
-      console.error('[WishlistsScreen] Error details:', JSON.stringify(err, null, 2));
-      
       const errorMessage = err instanceof Error ? err.message : 'Failed to create wishlist';
       Alert.alert('Error', errorMessage);
     }
@@ -476,7 +428,6 @@ export default function WishlistsScreen() {
     }
 
     try {
-      console.log('[WishlistsScreen] Renaming wishlist:', selectedWishlist.id, 'to:', trimmedName);
       await updateWishlist(selectedWishlist.id, {
         name: trimmedName,
       });
@@ -496,7 +447,6 @@ export default function WishlistsScreen() {
     if (!selectedWishlist) return;
 
     try {
-      console.log('[WishlistsScreen] Deleting wishlist:', selectedWishlist.id);
       await deleteWishlist(selectedWishlist.id);
 
       setDeleteDialogVisible(false);
@@ -510,12 +460,10 @@ export default function WishlistsScreen() {
   };
 
   const handleWishlistPress = (wishlist: Wishlist) => {
-    console.log('[WishlistsScreen] User tapped wishlist:', wishlist.name);
     router.push(`/wishlist/${wishlist.id}`);
   };
 
   const openOverflowMenu = (wishlist: Wishlist, event: any) => {
-    console.log('[WishlistsScreen] Opening overflow menu for:', wishlist.name);
     setSelectedWishlist(wishlist);
     
     const { pageY, pageX } = event.nativeEvent;
@@ -524,7 +472,6 @@ export default function WishlistsScreen() {
   };
 
   const openRenameModal = (wishlist: Wishlist) => {
-    console.log('[WishlistsScreen] Opening rename modal for:', wishlist.name);
     setSelectedWishlist(wishlist);
     setRenameWishlistName(wishlist.name);
     setMenuVisible(false);
@@ -532,7 +479,6 @@ export default function WishlistsScreen() {
   };
 
   const openCreateModal = () => {
-    console.log('[WishlistsScreen] Opening create wishlist modal');
     setNewWishlistName('');
     setCreateModalVisible(true);
   };
@@ -570,7 +516,7 @@ export default function WishlistsScreen() {
 
     return (
       <TouchableOpacity
-        key={item.id}
+        key={`wishlist-${item.id}`}
         onPress={() => handleWishlistPress(item)}
         activeOpacity={0.7}
       >
@@ -603,7 +549,7 @@ export default function WishlistsScreen() {
                   ios_icon_name="ellipsis"
                   android_material_icon_name="more-vert"
                   size={24}
-                  color={colors.text}
+                  color={colors.icon}
                 />
               </TouchableOpacity>
             </View>
@@ -720,7 +666,7 @@ export default function WishlistsScreen() {
         <FlatList
           data={wishlists}
           renderItem={renderWishlistItem}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={(item) => `wishlist-${item.id}`}
           ListHeaderComponent={renderHeader}
           ListFooterComponent={renderFooter}
           contentContainerStyle={styles.listContent}
@@ -729,7 +675,7 @@ export default function WishlistsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={colors.primary}
+              tintColor={colors.accent}
             />
           }
           removeClippedSubviews={false}
@@ -824,7 +770,7 @@ export default function WishlistsScreen() {
                   ios_icon_name="pencil"
                   android_material_icon_name="edit"
                   size={20}
-                  color={colors.text}
+                  color={colors.icon}
                 />
                 <Text style={styles.menuItemText}>Rename</Text>
               </TouchableOpacity>

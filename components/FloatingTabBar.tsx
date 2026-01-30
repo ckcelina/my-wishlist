@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -50,11 +50,11 @@ export default function FloatingTabBar({
   const router = useRouter();
   const pathname = usePathname();
   const { theme, isDark } = useAppTheme();
-  const colors = createColors(theme);
+  const colors = useMemo(() => createColors(theme), [theme]);
   const animatedValue = useSharedValue(0);
   const insets = useSafeAreaInsets();
 
-  const activeTabIndex = React.useMemo(() => {
+  const activeTabIndex = useMemo(() => {
     let bestMatch = -1;
     let bestMatchScore = 0;
 
@@ -91,7 +91,6 @@ export default function FloatingTabBar({
   }, [activeTabIndex, animatedValue]);
 
   const handleTabPress = (route: Href) => {
-    console.log('Tab pressed:', route);
     router.push(route);
   };
 
@@ -115,7 +114,7 @@ export default function FloatingTabBar({
   // Calculate bottom margin with safe area
   const calculatedBottomMargin = bottomMargin ?? Math.max(insets.bottom, ComponentSpacing.tabBarBottomMargin);
 
-  const dynamicStyles = {
+  const dynamicStyles = useMemo(() => ({
     container: {
       ...styles.container,
       width: containerWidth,
@@ -153,7 +152,7 @@ export default function FloatingTabBar({
       backgroundColor: colors.surface2,
       width: `${tabWidthPercent}%` as `${number}%`,
     },
-  };
+  }), [colors, isDark, containerWidth, calculatedBottomMargin, borderRadius, tabWidthPercent]);
 
   return (
     <View style={[styles.safeArea, { paddingBottom: insets.bottom }]}>
@@ -173,7 +172,7 @@ export default function FloatingTabBar({
               const iconColor = isActive ? colors.textPrimary : colors.textSecondary;
 
               return (
-                <React.Fragment key={index}>
+                <React.Fragment key={`tab-${tab.name}-${index}`}>
                 <TouchableOpacity
                   style={styles.tab}
                   onPress={() => handleTabPress(tab.route)}
