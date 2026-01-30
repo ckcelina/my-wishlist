@@ -27,7 +27,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
-import { findAlternatives } from '@/utils/supabase-edge-functions';
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -55,7 +54,12 @@ interface AlternativeStore {
   storeDomain: string;
   price: number;
   currency: string;
-  shippingCountries?: string[];
+  originalPrice?: number;
+  originalCurrency?: string;
+  shippingCost?: number;
+  deliveryTime?: string;
+  availability?: 'in_stock' | 'out_of_stock' | 'limited_stock' | 'unknown';
+  confidenceScore?: number;
   url: string;
 }
 
@@ -416,6 +420,35 @@ export default function ImportPreviewScreen() {
       
       console.log('[ImportPreview] Item saved successfully:', newItem.id);
       
+      // Save offers to database if any exist
+      if (alternativeStores.length > 0) {
+        console.log('[ImportPreview] Saving', alternativeStores.length, 'offers to database');
+        try {
+          const { authenticatedPost } = await import('@/utils/api');
+          await authenticatedPost(`/api/items/${newItem.id}/save-offers`, {
+            offers: alternativeStores.map(store => ({
+              storeName: store.storeName,
+              storeDomain: store.storeDomain,
+              productUrl: store.url,
+              price: store.price,
+              currency: store.currency,
+              originalPrice: store.originalPrice || null,
+              originalCurrency: store.originalCurrency || null,
+              shippingCost: store.shippingCost || null,
+              deliveryTime: store.deliveryTime || null,
+              availability: store.availability || 'in_stock',
+              confidenceScore: store.confidenceScore || null,
+              countryCode: userLocation?.countryCode || null,
+              city: userLocation?.city || null,
+            })),
+          });
+          console.log('[ImportPreview] Offers saved successfully');
+        } catch (offerError) {
+          console.error('[ImportPreview] Error saving offers:', offerError);
+          // Don't fail the whole operation if offers fail to save
+        }
+      }
+      
       Alert.alert(
         'Success',
         'Item added to your wishlist!',
@@ -460,29 +493,40 @@ export default function ImportPreviewScreen() {
   };
 
   const handleLoadAlternatives = async () => {
-    if (!itemName || !userLocation) return;
+    if (!itemName) {
+      Alert.alert('Missing Information', 'Please enter an item name first');
+      return;
+    }
     
-    console.log('[ImportPreview] Loading alternative stores');
+    console.log('[ImportPreview] Loading AI Price Search results');
     setLoadingAlternatives(true);
     
     try {
-      // Call find-alternatives edge function
-      const response = await findAlternatives(itemName, {
-        originalUrl: productData?.sourceUrl,
-        countryCode: userLocation.countryCode,
-        city: userLocation.city || undefined,
+      // Call backend AI Price Search endpoint
+      const { authenticatedPost } = await import('@/utils/api');
+      const response = await authenticatedPost<{
+        offers: AlternativeStore[];
+        message?: string;
+      }>('/api/items/ai-price-search', {
+        productName: itemName,
+        imageUrl: selectedImage || null,
+        originalUrl: productData?.sourceUrl || null,
+        countryCode: userLocation?.countryCode || null,
+        city: userLocation?.city || null,
       });
       
-      if (response.error) {
-        console.warn('[ImportPreview] Alternatives error:', response.error);
-      }
+      console.log('[ImportPreview] AI Price Search results:', response.offers.length, 'offers');
       
-      setAlternativeStores(response.alternatives);
-      setShowAlternatives(true);
-      console.log('[ImportPreview] Loaded alternatives:', response.alternatives.length);
+      if (response.offers && response.offers.length > 0) {
+        setAlternativeStores(response.offers);
+        setShowAlternatives(true);
+      } else {
+        const message = response.message || 'No offers found for this product';
+        Alert.alert('No Results', message);
+      }
     } catch (error) {
-      console.error('[ImportPreview] Error loading alternatives:', error);
-      Alert.alert('Error', 'Failed to load alternative stores');
+      console.error('[ImportPreview] Error loading AI Price Search:', error);
+      Alert.alert('Error', 'Failed to search for prices. Please try again.');
     } finally {
       setLoadingAlternatives(false);
     }
@@ -678,23 +722,38 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
-            {/* Other Stores & Prices */}
-            {alternativeStores.length > 0 && (
+            {/* AI Price Search Section */}
+            {alternativeStores.length > 0 ? (
               <View style={styles.alternativesSection}>
                 <View style={styles.alternativesHeader}>
-                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Other stores & prices</Text>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Price Offers Found</Text>
                   <Text style={[styles.alternativesCount, { color: colors.textSecondary }]}>
-                    {alternativeStores.length} {alternativeStores.length === 1 ? 'store' : 'stores'}
+                    {alternativeStores.length} {alternativeStores.length === 1 ? 'offer' : 'offers'}
                   </Text>
                 </View>
                 
-                {alternativeStores.map((store, index) => {
+                {alternativeStores.slice(0, 3).map((store, index) => {
                   const storePrice = `${store.currency} ${store.price.toFixed(2)}`;
+                  const hasShipping = store.shippingCost !== undefined && store.shippingCost !== null;
+                  const shippingText = hasShipping 
+                    ? store.shippingCost === 0 
+                      ? 'Free shipping' 
+                      : `+${store.currency} ${store.shippingCost.toFixed(2)} shipping`
+                    : null;
+                  
                   return (
                     <View key={index} style={[styles.alternativeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <View style={styles.alternativeInfo}>
                         <Text style={[styles.alternativeStoreName, { color: colors.textPrimary }]}>{store.storeName}</Text>
-                        <Text style={[styles.alternativeDomain, { color: colors.textSecondary }]}>{store.domain}</Text>
+                        <Text style={[styles.alternativeDomain, { color: colors.textSecondary }]}>{store.storeDomain}</Text>
+                        {shippingText && (
+                          <Text style={[styles.alternativeShipping, { color: colors.textTertiary }]}>{shippingText}</Text>
+                        )}
+                        {store.deliveryTime && (
+                          <Text style={[styles.alternativeDelivery, { color: colors.textTertiary }]}>
+                            Delivery: {store.deliveryTime}
+                          </Text>
+                        )}
                       </View>
                       <View style={styles.alternativeRight}>
                         <Text style={[styles.alternativePrice, { color: colors.accent }]}>{storePrice}</Text>
@@ -703,7 +762,7 @@ export default function ImportPreviewScreen() {
                             const { openStoreLink } = await import('@/utils/openStoreLink');
                             await openStoreLink(store.url, {
                               source: 'import_preview_alternatives',
-                              storeDomain: store.domain,
+                              storeDomain: store.storeDomain,
                             });
                           }}
                         >
@@ -718,11 +777,14 @@ export default function ImportPreviewScreen() {
                     </View>
                   );
                 })}
+                
+                {alternativeStores.length > 3 && (
+                  <Text style={[styles.moreOffersText, { color: colors.textSecondary }]}>
+                    +{alternativeStores.length - 3} more {alternativeStores.length - 3 === 1 ? 'offer' : 'offers'} will be saved
+                  </Text>
+                )}
               </View>
-            )}
-
-            {/* Load Alternatives Button */}
-            {alternativeStores.length === 0 && itemName && userLocation && (
+            ) : (
               <TouchableOpacity
                 style={[styles.loadAlternativesButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 onPress={handleLoadAlternatives}
@@ -738,7 +800,7 @@ export default function ImportPreviewScreen() {
                       size={20}
                       color={colors.accent}
                     />
-                    <Text style={[styles.loadAlternativesText, { color: colors.accent }]}>Find other stores</Text>
+                    <Text style={[styles.loadAlternativesText, { color: colors.accent }]}>Find Prices Online</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1157,6 +1219,14 @@ const styles = StyleSheet.create({
   },
   alternativeDomain: {
     fontSize: 12,
+    marginBottom: spacing.xs / 2,
+  },
+  alternativeShipping: {
+    fontSize: 12,
+    marginBottom: spacing.xs / 2,
+  },
+  alternativeDelivery: {
+    fontSize: 12,
   },
   alternativeRight: {
     alignItems: 'flex-end',
@@ -1165,6 +1235,12 @@ const styles = StyleSheet.create({
   alternativePrice: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  moreOffersText: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
   loadAlternativesButton: {
     flexDirection: 'row',
