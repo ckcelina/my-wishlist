@@ -24,10 +24,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
-import { authenticatedPost, authenticatedGet } from '@/utils/api';
-import { fetchWishlists, fetchWishlistItems } from '@/lib/supabase-helpers';
+import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
+import { findAlternatives } from '@/utils/supabase-edge-functions';
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -55,7 +55,7 @@ interface AlternativeStore {
   storeDomain: string;
   price: number;
   currency: string;
-  shippingCountries: string[];
+  shippingCountries?: string[];
   url: string;
 }
 
@@ -199,14 +199,16 @@ export default function ImportPreviewScreen() {
     if (!user) return;
     
     try {
-      console.log('[ImportPreview] Fetching user location');
-      const response = await authenticatedGet<{
-        countryCode: string;
-        city: string | null;
-      }>('/api/users/location');
+      console.log('[ImportPreview] Fetching user location from Supabase');
+      const locationData = await fetchUserLocation(user.id);
       
-      setUserLocation(response);
-      console.log('[ImportPreview] User location:', response);
+      if (locationData) {
+        setUserLocation({
+          countryCode: locationData.country_code,
+          city: locationData.city,
+        });
+        console.log('[ImportPreview] User location:', locationData);
+      }
     } catch (error) {
       console.error('[ImportPreview] Error fetching location:', error);
       // Location is optional, continue without it
@@ -465,22 +467,19 @@ export default function ImportPreviewScreen() {
     
     try {
       // Call find-alternatives edge function
-      const response = await authenticatedPost<{
-        alternatives: AlternativeStore[];
-      }>('/api/find-alternatives', {
-        productName: itemName,
+      const response = await findAlternatives(itemName, {
+        originalUrl: productData?.sourceUrl,
         countryCode: userLocation.countryCode,
-        city: userLocation.city,
+        city: userLocation.city || undefined,
       });
       
-      // Filter to stores that ship to user's location
-      const filtered = response.alternatives.filter(store =>
-        store.shippingCountries.includes(userLocation.countryCode)
-      );
+      if (response.error) {
+        console.warn('[ImportPreview] Alternatives error:', response.error);
+      }
       
-      setAlternativeStores(filtered);
+      setAlternativeStores(response.alternatives);
       setShowAlternatives(true);
-      console.log('[ImportPreview] Loaded alternatives:', filtered.length);
+      console.log('[ImportPreview] Loaded alternatives:', response.alternatives.length);
     } catch (error) {
       console.error('[ImportPreview] Error loading alternatives:', error);
       Alert.alert('Error', 'Failed to load alternative stores');
@@ -695,7 +694,7 @@ export default function ImportPreviewScreen() {
                     <View key={index} style={[styles.alternativeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <View style={styles.alternativeInfo}>
                         <Text style={[styles.alternativeStoreName, { color: colors.textPrimary }]}>{store.storeName}</Text>
-                        <Text style={[styles.alternativeDomain, { color: colors.textSecondary }]}>{store.storeDomain}</Text>
+                        <Text style={[styles.alternativeDomain, { color: colors.textSecondary }]}>{store.domain}</Text>
                       </View>
                       <View style={styles.alternativeRight}>
                         <Text style={[styles.alternativePrice, { color: colors.accent }]}>{storePrice}</Text>
@@ -704,7 +703,7 @@ export default function ImportPreviewScreen() {
                             const { openStoreLink } = await import('@/utils/openStoreLink');
                             await openStoreLink(store.url, {
                               source: 'import_preview_alternatives',
-                              storeDomain: store.storeDomain,
+                              storeDomain: store.domain,
                             });
                           }}
                         >
