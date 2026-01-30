@@ -25,8 +25,9 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
 import { authenticatedPost, authenticatedGet } from '@/utils/api';
-import { fetchWishlists } from '@/lib/supabase-helpers';
+import { fetchWishlists, fetchWishlistItems } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
+import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
 
 // Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -69,6 +70,16 @@ interface UserLocation {
   city: string | null;
 }
 
+interface DuplicateItem {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  currentPrice: number | null;
+  currency: string;
+  originalUrl: string | null;
+  similarity: number;
+}
+
 export default function ImportPreviewScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -99,6 +110,11 @@ export default function ImportPreviewScreen() {
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [isProductCorrect, setIsProductCorrect] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(false);
+  
+  // Duplicate detection state
+  const [checkingDuplicates, setCheckingDuplicates] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
   // Data
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -197,6 +213,81 @@ export default function ImportPreviewScreen() {
     }
   };
 
+  const checkForDuplicates = async () => {
+    if (!selectedWishlistId || !itemName.trim()) {
+      console.log('[ImportPreview] Skipping duplicate check - missing data');
+      return;
+    }
+
+    console.log('[ImportPreview] Checking for duplicates in wishlist:', selectedWishlistId);
+    setCheckingDuplicates(true);
+
+    try {
+      // Fetch existing items in the selected wishlist
+      const existingItems = await fetchWishlistItems(selectedWishlistId);
+      console.log('[ImportPreview] Found existing items:', existingItems.length);
+
+      if (existingItems.length === 0) {
+        console.log('[ImportPreview] No existing items, skipping duplicate check');
+        setCheckingDuplicates(false);
+        return;
+      }
+
+      // Simple client-side duplicate detection
+      const potentialDuplicates: DuplicateItem[] = [];
+      const normalizedNewTitle = itemName.toLowerCase().trim();
+      const newUrl = productData?.sourceUrl?.toLowerCase();
+
+      for (const item of existingItems) {
+        const normalizedExistingTitle = item.title.toLowerCase().trim();
+        let similarity = 0;
+
+        // Rule 1: Exact URL match
+        if (newUrl && item.original_url && newUrl === item.original_url.toLowerCase()) {
+          similarity = 1.0;
+        }
+        // Rule 2: Very similar titles (simple word overlap)
+        else {
+          const newWords = new Set(normalizedNewTitle.split(/\s+/));
+          const existingWords = new Set(normalizedExistingTitle.split(/\s+/));
+          const intersection = new Set([...newWords].filter(x => existingWords.has(x)));
+          const union = new Set([...newWords, ...existingWords]);
+          
+          if (union.size > 0) {
+            similarity = intersection.size / union.size;
+          }
+        }
+
+        // Only consider items with high similarity (>70%)
+        if (similarity > 0.7) {
+          potentialDuplicates.push({
+            id: item.id,
+            title: item.title,
+            imageUrl: item.image_url,
+            currentPrice: item.current_price ? parseFloat(item.current_price) : null,
+            currency: item.currency,
+            originalUrl: item.original_url,
+            similarity,
+          });
+        }
+      }
+
+      console.log('[ImportPreview] Found potential duplicates:', potentialDuplicates.length);
+
+      if (potentialDuplicates.length > 0) {
+        // Sort by similarity (highest first)
+        potentialDuplicates.sort((a, b) => b.similarity - a.similarity);
+        setDuplicates(potentialDuplicates);
+        setShowDuplicateModal(true);
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error checking duplicates:', error);
+      // Continue without duplicate check
+    } finally {
+      setCheckingDuplicates(false);
+    }
+  };
+
   const handleChangeImage = async () => {
     console.log('[ImportPreview] User tapped Change Image');
     
@@ -290,7 +381,20 @@ export default function ImportPreviewScreen() {
       Alert.alert('No Wishlist Selected', 'Please select a wishlist');
       return;
     }
+
+    // Check for duplicates before saving
+    await checkForDuplicates();
     
+    // If duplicates were found, the modal will handle the next steps
+    if (duplicates.length > 0) {
+      return;
+    }
+
+    // No duplicates, proceed with saving
+    await saveItem();
+  };
+
+  const saveItem = async () => {
     setSaving(true);
     
     try {
@@ -328,6 +432,29 @@ export default function ImportPreviewScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDuplicateAddAnyway = async () => {
+    console.log('[ImportPreview] User chose to add anyway despite duplicates');
+    setShowDuplicateModal(false);
+    await saveItem();
+  };
+
+  const handleDuplicateReplace = async (duplicateId: string) => {
+    console.log('[ImportPreview] User chose to replace duplicate:', duplicateId);
+    setShowDuplicateModal(false);
+    
+    Alert.alert(
+      'Replace Item',
+      'This feature will be available soon. For now, you can delete the old item manually and add the new one.',
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleDuplicateCancel = () => {
+    console.log('[ImportPreview] User cancelled duplicate detection');
+    setShowDuplicateModal(false);
+    setDuplicates([]);
   };
 
   const handleLoadAlternatives = async () => {
@@ -675,12 +802,12 @@ export default function ImportPreviewScreen() {
               style={[
                 styles.primaryButton,
                 { backgroundColor: colors.accent },
-                (!isProductCorrect || !itemName.trim() || saving) && styles.primaryButtonDisabled,
+                (!isProductCorrect || !itemName.trim() || saving || checkingDuplicates) && styles.primaryButtonDisabled,
               ]}
               onPress={handleConfirmAndAdd}
-              disabled={!isProductCorrect || !itemName.trim() || saving}
+              disabled={!isProductCorrect || !itemName.trim() || saving || checkingDuplicates}
             >
-              {saving ? (
+              {saving || checkingDuplicates ? (
                 <ActivityIndicator size="small" color={colors.textInverse} />
               ) : (
                 <>
@@ -696,6 +823,21 @@ export default function ImportPreviewScreen() {
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
+
+        {/* Duplicate Detection Modal */}
+        <DuplicateDetectionModal
+          visible={showDuplicateModal}
+          newItem={{
+            title: itemName,
+            imageUrl: selectedImage,
+            currentPrice: price ? parseFloat(price) : null,
+            currency: currency,
+          }}
+          duplicates={duplicates}
+          onAddAnyway={handleDuplicateAddAnyway}
+          onReplace={handleDuplicateReplace}
+          onCancel={handleDuplicateCancel}
+        />
 
         {/* Image Picker Modal */}
         <Modal

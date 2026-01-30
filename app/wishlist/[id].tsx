@@ -41,6 +41,7 @@ interface Item {
   originalUrl: string | null;
   createdAt: string;
   lastCheckedAt?: string | null;
+  sourceDomain?: string | null;
 }
 
 interface Wishlist {
@@ -71,11 +72,66 @@ interface PriceDropInfo {
 }
 
 type SortOption = 'Recently added' | 'Price: Low to High' | 'Price: High to Low';
+type GroupByOption = 'None' | 'Store' | 'Category' | 'Price Range';
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
   return source as ImageSourcePropType;
+}
+
+// Helper function to infer category from title
+function inferCategory(title: string): string {
+  const lowerTitle = title.toLowerCase();
+  
+  if (lowerTitle.includes('beauty') || lowerTitle.includes('makeup') || lowerTitle.includes('skincare') || lowerTitle.includes('cosmetic')) {
+    return 'Beauty';
+  }
+  if (lowerTitle.includes('dress') || lowerTitle.includes('shirt') || lowerTitle.includes('pants') || lowerTitle.includes('clothing') || lowerTitle.includes('fashion')) {
+    return 'Clothing';
+  }
+  if (lowerTitle.includes('phone') || lowerTitle.includes('laptop') || lowerTitle.includes('headphones') || lowerTitle.includes('electronics') || lowerTitle.includes('computer')) {
+    return 'Electronics';
+  }
+  if (lowerTitle.includes('home') || lowerTitle.includes('decor') || lowerTitle.includes('furniture') || lowerTitle.includes('kitchen')) {
+    return 'Home & Kitchen';
+  }
+  if (lowerTitle.includes('book') || lowerTitle.includes('novel') || lowerTitle.includes('magazine')) {
+    return 'Books';
+  }
+  if (lowerTitle.includes('toy') || lowerTitle.includes('game') || lowerTitle.includes('puzzle')) {
+    return 'Toys & Games';
+  }
+  if (lowerTitle.includes('sport') || lowerTitle.includes('fitness') || lowerTitle.includes('exercise') || lowerTitle.includes('outdoor')) {
+    return 'Sports & Outdoors';
+  }
+  if (lowerTitle.includes('food') || lowerTitle.includes('snack') || lowerTitle.includes('drink') || lowerTitle.includes('beverage')) {
+    return 'Food & Beverage';
+  }
+  
+  return 'Other';
+}
+
+// Helper function to get price range
+function getPriceRange(price: number | null): string {
+  if (!price) return 'No Price';
+  
+  if (price < 25) return 'Under $25';
+  if (price < 50) return '$25 - $50';
+  if (price < 100) return '$50 - $100';
+  if (price < 250) return '$100 - $250';
+  return 'Over $250';
+}
+
+// Helper function to extract store name from domain
+function getStoreName(domain: string | null): string {
+  if (!domain) return 'Other Stores';
+  
+  // Remove common TLDs and www
+  const cleaned = domain.replace(/^www\./, '').replace(/\.(com|net|org|co\.uk|ca|au)$/, '');
+  
+  // Capitalize first letter
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 export default function WishlistDetailScreen() {
@@ -98,6 +154,7 @@ export default function WishlistDetailScreen() {
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
+  const [showGroupByModal, setShowGroupByModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showStopSharingConfirm, setShowStopSharingConfirm] = useState(false);
   const [newName, setNewName] = useState('');
@@ -106,6 +163,7 @@ export default function WishlistDetailScreen() {
   const [shareLoading, setShareLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('Recently added');
+  const [groupByOption, setGroupByOption] = useState<GroupByOption>('Category');
   const [refreshingPrices, setRefreshingPrices] = useState(false);
   const [existingShareSlug, setExistingShareSlug] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string>('');
@@ -168,6 +226,7 @@ export default function WishlistDetailScreen() {
         originalUrl: item.original_url,
         createdAt: item.created_at,
         lastCheckedAt: item.last_checked_at,
+        sourceDomain: item.source_domain,
       }));
       
       // Apply deduplication to prevent duplicate items
@@ -206,36 +265,86 @@ export default function WishlistDetailScreen() {
     }
   }, [user, id, authLoading, fetchWishlistAndItems, router]);
 
-  const filteredAndSortedItems = useMemo(() => {
-    console.log('WishlistDetailScreen: Filtering and sorting items with search:', searchTerm, 'sort:', sortOption);
+  const groupedItems = useMemo(() => {
+    console.log('WishlistDetailScreen: Grouping items by:', groupByOption);
     
-    let filtered = items;
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = items.filter(item => 
-        item.title.toLowerCase().includes(searchLower)
-      );
+    if (groupByOption === 'None') {
+      return { 'All Items': items };
     }
 
-    const sorted = [...filtered];
-    if (sortOption === 'Recently added') {
-      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    } else if (sortOption === 'Price: Low to High') {
-      sorted.sort((a, b) => {
-        const priceA = a.currentPrice ?? Infinity;
-        const priceB = b.currentPrice ?? Infinity;
-        return priceA - priceB;
-      });
-    } else if (sortOption === 'Price: High to Low') {
-      sorted.sort((a, b) => {
-        const priceA = a.currentPrice ?? -Infinity;
-        const priceB = b.currentPrice ?? -Infinity;
-        return priceB - priceA;
-      });
-    }
+    const groups: { [key: string]: Item[] } = {};
 
-    return sorted;
-  }, [items, searchTerm, sortOption]);
+    items.forEach(item => {
+      let groupKey: string;
+
+      switch (groupByOption) {
+        case 'Store':
+          groupKey = getStoreName(item.sourceDomain);
+          break;
+        case 'Category':
+          groupKey = inferCategory(item.title);
+          break;
+        case 'Price Range':
+          groupKey = getPriceRange(item.currentPrice);
+          break;
+        default:
+          groupKey = 'All Items';
+      }
+
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(item);
+    });
+
+    return groups;
+  }, [items, groupByOption]);
+
+  const filteredAndSortedGroups = useMemo(() => {
+    console.log('WishlistDetailScreen: Filtering and sorting groups with search:', searchTerm, 'sort:', sortOption);
+    
+    const result: { [key: string]: Item[] } = {};
+
+    Object.entries(groupedItems).forEach(([groupName, groupItems]) => {
+      let filtered = groupItems;
+      
+      if (searchTerm.trim()) {
+        const searchLower = searchTerm.toLowerCase();
+        filtered = groupItems.filter(item => 
+          item.title.toLowerCase().includes(searchLower)
+        );
+      }
+
+      if (filtered.length === 0) {
+        return; // Skip empty groups
+      }
+
+      const sorted = [...filtered];
+      if (sortOption === 'Recently added') {
+        sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      } else if (sortOption === 'Price: Low to High') {
+        sorted.sort((a, b) => {
+          const priceA = a.currentPrice ?? Infinity;
+          const priceB = b.currentPrice ?? Infinity;
+          return priceA - priceB;
+        });
+      } else if (sortOption === 'Price: High to Low') {
+        sorted.sort((a, b) => {
+          const priceA = a.currentPrice ?? -Infinity;
+          const priceB = b.currentPrice ?? -Infinity;
+          return priceB - priceA;
+        });
+      }
+
+      result[groupName] = sorted;
+    });
+
+    return result;
+  }, [groupedItems, searchTerm, sortOption]);
+
+  const totalItemCount = useMemo(() => {
+    return Object.values(filteredAndSortedGroups).reduce((sum, group) => sum + group.length, 0);
+  }, [filteredAndSortedGroups]);
 
   const handleRefresh = () => {
     if (!isOnline) {
@@ -412,10 +521,21 @@ export default function WishlistDetailScreen() {
     setShowSortModal(true);
   };
 
+  const openGroupByModal = () => {
+    console.log('WishlistDetailScreen: Opening group by modal');
+    setShowGroupByModal(true);
+  };
+
   const handleSortSelect = (option: SortOption) => {
     console.log('WishlistDetailScreen: Sort option selected:', option);
     setSortOption(option);
     setShowSortModal(false);
+  };
+
+  const handleGroupBySelect = (option: GroupByOption) => {
+    console.log('WishlistDetailScreen: Group by option selected:', option);
+    setGroupByOption(option);
+    setShowGroupByModal(false);
   };
 
   const handleCreateOrUpdateShare = async () => {
@@ -611,7 +731,8 @@ export default function WishlistDetailScreen() {
 
   const wishlistName = wishlist?.name || 'Wishlist';
   const hasSearchOrSort = searchTerm.trim() !== '' || sortOption !== 'Recently added';
-  const resultCountText = `${filteredAndSortedItems.length} ${filteredAndSortedItems.length === 1 ? 'item' : 'items'}`;
+  const resultCountText = `${totalItemCount} ${totalItemCount === 1 ? 'item' : 'items'}`;
+  const groupCount = Object.keys(filteredAndSortedGroups).length;
   
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -675,6 +796,20 @@ export default function WishlistDetailScreen() {
       fontWeight: '500',
       color: colors.textSecondary,
     },
+    groupingIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    groupingText: {
+      fontSize: 12,
+      fontWeight: '500',
+      color: colors.accent,
+      backgroundColor: colors.accentLight,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
     sortIndicator: {
       fontSize: 12,
       fontWeight: '500',
@@ -691,6 +826,24 @@ export default function WishlistDetailScreen() {
       paddingHorizontal: 20,
       paddingTop: 8,
       paddingBottom: insets.bottom + 100,
+    },
+    groupHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      marginTop: 8,
+    },
+    groupTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    groupCount: {
+      fontSize: 14,
+      fontWeight: '500',
+      color: colors.textSecondary,
     },
     itemCard: {
       flexDirection: 'row',
@@ -1266,14 +1419,30 @@ export default function WishlistDetailScreen() {
               color={colors.text}
             />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.sortButton}
+            onPress={openGroupByModal}
+          >
+            <IconSymbol
+              ios_icon_name="square.grid.2x2"
+              android_material_icon_name="grid-view"
+              size={20}
+              color={colors.text}
+            />
+          </TouchableOpacity>
         </View>
 
-        {hasSearchOrSort && (
+        {(hasSearchOrSort || groupByOption !== 'None') && (
           <View style={styles.resultCountContainer}>
             <Text style={styles.resultCountText}>{resultCountText}</Text>
-            {sortOption !== 'Recently added' && (
-              <Text style={styles.sortIndicator}>{sortOption}</Text>
-            )}
+            <View style={styles.groupingIndicator}>
+              {groupByOption !== 'None' && (
+                <Text style={styles.groupingText}>{groupByOption}</Text>
+              )}
+              {sortOption !== 'Recently added' && (
+                <Text style={styles.sortIndicator}>{sortOption}</Text>
+              )}
+            </View>
           </View>
         )}
 
@@ -1284,7 +1453,7 @@ export default function WishlistDetailScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
           }
         >
-          {filteredAndSortedItems.length === 0 ? (
+          {totalItemCount === 0 ? (
             searchTerm.trim() ? (
               <EmptyState
                 icon="search"
@@ -1301,57 +1470,70 @@ export default function WishlistDetailScreen() {
               />
             )
           ) : (
-            filteredAndSortedItems.map((item) => {
-              const priceText = item.currentPrice 
-                ? `${item.currency} ${item.currentPrice.toFixed(2)}` 
-                : 'No price';
-              const dropInfo = priceDropInfo[item.id];
-              const hasPriceDrop = dropInfo?.priceDropped === true;
-              const percentageChange = dropInfo?.percentageChange;
-              
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.itemCard}
-                  onPress={() => handleItemPress(item)}
-                >
-                  <Image
-                    source={resolveImageSource(item.imageUrl)}
-                    style={styles.itemImage}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemName} numberOfLines={2}>
-                      {item.title}
+            Object.entries(filteredAndSortedGroups).map(([groupName, groupItems]) => (
+              <Fragment key={groupName}>
+                {groupByOption !== 'None' && (
+                  <View style={styles.groupHeader}>
+                    <Text style={styles.groupTitle}>{groupName}</Text>
+                    <Text style={styles.groupCount}>
+                      {groupItems.length} {groupItems.length === 1 ? 'item' : 'items'}
                     </Text>
-                    <View style={styles.priceRow}>
-                      <View style={styles.priceContainer}>
-                        <Text style={styles.itemPrice}>{priceText}</Text>
-                      </View>
-                      {hasPriceDrop && percentageChange && (
-                        <View style={styles.priceDropBadge}>
-                          <IconSymbol
-                            ios_icon_name="arrow.down"
-                            android_material_icon_name="arrow-downward"
-                            size={12}
-                            color="#10B981"
-                          />
-                          <Text style={styles.priceDropText}>
-                            {Math.abs(percentageChange).toFixed(0)}% off
-                          </Text>
-                        </View>
-                      )}
-                    </View>
                   </View>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron-right"
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              );
-            })
+                )}
+                
+                {groupItems.map((item) => {
+                  const priceText = item.currentPrice 
+                    ? `${item.currency} ${item.currentPrice.toFixed(2)}` 
+                    : 'No price';
+                  const dropInfo = priceDropInfo[item.id];
+                  const hasPriceDrop = dropInfo?.priceDropped === true;
+                  const percentageChange = dropInfo?.percentageChange;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.itemCard}
+                      onPress={() => handleItemPress(item)}
+                    >
+                      <Image
+                        source={resolveImageSource(item.imageUrl)}
+                        style={styles.itemImage}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.itemInfo}>
+                        <Text style={styles.itemName} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <View style={styles.priceRow}>
+                          <View style={styles.priceContainer}>
+                            <Text style={styles.itemPrice}>{priceText}</Text>
+                          </View>
+                          {hasPriceDrop && percentageChange && (
+                            <View style={styles.priceDropBadge}>
+                              <IconSymbol
+                                ios_icon_name="arrow.down"
+                                android_material_icon_name="arrow-downward"
+                                size={12}
+                                color="#10B981"
+                              />
+                              <Text style={styles.priceDropText}>
+                                {Math.abs(percentageChange).toFixed(0)}% off
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <IconSymbol
+                        ios_icon_name="chevron.right"
+                        android_material_icon_name="chevron-right"
+                        size={20}
+                        color={colors.textSecondary}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </Fragment>
+            ))
           )}
         </ScrollView>
 
@@ -1565,6 +1747,116 @@ export default function WishlistDetailScreen() {
           </Pressable>
         </Modal>
 
+        {/* Group By Modal */}
+        <Modal
+          visible={showGroupByModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowGroupByModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowGroupByModal(false)}
+          >
+            <View style={styles.sortModalContainer}>
+              <Text style={styles.modalTitle}>Group Items By</Text>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  groupByOption === 'None' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleGroupBySelect('None')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  groupByOption === 'None' && styles.sortOptionTextSelected,
+                ]}>
+                  None
+                </Text>
+                {groupByOption === 'None' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  groupByOption === 'Store' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleGroupBySelect('Store')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  groupByOption === 'Store' && styles.sortOptionTextSelected,
+                ]}>
+                  Store
+                </Text>
+                {groupByOption === 'Store' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  groupByOption === 'Category' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleGroupBySelect('Category')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  groupByOption === 'Category' && styles.sortOptionTextSelected,
+                ]}>
+                  Category
+                </Text>
+                {groupByOption === 'Category' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.sortOption,
+                  groupByOption === 'Price Range' && styles.sortOptionSelected,
+                ]}
+                onPress={() => handleGroupBySelect('Price Range')}
+              >
+                <Text style={[
+                  styles.sortOptionText,
+                  groupByOption === 'Price Range' && styles.sortOptionTextSelected,
+                ]}>
+                  Price Range
+                </Text>
+                {groupByOption === 'Price Range' && (
+                  <IconSymbol
+                    ios_icon_name="checkmark"
+                    android_material_icon_name="check"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* Share Modal - keeping existing implementation */}
         <Modal
           visible={showShareModal}
           transparent
@@ -1779,7 +2071,7 @@ export default function WishlistDetailScreen() {
           icon="link"
         />
 
-        {/* Reservation Settings Modal */}
+        {/* Reservation Settings Modal - keeping existing implementation */}
         <Modal
           visible={showReservationSettings}
           transparent
@@ -1949,5 +2241,3 @@ export default function WishlistDetailScreen() {
     </View>
   );
 }
-
-
