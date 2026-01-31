@@ -42,7 +42,7 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 interface ExtractedProductData {
   itemName: string;
   imageUrl: string;
-  extractedImages: string[];
+  extractedImages: string[]; // Top 5 suggested images
   storeName: string;
   storeDomain: string;
   price: number | null;
@@ -109,6 +109,7 @@ export default function ImportPreviewScreen() {
   // Editable fields
   const [itemName, setItemName] = useState('');
   const [selectedImage, setSelectedImage] = useState('');
+  const [suggestedImages, setSuggestedImages] = useState<string[]>([]); // Top 5 images
   const [storeName, setStoreName] = useState('');
   const [storeDomain, setStoreDomain] = useState('');
   const [price, setPrice] = useState('');
@@ -163,6 +164,11 @@ export default function ImportPreviewScreen() {
         setProductData(parsed);
         setItemName(parsed.itemName || '');
         
+        // Set suggested images (top 5)
+        const images = parsed.extractedImages || [];
+        setSuggestedImages(images.slice(0, 5));
+        console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
+        
         // Auto-select image based on input type
         const autoSelectedImage = autoSelectImage(parsed);
         setSelectedImage(autoSelectedImage);
@@ -202,7 +208,7 @@ export default function ImportPreviewScreen() {
   /**
    * Auto-select the best image based on input type
    * Priority:
-   * 1. URL: Use extracted og:image or primary product image
+   * 1. URL: Use extracted og:image or primary product image (highest resolution)
    * 2. Camera/Upload: Use the uploaded image
    * 3. Name search: Use the best search result image
    * 4. Fallback: Use placeholder
@@ -212,10 +218,10 @@ export default function ImportPreviewScreen() {
     
     console.log('[ImportPreview] Auto-selecting image for input type:', inputType);
     
-    // For URL input: prefer extracted image (highest resolution)
+    // For URL input: prefer extracted image (highest resolution, non-logo)
     if (inputType === 'url') {
       if (data.extractedImages && data.extractedImages.length > 0) {
-        // Return the first extracted image (should be highest quality)
+        // Return the first extracted image (should be highest quality, non-logo)
         return data.extractedImages[0];
       }
       if (data.imageUrl) {
@@ -230,7 +236,7 @@ export default function ImportPreviewScreen() {
       }
     }
     
-    // For name search: use the best result image
+    // For name search: use the best result image (high-res, clean)
     if (inputType === 'name') {
       if (data.imageUrl) {
         return data.imageUrl;
@@ -356,21 +362,17 @@ export default function ImportPreviewScreen() {
   };
 
   const handleChangeImage = async () => {
-    console.log('[ImportPreview] User tapped Change Image');
-    
-    if (productData && productData.extractedImages && productData.extractedImages.length > 1) {
-      // Show picker with extracted images
-      setShowImagePicker(true);
-    } else {
-      // Show options: upload from gallery or take photo
-      setShowImagePicker(true);
-    }
+    console.log('[ImportPreview] User tapped Change Photo');
+    setShowImagePicker(true);
   };
 
   const handleSelectImage = (imageUrl: string) => {
     console.log('[ImportPreview] Image selected:', imageUrl);
     setSelectedImage(imageUrl);
     setShowImagePicker(false);
+    
+    // Remove "No image available" warning if it exists
+    setWarnings(prev => prev.filter(w => !w.includes('image')));
   };
 
   const handleUploadImage = async () => {
@@ -433,7 +435,7 @@ export default function ImportPreviewScreen() {
       const response = await fetch(localUri);
       const blob = await response.blob();
       
-      // Upload to Supabase Storage
+      // Upload to Supabase Storage (item-images bucket)
       const { data, error } = await supabase.storage
         .from('item-images')
         .upload(fileName, blob, {
@@ -457,6 +459,12 @@ export default function ImportPreviewScreen() {
 
       // Update selected image
       setSelectedImage(publicUrl);
+      
+      // Add to suggested images if not already there
+      if (!suggestedImages.includes(publicUrl)) {
+        setSuggestedImages(prev => [publicUrl, ...prev].slice(0, 5));
+      }
+      
       setShowImagePicker(false);
       
       // Remove "No image available" warning if it exists
@@ -825,6 +833,13 @@ export default function ImportPreviewScreen() {
                   </>
                 )}
               </TouchableOpacity>
+              
+              {/* Show count of suggested images */}
+              {suggestedImages.length > 0 && (
+                <Text style={[styles.imageCountText, { color: colors.textTertiary }]}>
+                  {suggestedImages.length} {suggestedImages.length === 1 ? 'suggestion' : 'suggestions'} available
+                </Text>
+              )}
             </View>
 
             {/* Editable Fields */}
@@ -1114,7 +1129,7 @@ export default function ImportPreviewScreen() {
           onCancel={handleDuplicateCancel}
         />
 
-        {/* Image Picker Modal */}
+        {/* Image Picker Modal - Shows top 5 suggestions + upload/camera options */}
         <Modal
           visible={showImagePicker}
           transparent
@@ -1126,12 +1141,14 @@ export default function ImportPreviewScreen() {
               <View style={styles.modalHandle} />
               <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Choose Image</Text>
               
-              {/* Show extracted images if available */}
-              {productData?.extractedImages && productData.extractedImages.length > 0 && (
+              {/* Show suggested images (top 5) */}
+              {suggestedImages.length > 0 && (
                 <>
-                  <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>Web Suggestions</Text>
-                  <ScrollView style={styles.imageGrid}>
-                    {productData.extractedImages.map((imageUrl, index) => (
+                  <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                    Suggested Images ({suggestedImages.length})
+                  </Text>
+                  <ScrollView style={styles.imageGrid} horizontal={false}>
+                    {suggestedImages.map((imageUrl, index) => (
                       <TouchableOpacity
                         key={index}
                         style={[
@@ -1155,6 +1172,11 @@ export default function ImportPreviewScreen() {
                             />
                           </View>
                         )}
+                        <View style={[styles.imageIndexBadge, { backgroundColor: colors.surface }]}>
+                          <Text style={[styles.imageIndexText, { color: colors.textPrimary }]}>
+                            {index + 1}
+                          </Text>
+                        </View>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1351,10 +1373,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: 20,
     borderWidth: 1,
+    marginBottom: spacing.xs,
   },
   changeImageText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  imageCountText: {
+    fontSize: 12,
+    marginTop: spacing.xs / 2,
   },
   fieldsSection: {
     marginBottom: spacing.xl,
@@ -1613,7 +1640,7 @@ const styles = StyleSheet.create({
   },
   imageGrid: {
     marginBottom: spacing.md,
-    maxHeight: 300,
+    maxHeight: 400,
   },
   imageOption: {
     width: '100%',
@@ -1622,6 +1649,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     borderWidth: 3,
     overflow: 'hidden',
+    position: 'relative',
   },
   imageOptionImage: {
     width: '100%',
@@ -1636,6 +1664,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  imageIndexBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageIndexText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   imageActions: {
     gap: spacing.sm,
