@@ -3,6 +3,20 @@ import { Alert, Linking, Platform, ToastAndroid } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { logEvent, logError } from './observability';
+import { appendAffiliateId, trackOutboundClick, getAffiliateDisclosure } from './affiliateLinks';
+import { trackConversionClick } from './analytics';
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🔗 STORE LINK HANDLER WITH AFFILIATE SUPPORT
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * This module handles opening store links with:
+ * - Affiliate ID appending
+ * - Conversion tracking
+ * - Analytics
+ * - Compliance with App Store guidelines
+ */
 
 /**
  * Simple toast helper for cross-platform toast messages
@@ -11,20 +25,12 @@ function showToast(message: string, type?: 'success' | 'error' | 'info') {
   if (Platform.OS === 'android') {
     ToastAndroid.show(message, ToastAndroid.SHORT);
   } else {
-    // On iOS, we'll use a simple alert for now
-    // In a real app, you might use a toast library
     console.log('[Toast]', message);
   }
 }
 
-/**
- * Reusable helper to open store/product links
- * Validates, normalizes, and opens links externally in system browser
- * Includes analytics, haptics, toast, debouncing, and fallback handling
- */
-
 export interface OpenStoreLinkOptions {
-  source: 'item_detail' | 'import_preview' | 'shared_wishlist' | 'other_stores';
+  source: 'item_detail' | 'import_preview' | 'shared_wishlist' | 'other_stores' | 'search_results';
   storeDomain?: string;
   itemId?: string;
   itemTitle?: string;
@@ -54,12 +60,10 @@ function normalizeUrl(
   normalizedUrl: string | null | undefined,
   originalUrl: string | null | undefined
 ): string | null {
-  // Prefer normalized URL if available
   if (normalizedUrl && normalizedUrl.trim()) {
     return normalizedUrl.trim();
   }
   
-  // Fallback to original URL
   if (originalUrl && originalUrl.trim()) {
     return originalUrl.trim();
   }
@@ -114,7 +118,7 @@ function showFallbackModal(url: string, onToast?: (message: string, type?: 'succ
 
 /**
  * Open store link externally in system browser
- * Handles validation, normalization, and error cases gracefully
+ * Handles validation, normalization, affiliate IDs, and error cases gracefully
  * Includes haptic feedback, toast messages, debouncing, and fallback handling
  */
 export async function openStoreLink(
@@ -167,11 +171,45 @@ export async function openStoreLink(
     return;
   }
   
+  // Append affiliate ID if store domain is provided
+  let finalUrl = trimmedUrl;
+  if (options.storeDomain) {
+    finalUrl = appendAffiliateId(trimmedUrl, options.storeDomain);
+    
+    // Show affiliate disclosure if applicable
+    const disclosure = getAffiliateDisclosure(options.storeDomain);
+    if (disclosure && options.onToast) {
+      options.onToast(disclosure, 'info');
+    }
+  }
+  
   // Show toast: "Opening store…"
   if (options.onToast) {
     options.onToast('Opening store…', 'info');
   } else {
     showToast('Opening store…', 'info');
+  }
+  
+  // Track outbound click for affiliate analytics
+  if (options.storeDomain) {
+    await trackOutboundClick({
+      storeId: options.storeDomain,
+      storeDomain: options.storeDomain,
+      itemId: options.itemId,
+      itemTitle: options.itemTitle,
+      source: options.source,
+    });
+  }
+  
+  // Track conversion click for analytics
+  if (options.storeDomain && options.itemId) {
+    await trackConversionClick({
+      storeId: options.storeDomain,
+      storeDomain: options.storeDomain,
+      itemId: options.itemId,
+      source: options.source,
+      timestamp: new Date().toISOString(),
+    });
   }
   
   // Log analytics event
@@ -180,31 +218,32 @@ export async function openStoreLink(
     storeDomain: options.storeDomain,
     itemId: options.itemId,
     hasUrl: true,
+    hasAffiliateId: finalUrl !== trimmedUrl,
   });
   
   try {
     // Check if the URL can be opened
-    const canOpen = await Linking.canOpenURL(trimmedUrl);
+    const canOpen = await Linking.canOpenURL(finalUrl);
     
     if (!canOpen) {
-      console.warn('[openStoreLink] Cannot open URL:', trimmedUrl);
-      showFallbackModal(trimmedUrl, options.onToast);
+      console.warn('[openStoreLink] Cannot open URL:', finalUrl);
+      showFallbackModal(finalUrl, options.onToast);
       return;
     }
     
     // Open URL in system browser (external)
-    await Linking.openURL(trimmedUrl);
+    await Linking.openURL(finalUrl);
     console.log('[openStoreLink] Successfully opened URL');
     
   } catch (error) {
     console.error('[openStoreLink] Error opening URL:', error);
     
     // Show fallback modal with "Try again" and "Copy link" options
-    showFallbackModal(trimmedUrl, options.onToast);
+    showFallbackModal(finalUrl, options.onToast);
     
     logError(error instanceof Error ? error : new Error(String(error)), {
       context: 'openStoreLink',
-      url: trimmedUrl,
+      url: finalUrl,
       source: options.source,
     });
   }

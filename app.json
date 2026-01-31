@@ -1,3 +1,4 @@
+
 {
   "expo": {
     "name": "My Wishlist",
@@ -20,7 +21,8 @@
         "NSCameraUsageDescription": "My Wishlist needs access to your camera to take photos of products you want to add to your wishlists.",
         "NSPhotoLibraryUsageDescription": "My Wishlist needs access to your photo library to let you select product images for your wishlist items.",
         "NSPhotoLibraryAddUsageDescription": "My Wishlist needs permission to save product photos to your photo library.",
-        "NSLocationWhenInUseUsageDescription": "My Wishlist uses your location to pre-fill your country and city, helping you find stores that ship to your area."
+        "NSLocationWhenInUseUsageDescription": "My Wishlist uses your location to pre-fill your country and city, helping you find stores that ship to your area.",
+        "NSUserTrackingUsageDescription": "This app uses tracking to provide personalized product recommendations and measure ad performance. Your data is never sold to third parties."
       },
       "associatedDomains": [
         "applinks:mywishlist.app",
@@ -102,12 +104,21 @@
     },
     "extra": {
       "router": {},
+      "environment": "PROD",
       "supabaseUrl": "https://dixgmnuayzblwpqyplsi.supabase.co",
       "supabaseAnonKey": "sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-",
+      "supabaseEdgeFunctionsUrl": "https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1",
       "nativelyEnvironment": "supabase",
       "nativelyPrimaryDataSource": "supabase",
       "nativelyExclusiveProvider": true,
-      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev"
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
+      "amazonAffiliateId": "",
+      "ebayAffiliateId": "",
+      "walmartAffiliateId": "",
+      "targetAffiliateId": "",
+      "bestbuyAffiliateId": "",
+      "etsyAffiliateId": "",
+      "aliexpressAffiliateId": ""
     },
     "updates": {
       "url": "https://u.expo.dev/YOUR_PROJECT_ID"

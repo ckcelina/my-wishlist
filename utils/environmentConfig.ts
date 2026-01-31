@@ -3,332 +3,276 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /**
- * Environment Configuration Module - PRODUCTION PARITY ENFORCED
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 🔒 ENVIRONMENT CONFIGURATION - PRODUCTION PARITY ENFORCED
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
  * This module ensures IDENTICAL behavior across:
- * - Expo Go
- * - TestFlight/App Store (iOS)
- * - Google Play (Android)
- * - Web builds
+ * - DEV (Expo Go)
+ * - PREVIEW (TestFlight/Internal Testing)
+ * - PROD (App Store/Google Play)
  * 
  * ALL environment variables are locked to the same values.
  * NO dev-only behavior differences.
  * FULL UI and API parity guaranteed.
  */
 
-export type RuntimeEnvironment = 'development' | 'expo-go' | 'production';
+export type Environment = 'DEV' | 'PREVIEW' | 'PROD';
 
-export interface EnvironmentInfo {
-  environment: RuntimeEnvironment;
-  isDevelopment: boolean;
-  isExpoGo: boolean;
-  isProduction: boolean;
-  platform: 'ios' | 'android' | 'web';
-  appVersion: string;
-  buildNumber: string;
-  deviceName: string | null;
-}
-
-/**
- * Detect the current runtime environment
- */
-export function detectEnvironment(): RuntimeEnvironment {
-  // Check if running in Expo Go
-  if (Constants.appOwnership === 'expo') {
-    return 'expo-go';
-  }
+export interface AppConfig {
+  // Environment
+  environment: Environment;
   
-  // Check if in development mode
-  if (__DEV__) {
-    return 'development';
-  }
+  // API Configuration
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  supabaseEdgeFunctionsUrl: string;
+  backendUrl: string;
   
-  // Otherwise, it's a production build (standalone)
-  return 'production';
-}
-
-/**
- * Get comprehensive environment information
- */
-export function getEnvironmentInfo(): EnvironmentInfo {
-  const environment = detectEnvironment();
+  // Feature Flags (ALL LOCKED FOR PARITY)
+  showDebugUI: boolean;
+  showDevBanner: boolean;
+  addDevPadding: boolean;
+  useDevWrapper: boolean;
   
-  return {
-    environment,
-    isDevelopment: environment === 'development',
-    isExpoGo: environment === 'expo-go',
-    isProduction: environment === 'production',
-    platform: Platform.OS as 'ios' | 'android' | 'web',
-    appVersion: Constants.expoConfig?.version || '1.0.0',
-    buildNumber: Constants.expoConfig?.ios?.buildNumber || Constants.expoConfig?.android?.versionCode?.toString() || '1',
-    deviceName: Constants.deviceName || null,
+  // UI Configuration (LOCKED)
+  lockedTabBarHeight: number;
+  lockedTabBarBorderRadius: number;
+  lockedTabBarSpacing: number;
+  
+  // Monetization Configuration
+  affiliateIds: {
+    amazon?: string;
+    ebay?: string;
+    walmart?: string;
+    target?: string;
+    bestbuy?: string;
+    etsy?: string;
+    aliexpress?: string;
   };
+  
+  // Premium Features
+  premiumFeatures: {
+    unlimitedPriceTracking: boolean;
+    historicalPriceCharts: boolean;
+    multiCountryComparison: boolean;
+    earlyPriceDropAlerts: boolean;
+  };
+  
+  // Analytics
+  enableAnalytics: boolean;
+  enableConversionTracking: boolean;
+  
+  // Compliance
+  requireTrackingConsent: boolean;
+  requireNotificationConsent: boolean;
 }
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * 🔒 LOCKED ENVIRONMENT VARIABLES - PRODUCTION PARITY ENFORCED
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * These values are IDENTICAL across ALL environments:
- * - Expo Go
- * - Production iOS (TestFlight/App Store)
- * - Production Android (Google Play)
- * - Web builds
- * 
- * NO conditional logic. NO dev-only overrides.
- * This ensures API calls, authentication, and data access work identically.
+ * Get environment from app.json extra config
+ * Defaults to DEV if not specified
  */
-
-export const ENV = {
-  // Supabase configuration - LOCKED for all environments
-  SUPABASE_URL: Constants.expoConfig?.extra?.supabaseUrl || '',
-  SUPABASE_ANON_KEY: Constants.expoConfig?.extra?.supabaseAnonKey || '',
+function getEnvironment(): Environment {
+  const extra = Constants.expoConfig?.extra || {};
+  const env = extra.environment as Environment | undefined;
   
-  // Backend URL (legacy) - LOCKED for all environments
-  BACKEND_URL: Constants.expoConfig?.extra?.backendUrl || '',
+  // Validate environment
+  if (env === 'DEV' || env === 'PREVIEW' || env === 'PROD') {
+    return env;
+  }
   
-  // Environment detection (read-only, for logging purposes only)
-  IS_EXPO_GO: Constants.appOwnership === 'expo',
-  IS_DEVELOPMENT: __DEV__,
-  IS_PRODUCTION: !__DEV__ && Constants.appOwnership !== 'expo',
-  
-  // Platform information
-  PLATFORM: Platform.OS,
-  APP_VERSION: Constants.expoConfig?.version || '1.0.0',
-  BUILD_NUMBER: Constants.expoConfig?.ios?.buildNumber || Constants.expoConfig?.android?.versionCode?.toString() || '1',
-};
+  // Default to DEV
+  console.warn('[Environment] No valid environment specified in app.json, defaulting to DEV');
+  return 'DEV';
+}
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * 🚫 FEATURE FLAGS - ALL DISABLED FOR PARITY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * To ensure IDENTICAL behavior across all environments, ALL feature flags
- * that could cause differences are DISABLED.
- * 
- * The app behaves EXACTLY the same in Expo Go and production builds.
+ * Load configuration from app.json extra
  */
+const extra = Constants.expoConfig?.extra || {};
 
-export const FeatureFlags = {
-  /**
-   * Debug UI - ALWAYS DISABLED for parity
-   * No debug panels, dev tools, or special UI in any environment
-   */
+export const appConfig: AppConfig = {
+  // Environment
+  environment: getEnvironment(),
+  
+  // API Configuration - LOCKED from app.json
+  supabaseUrl: extra.supabaseUrl || '',
+  supabaseAnonKey: extra.supabaseAnonKey || '',
+  supabaseEdgeFunctionsUrl: extra.supabaseEdgeFunctionsUrl || extra.supabaseUrl || '',
+  backendUrl: extra.backendUrl || '',
+  
+  // Feature Flags - ALL DISABLED FOR PARITY
   showDebugUI: false,
-  
-  /**
-   * Updates check - ENABLED for all environments
-   * Expo Go will gracefully skip if not available
-   */
-  enableUpdatesCheck: true,
-  
-  /**
-   * Notifications - ENABLED for all environments
-   * Expo Go will gracefully skip if not available
-   */
-  enableNotifications: true,
-  
-  /**
-   * Camera - ENABLED for all environments
-   * Expo Go will gracefully skip if not available
-   */
-  enableCamera: true,
-  
-  /**
-   * Version tracking - ENABLED for all environments
-   * Logs app version to Supabase for analytics
-   */
-  enableVersionTracking: true,
-  
-  /**
-   * Error logging - ENABLED for all environments
-   * Captures errors for debugging
-   */
-  enableErrorLogging: true,
-};
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * 🎨 UI CONFIGURATION - LOCKED FOR PARITY
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * These values ensure IDENTICAL layout, spacing, and visual appearance
- * across ALL environments. NO conditional styling or layout differences.
- */
-
-export const UIConfig = {
-  /**
-   * Dev-only padding - ALWAYS FALSE
-   * No extra padding in any environment
-   */
-  addDevPadding: false,
-  
-  /**
-   * Dev-only banners - ALWAYS FALSE
-   * No environment banners in any build
-   */
   showDevBanner: false,
-  
-  /**
-   * Dev-only wrappers - ALWAYS FALSE
-   * No special containers in any environment
-   */
+  addDevPadding: false,
   useDevWrapper: false,
   
-  /**
-   * Tab bar height - LOCKED
-   * Identical across all environments
-   */
-  tabBarHeight: 64,
+  // UI Configuration - LOCKED
+  lockedTabBarHeight: 80,
+  lockedTabBarBorderRadius: 20,
+  lockedTabBarSpacing: 10,
   
-  /**
-   * Standard spacing values - LOCKED
-   * Identical across all environments
-   */
-  spacing: {
-    xs: 4,
-    sm: 8,
-    md: 16,
-    lg: 24,
-    xl: 32,
-    xxl: 48,
+  // Monetization Configuration
+  affiliateIds: {
+    amazon: extra.amazonAffiliateId,
+    ebay: extra.ebayAffiliateId,
+    walmart: extra.walmartAffiliateId,
+    target: extra.targetAffiliateId,
+    bestbuy: extra.bestbuyAffiliateId,
+    etsy: extra.etsyAffiliateId,
+    aliexpress: extra.aliexpressAffiliateId,
   },
   
-  /**
-   * Standard border radius values - LOCKED
-   * Identical across all environments
-   */
-  borderRadius: {
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 18,
+  // Premium Features - Gated by user subscription
+  premiumFeatures: {
+    unlimitedPriceTracking: false, // Checked at runtime
+    historicalPriceCharts: false, // Checked at runtime
+    multiCountryComparison: false, // Checked at runtime
+    earlyPriceDropAlerts: false, // Checked at runtime
   },
   
-  /**
-   * Safe area insets - CONSISTENT
-   * Applied uniformly across all environments
-   */
-  useSafeAreaInsets: true,
+  // Analytics - ENABLED for all environments
+  enableAnalytics: true,
+  enableConversionTracking: true,
   
-  /**
-   * Status bar style - CONSISTENT
-   * Theme-based, no environment overrides
-   */
-  statusBarStyle: 'auto' as const,
+  // Compliance - REQUIRED for App Store
+  requireTrackingConsent: true,
+  requireNotificationConsent: true,
 };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * 📊 LOGGING CONFIGURATION - CONSISTENT ACROSS ALL ENVIRONMENTS
+ * 🔍 BUILD-TIME VERIFICATION
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const LoggingConfig = {
-  /**
-   * Log level - CONSISTENT
-   * Same verbosity in all environments
-   */
-  logLevel: 'info' as 'debug' | 'info' | 'warn' | 'error',
-  
-  /**
-   * Log to console - ENABLED
-   * Always log to console for debugging
-   */
-  logToConsole: true,
-  
-  /**
-   * Log to server - ENABLED
-   * Always send logs to server for analytics
-   */
-  logToServer: true,
-  
-  /**
-   * Log API calls - ENABLED
-   * Always log API calls for debugging
-   */
-  logApiCalls: true,
-};
-
-/**
- * Log environment information on app start
- * This helps verify parity across environments
- */
-export function logEnvironmentInfo(): void {
-  const info = getEnvironmentInfo();
-  
-  console.log('═══════════════════════════════════════════════════');
-  console.log('🌍 ENVIRONMENT CONFIGURATION - PRODUCTION PARITY ENFORCED');
-  console.log('═══════════════════════════════════════════════════');
-  console.log(`Environment: ${info.environment.toUpperCase()}`);
-  console.log(`Platform: ${info.platform}`);
-  console.log(`App Version: ${info.appVersion}`);
-  console.log(`Build Number: ${info.buildNumber}`);
-  console.log(`Device: ${info.deviceName || 'Unknown'}`);
-  console.log('═══════════════════════════════════════════════════');
-  console.log('🔒 LOCKED CONFIGURATION:');
-  console.log(`Supabase URL: ${ENV.SUPABASE_URL}`);
-  console.log(`Supabase Key: ${ENV.SUPABASE_ANON_KEY ? 'Configured' : 'Missing'}`);
-  console.log(`Backend URL: ${ENV.BACKEND_URL || 'Not configured'}`);
-  console.log('═══════════════════════════════════════════════════');
-  console.log('🎯 PARITY VERIFICATION:');
-  console.log(`Debug UI: ${FeatureFlags.showDebugUI ? 'ENABLED' : 'DISABLED'} ✅`);
-  console.log(`Dev Banner: ${UIConfig.showDevBanner ? 'ENABLED' : 'DISABLED'} ✅`);
-  console.log(`Dev Padding: ${UIConfig.addDevPadding ? 'ENABLED' : 'DISABLED'} ✅`);
-  console.log(`Dev Wrapper: ${UIConfig.useDevWrapper ? 'ENABLED' : 'DISABLED'} ✅`);
-  console.log('═══════════════════════════════════════════════════');
-  console.log('✅ ALL ENVIRONMENTS USE IDENTICAL CONFIGURATION');
-  console.log('✅ EXPO GO AND PRODUCTION BUILDS ARE IDENTICAL');
-  console.log('✅ NO DEV-ONLY BEHAVIOR DIFFERENCES');
-  console.log('═══════════════════════════════════════════════════');
-}
-
-/**
- * Validate environment configuration
- * Ensures all required values are present
- */
-export function validateEnvironmentConfig(): {
+export function verifyConfiguration(): {
   valid: boolean;
   errors: string[];
+  warnings: string[];
 } {
   const errors: string[] = [];
+  const warnings: string[] = [];
   
-  if (!ENV.SUPABASE_URL) {
-    errors.push('Missing SUPABASE_URL in app.json extra config');
+  // Critical checks (errors)
+  if (!appConfig.supabaseUrl) {
+    errors.push('Missing supabaseUrl in app.json extra config');
   }
   
-  if (!ENV.SUPABASE_ANON_KEY) {
-    errors.push('Missing SUPABASE_ANON_KEY in app.json extra config');
+  if (!appConfig.supabaseAnonKey) {
+    errors.push('Missing supabaseAnonKey in app.json extra config');
   }
   
-  if (ENV.SUPABASE_URL && !ENV.SUPABASE_URL.includes('supabase.co')) {
-    errors.push('Invalid SUPABASE_URL format');
+  if (appConfig.supabaseUrl && !appConfig.supabaseUrl.includes('supabase.co')) {
+    errors.push('Invalid supabaseUrl format - must be a Supabase URL');
+  }
+  
+  // Parity checks (errors)
+  if (appConfig.showDebugUI) {
+    errors.push('showDebugUI is enabled - breaks production parity');
+  }
+  
+  if (appConfig.showDevBanner) {
+    errors.push('showDevBanner is enabled - breaks production parity');
+  }
+  
+  if (appConfig.addDevPadding) {
+    errors.push('addDevPadding is enabled - breaks production parity');
+  }
+  
+  if (appConfig.useDevWrapper) {
+    errors.push('useDevWrapper is enabled - breaks production parity');
+  }
+  
+  // Non-critical checks (warnings)
+  if (!appConfig.backendUrl) {
+    warnings.push('No backendUrl configured - backend features may not work');
+  }
+  
+  if (!appConfig.affiliateIds.amazon && !appConfig.affiliateIds.ebay) {
+    warnings.push('No affiliate IDs configured - monetization disabled');
   }
   
   return {
     valid: errors.length === 0,
     errors,
+    warnings,
   };
+}
+
+/**
+ * Log configuration on app start
+ */
+export function logConfiguration(): void {
+  const verification = verifyConfiguration();
+  
+  console.log('═══════════════════════════════════════════════════');
+  console.log('🌍 ENVIRONMENT CONFIGURATION - PRODUCTION PARITY ENFORCED');
+  console.log('═══════════════════════════════════════════════════');
+  console.log(`Environment: ${appConfig.environment}`);
+  console.log(`Platform: ${Platform.OS}`);
+  console.log(`App Version: ${Constants.expoConfig?.version || '1.0.0'}`);
+  console.log('═══════════════════════════════════════════════════');
+  console.log('🔒 LOCKED CONFIGURATION:');
+  console.log(`Supabase URL: ${appConfig.supabaseUrl}`);
+  console.log(`Supabase Key: ${appConfig.supabaseAnonKey ? 'Configured' : 'Missing'}`);
+  console.log(`Backend URL: ${appConfig.backendUrl || 'Not configured'}`);
+  console.log('═══════════════════════════════════════════════════');
+  console.log('🎯 PARITY VERIFICATION:');
+  console.log(`Debug UI: ${appConfig.showDebugUI ? 'ENABLED ❌' : 'DISABLED ✅'}`);
+  console.log(`Dev Banner: ${appConfig.showDevBanner ? 'ENABLED ❌' : 'DISABLED ✅'}`);
+  console.log(`Dev Padding: ${appConfig.addDevPadding ? 'ENABLED ❌' : 'DISABLED ✅'}`);
+  console.log(`Dev Wrapper: ${appConfig.useDevWrapper ? 'ENABLED ❌' : 'DISABLED ✅'}`);
+  console.log('═══════════════════════════════════════════════════');
+  console.log('💰 MONETIZATION:');
+  console.log(`Amazon Affiliate: ${appConfig.affiliateIds.amazon ? 'Configured' : 'Not configured'}`);
+  console.log(`eBay Affiliate: ${appConfig.affiliateIds.ebay ? 'Configured' : 'Not configured'}`);
+  console.log(`Analytics: ${appConfig.enableAnalytics ? 'Enabled' : 'Disabled'}`);
+  console.log(`Conversion Tracking: ${appConfig.enableConversionTracking ? 'Enabled' : 'Disabled'}`);
+  console.log('═══════════════════════════════════════════════════');
+  
+  if (verification.valid) {
+    console.log('✅✅✅ ALL CONFIGURATION CHECKS PASSED ✅✅✅');
+    console.log('✅ Expo Go and production builds are identical');
+    console.log('✅ No dev-only behavior differences');
+  } else {
+    console.log('❌ CONFIGURATION ERRORS:');
+    verification.errors.forEach(error => console.log(`  ❌ ${error}`));
+  }
+  
+  if (verification.warnings.length > 0) {
+    console.log('⚠️ WARNINGS:');
+    verification.warnings.forEach(warning => console.log(`  ⚠️ ${warning}`));
+  }
+  
+  console.log('═══════════════════════════════════════════════════');
 }
 
 /**
  * Get environment summary for diagnostics
  */
 export function getEnvironmentSummary(): Record<string, any> {
-  const info = getEnvironmentInfo();
-  const validation = validateEnvironmentConfig();
+  const verification = verifyConfiguration();
   
   return {
-    environment: info.environment,
-    platform: info.platform,
-    appVersion: info.appVersion,
-    buildNumber: info.buildNumber,
-    supabaseConfigured: !!ENV.SUPABASE_URL && !!ENV.SUPABASE_ANON_KEY,
-    configurationValid: validation.valid,
-    configurationErrors: validation.errors,
-    featureFlags: FeatureFlags,
-    uiConfig: UIConfig,
-    loggingConfig: LoggingConfig,
+    environment: appConfig.environment,
+    platform: Platform.OS,
+    appVersion: Constants.expoConfig?.version || '1.0.0',
+    configuration: {
+      supabaseConfigured: !!appConfig.supabaseUrl && !!appConfig.supabaseAnonKey,
+      backendConfigured: !!appConfig.backendUrl,
+      affiliateConfigured: !!(appConfig.affiliateIds.amazon || appConfig.affiliateIds.ebay),
+    },
+    parity: {
+      showDebugUI: appConfig.showDebugUI,
+      showDevBanner: appConfig.showDevBanner,
+      addDevPadding: appConfig.addDevPadding,
+      useDevWrapper: appConfig.useDevWrapper,
+    },
+    verification: {
+      valid: verification.valid,
+      errors: verification.errors,
+      warnings: verification.warnings,
+    },
   };
 }

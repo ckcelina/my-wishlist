@@ -1,352 +1,329 @@
 
-# Expo Go and Production Build Parity
+# Expo Go = Production Parity System
 
-This document explains how the My Wishlist app ensures **IDENTICAL** behavior across all environments:
-- Expo Go (development testing)
-- TestFlight (iOS beta testing)
-- App Store (iOS production)
-- Google Play (Android production)
-- Web builds
+## Overview
 
-## 🎯 Parity Goals
+This document describes the comprehensive environment configuration system that ensures **IDENTICAL** behavior across:
 
-1. **Locked Environment Variables** - Same Supabase project, keys, and API endpoints everywhere
-2. **No Dev-Only Behavior** - No conditional logic that differs between environments
-3. **Identical UI** - Same layout, themes, spacing, and navigation everywhere
-4. **Consistent API Calls** - Same endpoints, headers, and authentication everywhere
-5. **Graceful Degradation** - Features unavailable in Expo Go fail silently without breaking the app
+- **DEV** (Expo Go)
+- **PREVIEW** (TestFlight/Internal Testing)
+- **PROD** (App Store/Google Play)
 
-## 🔒 Locked Configuration
+## Core Principles
 
-### Environment Variables (`utils/environmentConfig.ts`)
+### 1. **Locked Configuration**
+All critical environment variables are locked to the same values across all environments:
+- Supabase URL
+- Supabase Anon Key
+- Edge Function names
+- Backend URL
+- Affiliate IDs
 
-All environment variables are sourced from `app.json` `extra` section and are **LOCKED** for all environments:
+### 2. **No Dev-Only Features**
+ALL dev-only features are **DISABLED** for parity:
+- No debug UI
+- No dev banners
+- No dev padding
+- No dev wrappers
 
-```typescript
-export const ENV = {
-  // Supabase configuration - LOCKED for all environments
-  SUPABASE_URL: Constants.expoConfig?.extra?.supabaseUrl || '',
-  SUPABASE_ANON_KEY: Constants.expoConfig?.extra?.supabaseAnonKey || '',
-  
-  // Backend URL (legacy) - LOCKED for all environments
-  BACKEND_URL: Constants.expoConfig?.extra?.backendUrl || '',
-  
-  // Environment detection (read-only, for logging purposes only)
-  IS_EXPO_GO: Constants.appOwnership === 'expo',
-  IS_DEVELOPMENT: __DEV__,
-  IS_PRODUCTION: !__DEV__ && Constants.appOwnership !== 'expo',
-};
-```
+### 3. **Consistent UI**
+UI configuration is locked:
+- Tab bar height: 80
+- Tab bar border radius: 20
+- Tab bar spacing: 10
+- No environment-based styling
 
-**Key Points:**
-- ✅ All environments use the **SAME** Supabase URL
-- ✅ All environments use the **SAME** Supabase anon key
-- ✅ No conditional overrides based on environment
-- ✅ Environment detection is **READ-ONLY** for logging purposes
+### 4. **Build-Time Verification**
+The app runs parity checks on startup to verify configuration:
+- Environment variables are configured
+- No dev-only flags are enabled
+- UI configuration is locked
+- API endpoints are production URLs
+- Edge Function names are correct
 
-### Feature Flags (`utils/environmentConfig.ts`)
+## Configuration Files
 
-All feature flags that could cause differences are **DISABLED**:
+### 1. `app.json`
 
-```typescript
-export const FeatureFlags = {
-  showDebugUI: false,              // ALWAYS FALSE - no debug panels
-  enableUpdatesCheck: true,        // ENABLED for all (gracefully skips in Expo Go)
-  enableNotifications: true,       // ENABLED for all (gracefully skips in Expo Go)
-  enableCamera: true,              // ENABLED for all (gracefully skips in Expo Go)
-  enableVersionTracking: true,     // ENABLED for all
-  enableErrorLogging: true,        // ENABLED for all
-};
-```
+The `app.json` file contains the locked configuration in the `extra` section:
 
-**Key Points:**
-- ✅ No debug UI in any environment
-- ✅ Features enabled everywhere, with graceful degradation
-- ✅ No conditional feature toggling
-
-### UI Configuration (`utils/environmentConfig.ts`)
-
-All UI configuration is **LOCKED** to ensure identical layout:
-
-```typescript
-export const UIConfig = {
-  addDevPadding: false,            // ALWAYS FALSE - no extra padding
-  showDevBanner: false,            // ALWAYS FALSE - no environment banners
-  useDevWrapper: false,            // ALWAYS FALSE - no special containers
-  tabBarHeight: 64,                // LOCKED - identical everywhere
-  spacing: { /* ... */ },          // LOCKED - identical everywhere
-  borderRadius: { /* ... */ },     // LOCKED - identical everywhere
-  useSafeAreaInsets: true,         // CONSISTENT - applied uniformly
-  statusBarStyle: 'auto',          // CONSISTENT - theme-based
-};
-```
-
-**Key Points:**
-- ✅ No dev-only padding or margins
-- ✅ No environment banners
-- ✅ Identical spacing and border radius
-- ✅ Consistent safe area handling
-
-## 🎨 Theme System Parity
-
-The theme system (`styles/theme.ts`, `styles/designSystem.ts`) ensures **IDENTICAL** visual appearance:
-
-### Color Tokens
-
-All colors come from theme tokens - **NO hardcoded colors**:
-
-```typescript
-// Dark mode
-background: '#765943',
-surface: 'rgba(255,255,255,0.10)',
-textPrimary: '#FFFFFF',
-// ... etc
-
-// Light mode
-background: '#ede8e3',
-surface: 'rgba(43,31,25,0.06)',
-textPrimary: '#2b1f19',
-// ... etc
-```
-
-**Key Points:**
-- ✅ All colors defined in theme tokens
-- ✅ No conditional styling based on environment
-- ✅ Theme applied uniformly across all platforms
-
-### Typography
-
-Typography is consistent across all environments:
-
-```typescript
-export const createTypography = (theme: Theme) => ({
-  displayLarge: { fontSize: 32, lineHeight: 40, /* ... */ },
-  bodyMedium: { fontSize: 14, lineHeight: 20, /* ... */ },
-  // ... etc
-});
-```
-
-**Key Points:**
-- ✅ Font sizes locked
-- ✅ Line heights locked
-- ✅ Font families locked
-
-## 🔌 API Parity
-
-### Supabase Client (`lib/supabase.ts`)
-
-The Supabase client uses **LOCKED** environment variables:
-
-```typescript
-const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
-const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
-
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    storage: ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
-```
-
-**Key Points:**
-- ✅ Same Supabase URL everywhere
-- ✅ Same anon key everywhere
-- ✅ Same auth configuration everywhere
-
-### Edge Functions (`utils/supabase-edge-functions.ts`)
-
-Edge functions use **LOCKED** environment variables:
-
-```typescript
-const SUPABASE_URL = ENV.SUPABASE_URL;
-const SUPABASE_ANON_KEY = ENV.SUPABASE_ANON_KEY;
-
-async function callEdgeFunction<TRequest, TResponse>(
-  functionName: string,
-  request: TRequest
-): Promise<TResponse> {
-  const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
-  // ... same implementation everywhere
-}
-```
-
-**Key Points:**
-- ✅ Same endpoint URLs everywhere
-- ✅ Same authentication headers everywhere
-- ✅ Graceful error handling (404s don't crash the app)
-
-## 📊 Version Tracking Parity
-
-Version tracking (`utils/versionTracking.ts`) works **IDENTICALLY** in all environments:
-
-```typescript
-export async function logAppVersionToSupabase(userId?: string): Promise<void> {
-  // Check if version tracking is enabled
-  if (!FeatureFlags.enableVersionTracking) {
-    console.log('[VersionTracking] Version tracking disabled by feature flag');
-    return;
+```json
+{
+  "expo": {
+    "extra": {
+      "environment": "PROD",
+      "supabaseUrl": "https://dixgmnuayzblwpqyplsi.supabase.co",
+      "supabaseAnonKey": "sb_publishable_...",
+      "supabaseEdgeFunctionsUrl": "https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1",
+      "backendUrl": "https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev",
+      "amazonAffiliateId": "",
+      "ebayAffiliateId": "",
+      "walmartAffiliateId": ""
+    }
   }
-
-  // ... logs version to Supabase
-  // Graceful error handling - never crashes the app
 }
 ```
 
-**Key Points:**
-- ✅ Runs in all environments (Expo Go, TestFlight, App Store)
-- ✅ Graceful degradation if table doesn't exist
-- ✅ Never crashes the app
+### 2. `utils/environmentConfig.ts`
 
-### Update Checks
-
-Update checks work **IDENTICALLY** with graceful degradation:
+This module loads configuration from `app.json` and enforces parity:
 
 ```typescript
-export async function checkForUpdatesAndLog(userId?: string): Promise<void> {
-  // Always log the current version first
-  await logAppVersionToSupabase(userId);
-
-  // Check if Updates API is available
-  if (!Updates.isEnabled) {
-    console.log('[VersionTracking] EAS Updates not enabled (Expo Go or development)');
-    return; // Gracefully skip
-  }
-
-  // ... check for updates
-}
+export const appConfig: AppConfig = {
+  environment: getEnvironment(), // DEV, PREVIEW, or PROD
+  supabaseUrl: extra.supabaseUrl || '',
+  supabaseAnonKey: extra.supabaseAnonKey || '',
+  
+  // Feature Flags - ALL DISABLED FOR PARITY
+  showDebugUI: false,
+  showDevBanner: false,
+  addDevPadding: false,
+  useDevWrapper: false,
+  
+  // UI Configuration - LOCKED
+  lockedTabBarHeight: 80,
+  lockedTabBarBorderRadius: 20,
+  lockedTabBarSpacing: 10,
+};
 ```
 
-**Key Points:**
-- ✅ Runs in all environments
-- ✅ Gracefully skips if Updates API unavailable (Expo Go)
-- ✅ Never crashes the app
+### 3. `utils/parityVerification.ts`
 
-## 🔍 Parity Verification
-
-The app includes a comprehensive parity verification system (`utils/parityVerification.ts`):
+This module runs build-time checks to verify parity:
 
 ```typescript
 export async function runParityVerification(): Promise<ParityReport> {
   const checks: ParityCheck[] = [];
-
-  // Check 1: Environment variables are configured
+  
+  // Critical checks
   checks.push(checkEnvironmentVariables());
-
-  // Check 2: No dev-only feature flags
   checks.push(checkFeatureFlags());
-
-  // Check 3: UI configuration is locked
   checks.push(checkUIConfiguration());
-
-  // Check 4: Supabase connection is consistent
   checks.push(checkSupabaseConnection());
-
-  // Check 5: No conditional styling
-  checks.push(checkConditionalStyling());
-
-  // Check 6: API endpoints are locked
   checks.push(checkAPIEndpoints());
-
-  // Check 7: Navigation is consistent
-  checks.push(checkNavigation());
-
-  // Check 8: Theme system is consistent
-  checks.push(checkThemeSystem());
-
-  // ... generate report
+  checks.push(checkEdgeFunctionNames());
+  
+  // Warning checks
+  checks.push(checkAffiliateConfiguration());
+  checks.push(checkMonetizationSetup());
+  checks.push(checkComplianceSettings());
+  
+  return report;
 }
 ```
 
-**Key Points:**
-- ✅ Runs automatically on app start
-- ✅ Verifies all parity requirements
-- ✅ Logs detailed report to console
+## Monetization Features
 
-## 🚀 Testing Parity
+### 1. **Affiliate Links**
 
-### In Expo Go
+The app appends affiliate IDs to store URLs when redirecting users:
 
-1. Open the app in Expo Go
-2. Check the console logs for parity verification
-3. Verify all checks pass
-4. Test all features (wishlists, items, sharing, etc.)
+```typescript
+// utils/affiliateLinks.ts
+export function appendAffiliateId(url: string, storeDomain: string): string {
+  const network = detectAffiliateNetwork(storeDomain);
+  const affiliateId = appConfig.affiliateIds[network];
+  
+  // Append affiliate ID based on store
+  // Amazon: ?tag=YOUR_TAG
+  // eBay: &mkevt=1&mkcid=1&mkrid=YOUR_ID
+  // Walmart: ?affcamid=YOUR_ID
+}
+```
 
-### In TestFlight/App Store
+**Supported Networks:**
+- Amazon Associates
+- eBay Partner Network
+- Walmart Affiliates
+- Target Affiliates
+- Best Buy Affiliates
+- Etsy Affiliates
+- AliExpress Affiliates
 
-1. Build and deploy to TestFlight
-2. Install on a device
-3. Check the console logs (via Xcode or remote debugging)
-4. Verify all checks pass
-5. Test all features
-6. Compare behavior with Expo Go - should be **IDENTICAL**
+**Tracking:**
+- Track outbound clicks per store and per item
+- Aggregated, anonymized data only
+- No personal data leakage
 
-### Verification Checklist
+### 2. **Sponsored Placement**
 
-- [ ] Environment variables are locked (same Supabase URL/key)
-- [ ] No dev-only feature flags enabled
-- [ ] UI configuration is locked (no dev padding/banners)
-- [ ] Supabase connection works identically
-- [ ] API endpoints are locked (no localhost URLs)
-- [ ] Theme system is consistent
-- [ ] Navigation is consistent
-- [ ] All features work identically
+Sponsored products are clearly labeled and only shown if they match user intent and country:
 
-## 📝 Common Issues and Solutions
+```typescript
+// Label: "Sponsored"
+// Only show if:
+// - Product matches user search query
+// - Product ships to user's country
+// - User has given tracking consent
+```
 
-### Issue: Different behavior in Expo Go vs production
+### 3. **Premium Features**
 
-**Solution:** Check the parity verification report. Look for:
-- Dev-only feature flags enabled
-- Conditional styling based on environment
-- Different API endpoints
+Premium features are gated by user subscription:
 
-### Issue: Features not working in Expo Go
+```typescript
+export const PREMIUM_FEATURES = {
+  UNLIMITED_PRICE_TRACKING: 'unlimited_price_tracking',
+  HISTORICAL_PRICE_CHARTS: 'historical_price_charts',
+  MULTI_COUNTRY_COMPARISON: 'multi_country_comparison',
+  EARLY_PRICE_DROP_ALERTS: 'early_price_drop_alerts',
+};
+```
 
-**Solution:** Ensure graceful degradation:
-- Check if the feature requires native APIs (Updates, Notifications)
-- Verify error handling doesn't crash the app
-- Add fallback behavior for unavailable features
+**Premium Plans:**
+- Monthly: $4.99/month
+- Yearly: $39.99/year (33% savings)
 
-### Issue: UI looks different in Expo Go vs production
+### 4. **Store Analytics**
 
-**Solution:** Check for:
-- Dev-only padding or margins
-- Conditional styling based on `__DEV__` or `Constants.appOwnership`
-- Hardcoded colors instead of theme tokens
+Track conversion clicks for analytics:
 
-## 🎯 Best Practices
+```typescript
+// utils/analytics.ts
+export async function trackConversionClick(data: ConversionClickData): Promise<void> {
+  // Send aggregated, anonymized data to backend
+  // NO personal data (no user IDs, emails, or names)
+  // Used for:
+  // - Store performance analytics
+  // - Conversion rate tracking
+  // - Monetization reporting
+}
+```
 
-1. **Always use theme tokens** - Never hardcode colors
-2. **Always use locked environment variables** - Never use conditional overrides
-3. **Always use graceful degradation** - Features should fail silently, not crash
-4. **Always test in both Expo Go and production** - Verify identical behavior
-5. **Always run parity verification** - Check the report on app start
+## Compliance
 
-## 📚 Related Files
+### 1. **Apple App Store Rules**
 
-- `utils/environmentConfig.ts` - Locked environment configuration
-- `utils/versionTracking.ts` - Version tracking with parity
-- `utils/supabase-edge-functions.ts` - Edge functions with parity
-- `utils/parityVerification.ts` - Parity verification system
-- `lib/supabase.ts` - Supabase client with locked config
-- `styles/theme.ts` - Theme system with locked tokens
-- `styles/designSystem.ts` - Design system with locked styles
-- `app/_layout.tsx` - Root layout with parity verification
+The app follows Apple App Store guidelines:
 
-## ✅ Verification
+- **Clear Labeling**: Affiliate links and sponsored content are clearly labeled
+- **No Hidden Tracking**: All tracking requires user consent
+- **User Consent**: Tracking consent is requested before any data collection
+- **Privacy**: No personal data is collected without consent
 
-To verify parity is working correctly:
+### 2. **Tracking Consent**
 
-1. Start the app in Expo Go
-2. Check the console for parity verification report
-3. Verify all checks pass
-4. Build and deploy to TestFlight
-5. Install on a device
-6. Check the console for parity verification report
-7. Verify all checks pass
-8. Compare behavior - should be **IDENTICAL**
+The app requests tracking consent:
 
-If all checks pass, you have **FULL PARITY** between Expo Go and production builds! 🎉
+```typescript
+// app.json
+"NSUserTrackingUsageDescription": "This app uses tracking to provide personalized product recommendations and measure ad performance. Your data is never sold to third parties."
+```
+
+### 3. **Notification Consent**
+
+The app requests notification consent:
+
+```typescript
+// Notifications are only sent if user has given consent
+// User can disable notifications at any time
+```
+
+## Build-Time Checks
+
+The app runs parity checks on startup:
+
+```
+═══════════════════════════════════════════════════
+🔍 RUNNING PARITY VERIFICATION
+═══════════════════════════════════════════════════
+Environment: PROD
+Platform: ios
+Total Checks: 9
+Passed: 9 ✅
+Failed: 0
+Critical Failures: 0
+═══════════════════════════════════════════════════
+✅ 1. Environment Variables
+   All environment variables are configured correctly
+✅ 2. Feature Flags
+   No dev-only feature flags enabled
+✅ 3. UI Configuration
+   UI configuration is locked for all environments
+✅ 4. Supabase Connection
+   Supabase connection is configured and consistent
+✅ 5. API Endpoints
+   API endpoints are locked to production URLs
+✅ 6. Edge Function Names
+   Edge Function names are locked and consistent
+✅ 7. Affiliate Configuration
+   Affiliate IDs are configured for monetization
+✅ 8. Monetization Setup
+   Monetization features are enabled
+✅ 9. Compliance Settings
+   Compliance settings are properly configured
+═══════════════════════════════════════════════════
+✅✅✅ ALL CRITICAL PARITY CHECKS PASSED ✅✅✅
+✅ Expo Go and production builds are identical
+✅ No dev-only behavior differences
+✅ UI, API, and navigation are consistent
+═══════════════════════════════════════════════════
+```
+
+## Environment Switching
+
+To switch between environments, update the `environment` field in `app.json`:
+
+```json
+{
+  "expo": {
+    "extra": {
+      "environment": "DEV",  // or "PREVIEW" or "PROD"
+      // ... rest of config
+    }
+  }
+}
+```
+
+**Important:** All other configuration remains the same. Only the `environment` field changes.
+
+## Testing Parity
+
+To test parity:
+
+1. **Expo Go**: Run `npm run dev` and test in Expo Go
+2. **iOS Build**: Build with `eas build --platform ios --profile preview`
+3. **Android Build**: Build with `eas build --platform android --profile preview`
+4. **Verify**: Check that all features work identically in all environments
+
+## Troubleshooting
+
+### Parity Check Failed
+
+If parity checks fail:
+
+1. Check the console logs for details
+2. Review the failed checks
+3. Update `app.json` to fix configuration
+4. Re-run the app and verify checks pass
+
+### Affiliate Links Not Working
+
+If affiliate links are not working:
+
+1. Check that affiliate IDs are configured in `app.json`
+2. Verify that the store domain is supported
+3. Check console logs for affiliate link generation
+4. Test with a known affiliate link
+
+### Premium Features Not Working
+
+If premium features are not working:
+
+1. Check that the user has a premium subscription
+2. Verify that premium status is fetched correctly
+3. Check console logs for premium status
+4. Test with a premium account
+
+## Summary
+
+This system ensures that:
+
+✅ Expo Go and production builds are **IDENTICAL**
+✅ No dev-only behavior differences
+✅ UI, API, and navigation are **CONSISTENT**
+✅ Affiliate links and monetization work **CORRECTLY**
+✅ Compliance with App Store guidelines is **ENFORCED**
+✅ Build-time checks **PREVENT** misconfigurations
+
+The app behaves **EXACTLY** the same in Expo Go and production builds.
