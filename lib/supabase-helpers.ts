@@ -514,18 +514,66 @@ export interface PermissionConsent {
 export async function fetchPermissionConsent(userId: string): Promise<PermissionConsent> {
   console.log('[Supabase] Fetching permission consent for:', userId);
   
-  // For now, return default values
-  // This can be extended when the backend adds permission consent support
-  return {
-    notifications: false,
-    camera: false,
-    photos: false,
-    location: false,
-    notificationsAskedAt: null,
-    cameraAskedAt: null,
-    photosAskedAt: null,
-    locationAskedAt: null,
-  };
+  try {
+    // Query the user_permission_consent table
+    const { data, error } = await supabase
+      .from('user_permission_consent')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching permission consent:', error);
+      // Return defaults if error
+      return {
+        notifications: false,
+        camera: false,
+        photos: false,
+        location: false,
+        notificationsAskedAt: null,
+        cameraAskedAt: null,
+        photosAskedAt: null,
+        locationAskedAt: null,
+      };
+    }
+
+    if (!data) {
+      // No consent record exists yet, return defaults
+      return {
+        notifications: false,
+        camera: false,
+        photos: false,
+        location: false,
+        notificationsAskedAt: null,
+        cameraAskedAt: null,
+        photosAskedAt: null,
+        locationAskedAt: null,
+      };
+    }
+
+    return {
+      notifications: data.notifications,
+      camera: data.camera,
+      photos: data.photos,
+      location: data.location,
+      notificationsAskedAt: data.notifications_asked_at,
+      cameraAskedAt: data.camera_asked_at,
+      photosAskedAt: data.photos_asked_at,
+      locationAskedAt: data.location_asked_at,
+    };
+  } catch (error) {
+    console.error('[Supabase] Exception fetching permission consent:', error);
+    return {
+      notifications: false,
+      camera: false,
+      photos: false,
+      location: false,
+      notificationsAskedAt: null,
+      cameraAskedAt: null,
+      photosAskedAt: null,
+      locationAskedAt: null,
+    };
+  }
 }
 
 export async function updatePermissionConsent(
@@ -534,13 +582,81 @@ export async function updatePermissionConsent(
 ): Promise<PermissionConsent> {
   console.log('[Supabase] Updating permission consent for:', userId, updates);
   
-  // For now, just return the updated values
-  // This can be extended when the backend adds permission consent support
-  const current = await fetchPermissionConsent(userId);
-  return {
-    ...current,
-    ...updates,
-  };
+  try {
+    // Convert camelCase to snake_case for database
+    const dbUpdates: any = {};
+    if (updates.notifications !== undefined) dbUpdates.notifications = updates.notifications;
+    if (updates.camera !== undefined) dbUpdates.camera = updates.camera;
+    if (updates.photos !== undefined) dbUpdates.photos = updates.photos;
+    if (updates.location !== undefined) dbUpdates.location = updates.location;
+    if (updates.notificationsAskedAt !== undefined) dbUpdates.notifications_asked_at = updates.notificationsAskedAt;
+    if (updates.cameraAskedAt !== undefined) dbUpdates.camera_asked_at = updates.cameraAskedAt;
+    if (updates.photosAskedAt !== undefined) dbUpdates.photos_asked_at = updates.photosAskedAt;
+    if (updates.locationAskedAt !== undefined) dbUpdates.location_asked_at = updates.locationAskedAt;
+
+    // Try to update first
+    const { data: existingData } = await supabase
+      .from('user_permission_consent')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingData) {
+      // Update existing record
+      const { data, error } = await supabase
+        .from('user_permission_consent')
+        .update(dbUpdates)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error updating permission consent:', error);
+        throw error;
+      }
+
+      return {
+        notifications: data.notifications,
+        camera: data.camera,
+        photos: data.photos,
+        location: data.location,
+        notificationsAskedAt: data.notifications_asked_at,
+        cameraAskedAt: data.camera_asked_at,
+        photosAskedAt: data.photos_asked_at,
+        locationAskedAt: data.location_asked_at,
+      };
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('user_permission_consent')
+        .insert({
+          user_id: userId,
+          ...dbUpdates,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error inserting permission consent:', error);
+        throw error;
+      }
+
+      return {
+        notifications: data.notifications,
+        camera: data.camera,
+        photos: data.photos,
+        location: data.location,
+        notificationsAskedAt: data.notifications_asked_at,
+        cameraAskedAt: data.camera_asked_at,
+        photosAskedAt: data.photos_asked_at,
+        locationAskedAt: data.location_asked_at,
+      };
+    }
+  } catch (error) {
+    console.error('[Supabase] Exception updating permission consent:', error);
+    // Return current state on error
+    return await fetchPermissionConsent(userId);
+  }
 }
 
 export async function recordPermissionAsk(
@@ -549,8 +665,6 @@ export async function recordPermissionAsk(
 ): Promise<void> {
   console.log('[Supabase] Recording permission ask for:', userId, permissionType);
   
-  // For now, just log it
-  // This can be extended when the backend adds permission consent support
   const askedAtField = `${permissionType}AskedAt` as keyof PermissionConsent;
   const updates = {
     [askedAtField]: new Date().toISOString(),

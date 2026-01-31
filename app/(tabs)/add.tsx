@@ -112,16 +112,6 @@ export default function AddItemScreen() {
     }
   }, [sharedUrl]);
 
-  useEffect(() => {
-    // Request camera permissions on mount
-    (async () => {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        console.log('[AddItem] Camera permission not granted');
-      }
-    })();
-  }, []);
-
   const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
 
   const handleExtractItem = async () => {
@@ -182,9 +172,25 @@ export default function AddItemScreen() {
   const handleTakePhoto = async () => {
     console.log('[AddItem] User tapped Take Photo');
     
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos');
+    // Check permission status first
+    const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+    
+    if (currentStatus === 'undetermined') {
+      // Show pre-permission screen
+      router.push('/permissions/camera');
+      return;
+    }
+
+    if (currentStatus !== 'granted') {
+      // Permission was denied, show settings prompt
+      Alert.alert(
+        'Camera Permission Required',
+        'Camera access is required to take photos of products. Please enable it in Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
       return;
     }
 
@@ -244,6 +250,28 @@ export default function AddItemScreen() {
   const handleUploadImage = async () => {
     console.log('[AddItem] User tapped Upload Image');
     
+    // Check permission status first
+    const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+    
+    if (currentStatus === 'undetermined') {
+      // Show pre-permission screen
+      router.push('/permissions/photos');
+      return;
+    }
+
+    if (currentStatus !== 'granted') {
+      // Permission was denied, show settings prompt
+      Alert.alert(
+        'Photo Library Permission Required',
+        'Photo library access is required to select images. Please enable it in Settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
