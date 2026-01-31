@@ -108,6 +108,7 @@ export default function ImportPreviewScreen() {
   
   // Editable fields
   const [itemName, setItemName] = useState('');
+  const [brand, setBrand] = useState('');
   const [selectedImage, setSelectedImage] = useState('');
   const [suggestedImages, setSuggestedImages] = useState<string[]>([]); // Top 5 images
   const [storeName, setStoreName] = useState('');
@@ -121,7 +122,7 @@ export default function ImportPreviewScreen() {
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
-  const [isProductCorrect, setIsProductCorrect] = useState(false);
+  const [isCorrectProduct, setIsCorrectProduct] = useState(false);
   const [showAlternatives, setShowAlternatives] = useState(false);
   
   // Duplicate detection state
@@ -163,6 +164,7 @@ export default function ImportPreviewScreen() {
         
         setProductData(parsed);
         setItemName(parsed.itemName || '');
+        setBrand(parsed.brand || '');
         
         // Set suggested images (top 5)
         const images = parsed.extractedImages || [];
@@ -478,7 +480,7 @@ export default function ImportPreviewScreen() {
   };
 
   const handleRetryExtraction = () => {
-    console.log('[ImportPreview] User tapped Retry Extraction');
+    console.log('[ImportPreview] User tapped Retry');
     Alert.alert(
       'Retry Extraction',
       'Would you like to try extracting the product information again?',
@@ -493,6 +495,12 @@ export default function ImportPreviewScreen() {
         },
       ]
     );
+  };
+
+  const handleManualEntry = () => {
+    console.log('[ImportPreview] User tapped Manual Entry');
+    // Navigate back to add screen with manual mode selected
+    router.back();
   };
 
   const handleReportProblem = () => {
@@ -516,7 +524,7 @@ export default function ImportPreviewScreen() {
       return;
     }
     
-    if (!isProductCorrect) {
+    if (!isCorrectProduct) {
       Alert.alert(
         'Confirm Product',
         'Please confirm that this is the correct product before adding it to your wishlist',
@@ -753,6 +761,9 @@ export default function ImportPreviewScreen() {
   // Determine if we're showing placeholder
   const isPlaceholderImage = !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL;
 
+  // Determine delivery country display
+  const deliveryCountryDisplay = userLocation ? userLocation.countryCode : 'Not set';
+
   return (
     <>
       <Stack.Screen
@@ -794,7 +805,7 @@ export default function ImportPreviewScreen() {
               </View>
             )}
 
-            {/* Product Image */}
+            {/* Product Image + Change Photo */}
             <View style={styles.imageSection}>
               {selectedImage && !isPlaceholderImage ? (
                 <Image
@@ -853,6 +864,15 @@ export default function ImportPreviewScreen() {
                 placeholderTextColor={colors.textTertiary}
               />
 
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Brand (optional)</Text>
+              <TextInput
+                style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                value={brand}
+                onChangeText={setBrand}
+                placeholder="Enter brand name"
+                placeholderTextColor={colors.textTertiary}
+              />
+
               <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Store</Text>
               <View style={styles.storeRow}>
                 <TextInput
@@ -896,38 +916,11 @@ export default function ImportPreviewScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Country Availability */}
-              {userLocation && (
-                <View style={styles.availabilitySection}>
-                  <View style={styles.availabilityRow}>
-                    <IconSymbol
-                      ios_icon_name={availableInUserCountry ? 'checkmark.circle' : 'info.circle'}
-                      android_material_icon_name={availableInUserCountry ? 'check-circle' : 'info'}
-                      size={20}
-                      color={availableInUserCountry ? colors.success : colors.warning}
-                    />
-                    <Text style={[styles.availabilityText, { color: colors.textPrimary }]}>
-                      {availableInUserCountry
-                        ? `Available in ${userLocation.countryCode}`
-                        : `May not be available in ${userLocation.countryCode}`}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Wishlist</Text>
-              <TouchableOpacity
-                style={[styles.wishlistButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => setShowWishlistPicker(true)}
-              >
-                <Text style={[styles.wishlistButtonText, { color: colors.textPrimary }]}>{selectedWishlistName}</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.down"
-                  android_material_icon_name="arrow-drop-down"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
+              {/* Deliver to: Country */}
+              <View style={styles.deliverySection}>
+                <Text style={[styles.deliveryLabel, { color: colors.textSecondary }]}>Deliver to:</Text>
+                <Text style={[styles.deliveryCountry, { color: colors.textPrimary }]}>{deliveryCountryDisplay}</Text>
+              </View>
 
               <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Notes (optional)</Text>
               <TextInput
@@ -941,11 +934,11 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
-            {/* AI Price Search Section */}
+            {/* Other Stores & Prices Section */}
             {alternativeStores.length > 0 ? (
               <View style={styles.alternativesSection}>
                 <View style={styles.alternativesHeader}>
-                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Price Offers Found</Text>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Other Stores & Prices</Text>
                   <Text style={[styles.alternativesCount, { color: colors.textSecondary }]}>
                     {alternativeStores.length} {alternativeStores.length === 1 ? 'offer' : 'offers'}
                   </Text>
@@ -1035,67 +1028,41 @@ export default function ImportPreviewScreen() {
               </View>
             )}
 
-            {/* Confirmation Toggle */}
+            {/* "This is the correct product" Confirmation */}
             <View style={[styles.confirmationSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.confirmationLeft}>
                 <IconSymbol
                   ios_icon_name="checkmark.circle"
                   android_material_icon_name="check-circle"
                   size={24}
-                  color={isProductCorrect ? colors.success : colors.textTertiary}
+                  color={isCorrectProduct ? colors.success : colors.textTertiary}
                 />
                 <Text style={[styles.confirmationText, { color: colors.textPrimary }]}>
                   This is the correct product
                 </Text>
               </View>
               <Switch
-                value={isProductCorrect}
-                onValueChange={setIsProductCorrect}
+                value={isCorrectProduct}
+                onValueChange={setIsCorrectProduct}
                 trackColor={{ false: colors.border, true: colors.success }}
                 thumbColor={colors.surface}
               />
             </View>
 
             {/* Spacer for footer */}
-            <View style={{ height: 120 }} />
+            <View style={{ height: 180 }} />
           </ScrollView>
 
           {/* Footer Actions */}
           <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={handleRetryExtraction}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.clockwise"
-                android_material_icon_name="refresh"
-                size={16}
-                color={colors.textPrimary}
-              />
-              <Text style={[styles.secondaryButtonText, { color: colors.textPrimary }]}>Retry Extraction</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tertiaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={handleReportProblem}
-            >
-              <IconSymbol
-                ios_icon_name="exclamationmark.triangle"
-                android_material_icon_name="report"
-                size={16}
-                color={colors.textSecondary}
-              />
-              <Text style={[styles.tertiaryButtonText, { color: colors.textSecondary }]}>Report Problem</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
               style={[
                 styles.primaryButton,
                 { backgroundColor: colors.accent },
-                (!isProductCorrect || !itemName.trim() || saving || checkingDuplicates) && styles.primaryButtonDisabled,
+                (!isCorrectProduct || !itemName.trim() || saving || checkingDuplicates) && styles.primaryButtonDisabled,
               ]}
               onPress={handleConfirmAndAdd}
-              disabled={!isProductCorrect || !itemName.trim() || saving || checkingDuplicates}
+              disabled={!isCorrectProduct || !itemName.trim() || saving || checkingDuplicates}
             >
               {saving || checkingDuplicates ? (
                 <ActivityIndicator size="small" color={colors.textInverse} />
@@ -1111,6 +1078,47 @@ export default function ImportPreviewScreen() {
                 </>
               )}
             </TouchableOpacity>
+
+            <View style={styles.secondaryActions}>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleRetryExtraction}
+              >
+                <IconSymbol
+                  ios_icon_name="arrow.clockwise"
+                  android_material_icon_name="refresh"
+                  size={16}
+                  color={colors.textPrimary}
+                />
+                <Text style={[styles.secondaryButtonText, { color: colors.textPrimary }]}>Retry</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleManualEntry}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={16}
+                  color={colors.textPrimary}
+                />
+                <Text style={[styles.secondaryButtonText, { color: colors.textPrimary }]}>Manual Entry</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.secondaryButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleReportProblem}
+              >
+                <IconSymbol
+                  ios_icon_name="exclamationmark.triangle"
+                  android_material_icon_name="report"
+                  size={16}
+                  color={colors.textSecondary}
+                />
+                <Text style={[styles.secondaryButtonText, { color: colors.textSecondary }]}>Report</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
 
@@ -1219,45 +1227,6 @@ export default function ImportPreviewScreen() {
                   <Text style={[styles.imageActionText, { color: colors.textInverse }]}>Take Photo</Text>
                 </TouchableOpacity>
               </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        {/* Wishlist Picker Modal */}
-        <Modal
-          visible={showWishlistPicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowWishlistPicker(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowWishlistPicker(false)}>
-            <Pressable style={[styles.pickerModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Wishlist</Text>
-              <ScrollView style={styles.pickerList}>
-                {wishlists.map((wishlist) => (
-                  <TouchableOpacity
-                    key={wishlist.id}
-                    style={[
-                      styles.pickerOption,
-                      { backgroundColor: selectedWishlistId === wishlist.id ? colors.accentLight : 'transparent' },
-                    ]}
-                    onPress={() => {
-                      setSelectedWishlistId(wishlist.id);
-                      setShowWishlistPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>{wishlist.name}</Text>
-                    {selectedWishlistId === wishlist.id && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color={colors.accent}
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
@@ -1429,27 +1398,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  availabilitySection: {
-    marginTop: spacing.md,
-  },
-  availabilityRow: {
+  deliverySection: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  availabilityText: {
+  deliveryLabel: {
     fontSize: 14,
+    fontWeight: '500',
   },
-  wishlistButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  wishlistButtonText: {
-    fontSize: 16,
+  deliveryCountry: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   notesInput: {
     minHeight: 80,
@@ -1584,7 +1546,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   secondaryButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1596,18 +1563,6 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: 14,
     fontWeight: '500',
-  },
-  tertiaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  tertiaryButtonText: {
-    fontSize: 14,
   },
   modalOverlay: {
     flex: 1,
