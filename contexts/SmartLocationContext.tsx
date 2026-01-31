@@ -11,7 +11,7 @@ import {
 interface SmartLocationContextType {
   settings: SmartLocationSettings | null;
   loading: boolean;
-  isTravel ing: boolean;
+  isTraveling: boolean;
   refreshSettings: () => Promise<void>;
   updateActiveSearchCountry: (country: string) => Promise<void>;
   updateHomeCountry: (country: string) => Promise<void>;

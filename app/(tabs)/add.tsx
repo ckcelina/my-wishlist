@@ -102,7 +102,7 @@ export default function AddItemScreen() {
       console.log('[AddItem] No user, redirecting to auth');
       router.replace('/auth');
     }
-  }, [user]);
+  }, [user, router]);
 
   useEffect(() => {
     if (sharedUrl) {
