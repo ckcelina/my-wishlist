@@ -320,8 +320,8 @@ export default function ProfileScreen() {
                     style={[
                       styles.themeButton,
                       { 
-                        backgroundColor: themePreference === 'light' ? theme.colors.accent : theme.colors.card,
-                        borderColor: theme.colors.border,
+                        backgroundColor: themePreference === 'light' ? theme.colors.accent : theme.colors.surface2,
+                        borderColor: themePreference === 'light' ? theme.colors.accent : theme.colors.border,
                       }
                     ]}
                     onPress={() => handleThemeChange('light')}
@@ -330,13 +330,13 @@ export default function ProfileScreen() {
                     <IconSymbol
                       ios_icon_name="sun.max.fill"
                       android_material_icon_name="light-mode"
-                      size={20}
-                      color={themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                      size={18}
+                      color={themePreference === 'light' ? '#FFFFFF' : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'light' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                        color: themePreference === 'light' ? '#FFFFFF' : theme.colors.textSecondary 
                       }
                     ]}>Light</Text>
                   </PressableScale>
@@ -345,8 +345,8 @@ export default function ProfileScreen() {
                     style={[
                       styles.themeButton,
                       { 
-                        backgroundColor: themePreference === 'dark' ? theme.colors.accent : theme.colors.card,
-                        borderColor: theme.colors.border,
+                        backgroundColor: themePreference === 'dark' ? theme.colors.accent : theme.colors.surface2,
+                        borderColor: themePreference === 'dark' ? theme.colors.accent : theme.colors.border,
                       }
                     ]}
                     onPress={() => handleThemeChange('dark')}
@@ -355,13 +355,13 @@ export default function ProfileScreen() {
                     <IconSymbol
                       ios_icon_name="moon.fill"
                       android_material_icon_name="dark-mode"
-                      size={20}
-                      color={themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                      size={18}
+                      color={themePreference === 'dark' ? '#FFFFFF' : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'dark' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                        color: themePreference === 'dark' ? '#FFFFFF' : theme.colors.textSecondary 
                       }
                     ]}>Dark</Text>
                   </PressableScale>
@@ -370,8 +370,8 @@ export default function ProfileScreen() {
                     style={[
                       styles.themeButton,
                       { 
-                        backgroundColor: themePreference === 'system' ? theme.colors.accent : theme.colors.card,
-                        borderColor: theme.colors.border,
+                        backgroundColor: themePreference === 'system' ? theme.colors.accent : theme.colors.surface2,
+                        borderColor: themePreference === 'system' ? theme.colors.accent : theme.colors.border,
                       }
                     ]}
                     onPress={() => handleThemeChange('system')}
@@ -380,13 +380,13 @@ export default function ProfileScreen() {
                     <IconSymbol
                       ios_icon_name="gear"
                       android_material_icon_name="settings"
-                      size={20}
-                      color={themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary}
+                      size={18}
+                      color={themePreference === 'system' ? '#FFFFFF' : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'system' ? (isDark ? theme.colors.text : '#FFFFFF') : theme.colors.textSecondary 
+                        color: themePreference === 'system' ? '#FFFFFF' : theme.colors.textSecondary 
                       }
                     ]}>System</Text>
                   </PressableScale>
@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.sm,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   themeButtonText: {
     ...typography.bodyMedium,

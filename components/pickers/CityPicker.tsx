@@ -14,7 +14,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing, inputStyles } from '@/styles/designSystem';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { authenticatedPost } from '@/utils/api';
+import { apiPost } from '@/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface CityResult {
@@ -72,7 +72,7 @@ export function CityPicker({
         return;
       }
 
-      const response = await authenticatedPost<{ results: CityResult[] }>(
+      const response = await apiPost<{ results: CityResult[] }>(
         '/api/location/search-cities',
         {
           query,
@@ -149,9 +149,22 @@ export function CityPicker({
     );
   };
 
+  const handleRetry = () => {
+    console.log('User tapped retry for city search');
+    setError(null);
+    searchCities(searchQuery);
+  };
+
   const renderEmptyState = () => {
     if (loading) {
-      return null;
+      return (
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="large" color={theme.colors.accent} />
+          <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
+            Searching cities...
+          </Text>
+        </View>
+      );
     }
 
     if (error) {
@@ -166,6 +179,14 @@ export function CityPicker({
           <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
             {error}
           </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: theme.colors.accent }]}
+            onPress={handleRetry}
+          >
+            <Text style={[styles.retryButtonText, { color: '#FFFFFF' }]}>
+              Retry
+            </Text>
+          </TouchableOpacity>
         </View>
       );
     }
@@ -196,7 +217,7 @@ export function CityPicker({
             color={theme.colors.textSecondary}
           />
           <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>
-            No cities found
+            No cities found for "{searchQuery}"
           </Text>
         </View>
       );
@@ -328,5 +349,15 @@ const styles = StyleSheet.create({
   emptyText: {
     ...typography.bodyMedium,
     textAlign: 'center',
+  },
+  retryButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    marginTop: spacing.md,
+  },
+  retryButtonText: {
+    ...typography.bodyMedium,
+    fontWeight: '600',
   },
 });

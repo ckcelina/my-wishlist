@@ -199,6 +199,47 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
   }
 }
 
+export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
+  if (!API_URL) {
+    throw new Error('[API] No backend URL configured. Use Supabase directly instead.');
+  }
+
+  const url = `${API_URL}${endpoint}`;
+  console.log(`[API] POST ${url} (public)`);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[API] Request failed: ${response.status} ${errorText}`);
+      
+      const error = new Error(`API request failed: ${response.status} ${errorText}`);
+      logError(error, {
+        context: 'apiPost',
+        endpoint,
+        status: response.status,
+      });
+      
+      throw error;
+    }
+
+    return response.json();
+  } catch (error) {
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'apiPost',
+      endpoint,
+    });
+    throw error;
+  }
+}
+
 /**
  * Normalize city name for consistent comparisons
  * Matches backend normalization logic

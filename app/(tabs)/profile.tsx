@@ -143,22 +143,26 @@ export default function ProfileScreen() {
       paddingVertical: spacing.md,
       paddingHorizontal: spacing.sm,
       borderRadius: 12,
-      borderWidth: 1.5,
+      borderWidth: 2,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surface2,
       alignItems: 'center',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: spacing.xs,
     },
     themeButtonActive: {
       borderColor: colors.accent,
-      backgroundColor: colors.accentLight,
+      backgroundColor: colors.accent,
     },
     themeButtonText: {
       ...typography.body,
-      color: colors.text,
+      color: colors.textSecondary,
+      fontWeight: '500',
     },
     themeButtonTextActive: {
       ...typography.body,
-      color: colors.accent,
+      color: colors.textInverse,
       fontWeight: '600',
     },
     locationCard: {
@@ -436,6 +440,12 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => handleThemeChange('light')}
                 >
+                  <IconSymbol
+                    ios_icon_name="sun.max.fill"
+                    android_material_icon_name="light-mode"
+                    size={18}
+                    color={themePreference === 'light' ? colors.textInverse : colors.textSecondary}
+                  />
                   <Text
                     style={
                       themePreference === 'light'
@@ -453,6 +463,12 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => handleThemeChange('dark')}
                 >
+                  <IconSymbol
+                    ios_icon_name="moon.fill"
+                    android_material_icon_name="dark-mode"
+                    size={18}
+                    color={themePreference === 'dark' ? colors.textInverse : colors.textSecondary}
+                  />
                   <Text
                     style={
                       themePreference === 'dark'
@@ -470,6 +486,12 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => handleThemeChange('system')}
                 >
+                  <IconSymbol
+                    ios_icon_name="gear"
+                    android_material_icon_name="settings"
+                    size={18}
+                    color={themePreference === 'system' ? colors.textInverse : colors.textSecondary}
+                  />
                   <Text
                     style={
                       themePreference === 'system'

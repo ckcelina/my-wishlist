@@ -239,6 +239,11 @@ export default function WishlistsScreen() {
       paddingTop: spacing.lg,
       paddingBottom: spacing.md,
     },
+    createButton: {
+      backgroundColor: colors.accent,
+      borderWidth: 2,
+      borderColor: colors.accent,
+    },
   }), [colors, typography, insets.bottom]);
 
   const initializeDefaultWishlist = useCallback(async () => {
@@ -248,12 +253,14 @@ export default function WishlistsScreen() {
 
     setInitializing(true);
     try {
+      console.log('[WishlistsScreen] Creating first default wishlist for new user');
       const wishlistData = {
         user_id: user.id,
         name: 'My Wishlist',
       };
       
       const newWishlist = await createWishlist(wishlistData);
+      console.log('[WishlistsScreen] First wishlist created:', newWishlist.id);
       
       // Refresh the list
       await fetchWishlistsFromNetwork();
@@ -420,11 +427,13 @@ export default function WishlistsScreen() {
     }
 
     try {
+      console.log('[WishlistsScreen] Creating new wishlist (not default):', trimmedName);
       const wishlistData = {
         user_id: user.id,
         name: trimmedName,
       };
       
+      // Create wishlist - it will NOT be default unless it's the first one
       await createWishlist(wishlistData);
 
       setCreateModalVisible(false);
@@ -597,6 +606,7 @@ export default function WishlistsScreen() {
           title="Create Wishlist"
           onPress={openCreateModal}
           variant="primary"
+          style={styles.createButton}
         />
       </View>
     );
