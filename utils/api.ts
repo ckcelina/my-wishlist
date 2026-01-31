@@ -46,17 +46,23 @@ async function getBearerToken(): Promise<string | null> {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
-      console.log('[API] Using Supabase access token');
+      if (__DEV__) {
+        console.log('[API] Using Supabase access token');
+      }
       return session.access_token;
     }
 
     if (Platform.OS === 'web') {
       const token = localStorage.getItem(BEARER_TOKEN_KEY);
-      console.log('[API] Using Better Auth token from localStorage');
+      if (__DEV__) {
+        console.log('[API] Using Better Auth token from localStorage');
+      }
       return token;
     } else {
       const token = await SecureStore.getItemAsync(BEARER_TOKEN_KEY);
-      console.log('[API] Using Better Auth token from SecureStore');
+      if (__DEV__) {
+        console.log('[API] Using Better Auth token from SecureStore');
+      }
       return token;
     }
   } catch (error) {
@@ -91,13 +97,23 @@ export async function authenticatedFetch(
   }
 
   const url = `${API_URL}${endpoint}`;
-  console.log(`[API] ${options.method || 'GET'} ${url}`);
+  
+  if (__DEV__) {
+    console.log(`[API] ${options.method || 'GET'} ${url}`);
+    if (options.body) {
+      console.log('[API] Request body:', options.body);
+    }
+  }
 
   try {
     const response = await fetch(url, {
       ...options,
       headers,
     });
+
+    if (__DEV__) {
+      console.log(`[API] Response status: ${response.status}`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -168,12 +184,19 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
   }
 
   const url = `${API_URL}${endpoint}`;
-  console.log(`[API] GET ${url} (public)`);
+  
+  if (__DEV__) {
+    console.log(`[API] GET ${url} (public)`);
+  }
 
   try {
     const response = await fetch(url, {
       method: 'GET',
     });
+
+    if (__DEV__) {
+      console.log(`[API] Response status: ${response.status}`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -189,7 +212,13 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
       throw error;
     }
 
-    return response.json();
+    const data = await response.json();
+    
+    if (__DEV__) {
+      console.log('[API] Response data:', data);
+    }
+
+    return data;
   } catch (error) {
     logError(error instanceof Error ? error : new Error(String(error)), {
       context: 'apiGet',
@@ -205,7 +234,11 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
   }
 
   const url = `${API_URL}${endpoint}`;
-  console.log(`[API] POST ${url} (public)`);
+  
+  if (__DEV__) {
+    console.log(`[API] POST ${url} (public)`);
+    console.log('[API] Request body:', data);
+  }
 
   try {
     const response = await fetch(url, {
@@ -215,6 +248,10 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
       },
       body: JSON.stringify(data),
     });
+
+    if (__DEV__) {
+      console.log(`[API] Response status: ${response.status}`);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -230,7 +267,13 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
       throw error;
     }
 
-    return response.json();
+    const responseData = await response.json();
+    
+    if (__DEV__) {
+      console.log('[API] Response data:', responseData);
+    }
+
+    return responseData;
   } catch (error) {
     logError(error instanceof Error ? error : new Error(String(error)), {
       context: 'apiPost',
