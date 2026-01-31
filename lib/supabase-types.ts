@@ -38,6 +38,9 @@ export interface Database {
           currency: string;
           notes: string | null;
           last_checked_at: string | null;
+          country_code: string | null;
+          city_id: string | null;
+          currency_code: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -52,6 +55,9 @@ export interface Database {
           currency?: string;
           notes?: string | null;
           last_checked_at?: string | null;
+          country_code?: string | null;
+          city_id?: string | null;
+          currency_code?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -66,6 +72,9 @@ export interface Database {
           currency?: string;
           notes?: string | null;
           last_checked_at?: string | null;
+          country_code?: string | null;
+          city_id?: string | null;
+          currency_code?: string | null;
           created_at?: string;
           updated_at?: string;
         };

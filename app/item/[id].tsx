@@ -23,8 +23,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { supabase } from '@/lib/supabase';
 import { authenticatedPost } from '@/utils/api';
+import { appendAffiliateId } from '@/utils/affiliateLinks';
 
 interface PriceHistoryEntry {
   price: string;
@@ -90,6 +92,7 @@ export default function ItemDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
+  const { countryCode } = useLocation();
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -411,8 +414,16 @@ export default function ItemDetailScreen() {
   const handleOpenUrl = async () => {
     if (item?.originalUrl) {
       console.log('[ItemDetailScreen] Opening source URL:', item.originalUrl);
+      
+      // Apply country-specific affiliate link if location is available
+      let finalUrl = item.originalUrl;
+      if (countryCode && item.sourceDomain) {
+        finalUrl = appendAffiliateId(item.originalUrl, item.sourceDomain, countryCode);
+        console.log('[ItemDetailScreen] Applied country-specific affiliate link for', countryCode);
+      }
+      
       const { openStoreLink } = await import('@/utils/openStoreLink');
-      await openStoreLink(item.originalUrl, {
+      await openStoreLink(finalUrl, {
         source: 'item_detail',
         storeDomain: item.sourceDomain || undefined,
         itemId: item.id,
@@ -433,8 +444,16 @@ export default function ItemDetailScreen() {
 
   const handleOpenStoreUrl = async (url: string, storeName: string, storeDomain: string) => {
     console.log('[ItemDetailScreen] Opening store URL:', storeName, url);
+    
+    // Apply country-specific affiliate link if location is available
+    let finalUrl = url;
+    if (countryCode) {
+      finalUrl = appendAffiliateId(url, storeDomain, countryCode);
+      console.log('[ItemDetailScreen] Applied country-specific affiliate link for', countryCode);
+    }
+    
     const { openStoreLink } = await import('@/utils/openStoreLink');
-    await openStoreLink(url, {
+    await openStoreLink(finalUrl, {
       source: 'other_stores',
       storeDomain: storeDomain,
       itemId: item?.id,

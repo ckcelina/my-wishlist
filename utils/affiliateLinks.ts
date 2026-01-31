@@ -57,9 +57,53 @@ export function detectAffiliateNetwork(storeDomain: string): AffiliateNetwork | 
 }
 
 /**
- * Append affiliate ID to URL based on store
+ * Get country-specific store domain for affiliate links
  */
-export function appendAffiliateId(url: string, storeDomain: string): string {
+export function getCountrySpecificDomain(storeDomain: string, countryCode: string): string {
+  const domain = storeDomain.toLowerCase();
+  
+  // Amazon country-specific domains
+  if (domain.includes('amazon')) {
+    switch (countryCode.toUpperCase()) {
+      case 'GB': return 'amazon.co.uk';
+      case 'DE': return 'amazon.de';
+      case 'FR': return 'amazon.fr';
+      case 'IT': return 'amazon.it';
+      case 'ES': return 'amazon.es';
+      case 'CA': return 'amazon.ca';
+      case 'JP': return 'amazon.co.jp';
+      case 'IN': return 'amazon.in';
+      case 'AU': return 'amazon.com.au';
+      case 'MX': return 'amazon.com.mx';
+      case 'BR': return 'amazon.com.br';
+      case 'AE': return 'amazon.ae';
+      case 'SA': return 'amazon.sa';
+      default: return 'amazon.com'; // US default
+    }
+  }
+  
+  // eBay country-specific domains
+  if (domain.includes('ebay')) {
+    switch (countryCode.toUpperCase()) {
+      case 'GB': return 'ebay.co.uk';
+      case 'DE': return 'ebay.de';
+      case 'FR': return 'ebay.fr';
+      case 'IT': return 'ebay.it';
+      case 'ES': return 'ebay.es';
+      case 'CA': return 'ebay.ca';
+      case 'AU': return 'ebay.com.au';
+      default: return 'ebay.com'; // US default
+    }
+  }
+  
+  // Return original domain if no country-specific version
+  return storeDomain;
+}
+
+/**
+ * Append affiliate ID to URL based on store and country
+ */
+export function appendAffiliateId(url: string, storeDomain: string, countryCode?: string): string {
   const network = detectAffiliateNetwork(storeDomain);
   
   if (!network) {
@@ -76,6 +120,15 @@ export function appendAffiliateId(url: string, storeDomain: string): string {
   
   try {
     const urlObj = new URL(url);
+    
+    // Update domain to country-specific version if country code is provided
+    if (countryCode) {
+      const countryDomain = getCountrySpecificDomain(storeDomain, countryCode);
+      if (countryDomain !== storeDomain) {
+        urlObj.hostname = countryDomain;
+        console.log('[Affiliate] Updated domain for country', countryCode, ':', countryDomain);
+      }
+    }
     
     switch (network) {
       case AFFILIATE_NETWORKS.AMAZON:

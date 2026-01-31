@@ -22,6 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useLocation } from '@/contexts/LocationContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
@@ -95,6 +96,7 @@ export default function ImportPreviewScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useAppTheme();
+  const { countryCode, cityId, currencyCode } = useLocation();
   const colors = createColors(theme);
   const typography = createTypography(theme);
   
@@ -572,7 +574,7 @@ export default function ImportPreviewScreen() {
         console.log('[ImportPreview] No image provided, using placeholder');
       }
       
-      // Create the wishlist item
+      // Create the wishlist item with location data
       const newItem = await createWishlistItem({
         wishlist_id: selectedWishlistId,
         title: itemName.trim(),
@@ -582,6 +584,9 @@ export default function ImportPreviewScreen() {
         original_url: productData?.sourceUrl || null,
         source_domain: storeDomain || null,
         notes: notes.trim() || null,
+        country_code: countryCode || null,
+        city_id: cityId || null,
+        currency_code: currencyCode || currency,
       });
       
       console.log('[ImportPreview] Item saved successfully:', newItem.id);
