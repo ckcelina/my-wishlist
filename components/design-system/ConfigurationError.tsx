@@ -1,155 +1,129 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { IconSymbol } from '@/components/IconSymbol';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ConfigurationErrorProps {
   message: string;
   onRetry?: () => void;
 }
 
+/**
+ * Configuration Error Screen
+ * 
+ * Displays a user-friendly error message when environment configuration is missing or invalid.
+ * Shows a retry button if onRetry callback is provided.
+ */
 export function ConfigurationError({ message, onRetry }: ConfigurationErrorProps) {
   const { theme } = useAppTheme();
   const colors = createColors(theme);
   const typography = createTypography(theme);
 
-  const handleContactSupport = () => {
-    Linking.openURL('mailto:support@mywishlist.app?subject=Configuration Error');
-  };
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: spacing.xl,
+    },
+    iconContainer: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: colors.surface2,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    title: {
+      ...typography.h2,
+      color: colors.text,
+      textAlign: 'center',
+      marginBottom: spacing.md,
+    },
+    message: {
+      ...typography.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginBottom: spacing.xl,
+    },
+    retryButton: {
+      backgroundColor: colors.accent,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.xl,
+      borderRadius: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    retryButtonText: {
+      ...typography.body,
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+    devMessage: {
+      marginTop: spacing.xl,
+      padding: spacing.md,
+      backgroundColor: colors.surface2,
+      borderRadius: 12,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.error,
+    },
+    devMessageText: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    },
+  });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <IconSymbol
-          ios_icon_name="exclamationmark.triangle"
-          android_material_icon_name="warning"
-          size={64}
-          color={colors.error}
-        />
-        
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          Configuration Error
-        </Text>
-        
-        <Text style={[styles.message, { color: colors.textSecondary }]}>
-          {message}
-        </Text>
-
-        <View style={styles.buttonContainer}>
-          {onRetry && (
-            <TouchableOpacity
-              style={[styles.button, styles.retryButton, { backgroundColor: colors.accent }]}
-              onPress={onRetry}
-            >
-              <IconSymbol
-                ios_icon_name="arrow.clockwise"
-                android_material_icon_name="refresh"
-                size={20}
-                color={colors.textInverse}
-              />
-              <Text style={[styles.buttonText, { color: colors.textInverse }]}>
-                Retry
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[styles.button, styles.supportButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={handleContactSupport}
-          >
-            <IconSymbol
-              ios_icon_name="envelope"
-              android_material_icon_name="email"
-              size={20}
-              color={colors.accent}
-            />
-            <Text style={[styles.buttonText, { color: colors.accent }]}>
-              Contact Support
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.infoBox, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.content}>
+        <View style={styles.iconContainer}>
           <IconSymbol
-            ios_icon_name="info.circle"
-            android_material_icon_name="info"
-            size={16}
-            color={colors.textTertiary}
+            ios_icon_name="exclamationmark.triangle.fill"
+            android_material_icon_name="warning"
+            size={40}
+            color={colors.error}
           />
-          <Text style={[styles.infoText, { color: colors.textTertiary }]}>
-            This error occurs when the app cannot connect to required services. Please contact support for assistance.
-          </Text>
         </View>
+
+        <Text style={styles.title}>Configuration Error</Text>
+
+        <Text style={styles.message}>{message}</Text>
+
+        {onRetry && (
+          <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+            <IconSymbol
+              ios_icon_name="arrow.clockwise"
+              android_material_icon_name="refresh"
+              size={20}
+              color="#FFFFFF"
+            />
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        )}
+
+        {__DEV__ && (
+          <View style={styles.devMessage}>
+            <Text style={styles.devMessageText}>
+              Development Mode:{'\n'}
+              Check app.config.js for missing environment variables:{'\n'}
+              • EXPO_PUBLIC_API_BASE_URL{'\n'}
+              • EXPO_PUBLIC_SUPABASE_URL{'\n'}
+              • EXPO_PUBLIC_SUPABASE_ANON_KEY
+            </Text>
+          </View>
+        )}
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 400,
-    padding: spacing.xl,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    textAlign: 'center',
-  },
-  message: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: spacing.xl,
-  },
-  buttonContainer: {
-    width: '100%',
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    padding: spacing.md,
-    borderRadius: 12,
-  },
-  retryButton: {
-    // Accent background set inline
-  },
-  supportButton: {
-    borderWidth: 1,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    width: '100%',
-  },
-  infoText: {
-    fontSize: 12,
-    flex: 1,
-    lineHeight: 16,
-  },
-});

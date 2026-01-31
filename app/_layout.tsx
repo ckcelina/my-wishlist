@@ -14,6 +14,7 @@ import { logConfiguration, checkAPIConnectivity } from '@/utils/environmentConfi
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { validateEnv, logEnvironmentConfig } from '@/src/config/env';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -34,6 +35,16 @@ export default function RootLayout() {
     console.log('═══════════════════════════════════════════════════');
     console.log('🚀 APP STARTING - PRODUCTION PARITY ENFORCED');
     console.log('═══════════════════════════════════════════════════');
+    
+    // Validate environment configuration (from src/config/env.ts)
+    const envValidationError = validateEnv();
+    if (envValidationError) {
+      console.error('❌ ENVIRONMENT CONFIGURATION ERROR:');
+      console.error(envValidationError);
+      console.error('❌ Some features may not work correctly');
+    } else {
+      console.log('✅ Environment configuration validated successfully');
+    }
     
     logConfiguration();
     
