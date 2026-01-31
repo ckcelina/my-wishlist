@@ -15,6 +15,7 @@ import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { validateEnv, logEnvironmentConfig } from '@/src/config/env';
+import { preloadLocalCities } from '@/src/services/citySearch';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -47,6 +48,13 @@ export default function RootLayout() {
     }
     
     logConfiguration();
+    
+    // Preload local cities dataset for fallback search
+    preloadLocalCities().then(() => {
+      console.log('✅ Local cities dataset preloaded');
+    }).catch(error => {
+      console.error('❌ Failed to preload local cities:', error);
+    });
     
     // Run parity verification
     runParityVerification().then(report => {
