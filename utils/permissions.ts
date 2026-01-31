@@ -196,6 +196,14 @@ export function getPermissionDescription(type: PermissionType): string {
 }
 
 /**
+ * Get permission icon name
+ */
+export function getPermissionIcon(type: PermissionType): string {
+  const iconName = type === 'notifications' ? 'notifications' : type === 'camera' ? 'camera' : type === 'photos' ? 'photo' : 'location-on';
+  return iconName;
+}
+
+/**
  * Check all permissions at once
  */
 export async function checkAllPermissions() {
@@ -210,4 +218,65 @@ export async function checkAllPermissions() {
     photos: photosStatus,
     location: locationStatus,
   };
+}
+
+/**
+ * Contextual permission request with pre-permission screen
+ * Returns true if granted, false if denied or user cancelled
+ */
+export async function requestPermissionContextually(
+  type: PermissionType,
+  showPrePermissionScreen: (type: PermissionType) => void
+): Promise<boolean> {
+  console.log('[Permissions] Contextual request for:', type);
+  
+  // Check current status
+  let currentStatus: PermissionStatus;
+  
+  const statusMap = {
+    notifications: checkNotificationPermission,
+    camera: checkCameraPermission,
+    photos: checkPhotosPermission,
+    location: checkLocationPermission,
+  };
+  
+  currentStatus = await statusMap[type]();
+  
+  // If already granted, return true
+  if (currentStatus.granted) {
+    console.log('[Permissions] Already granted:', type);
+    return true;
+  }
+  
+  // If undetermined, show pre-permission screen
+  if (currentStatus.status === 'undetermined') {
+    console.log('[Permissions] Showing pre-permission screen for:', type);
+    showPrePermissionScreen(type);
+    return false; // User will be redirected to pre-permission screen
+  }
+  
+  // If denied and can't ask again, show settings prompt
+  if (currentStatus.status === 'denied' && !currentStatus.canAskAgain) {
+    console.log('[Permissions] Permission denied, showing settings prompt:', type);
+    Alert.alert(
+      `${getPermissionName(type)} Required`,
+      `${getPermissionDescription(type)}. Please enable it in Settings.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: openAppSettings },
+      ]
+    );
+    return false;
+  }
+  
+  // If denied but can ask again, request directly
+  const requestMap = {
+    notifications: requestNotificationPermission,
+    camera: requestCameraPermission,
+    photos: requestPhotosPermission,
+    location: requestLocationPermission,
+  };
+  
+  const result = await requestMap[type]();
+  return result.granted;
 }

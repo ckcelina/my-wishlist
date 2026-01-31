@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
+import { getPermissionIcon } from '@/utils/permissions';
 
 interface PermissionBannerProps {
   type: 'notifications' | 'camera' | 'photos' | 'location';
@@ -12,6 +13,7 @@ interface PermissionBannerProps {
   onDismiss?: () => void;
   onAction?: () => void;
   actionText?: string;
+  showDismiss?: boolean;
 }
 
 export function PermissionBanner({
@@ -20,24 +22,34 @@ export function PermissionBanner({
   onDismiss,
   onAction,
   actionText = 'Enable',
+  showDismiss = true,
 }: PermissionBannerProps) {
   const router = useRouter();
   const { theme } = useAppTheme();
   const colors = createColors(theme);
   const typography = createTypography(theme);
 
-  const getIcon = () => {
-    const iconName = type === 'notifications' ? 'notifications' : type === 'camera' ? 'camera' : type === 'photos' ? 'photo' : 'location-on';
-    return iconName;
-  };
+  const iconName = getPermissionIcon(type);
 
   const handleAction = () => {
     console.log('[PermissionBanner] User tapped action for:', type);
     if (onAction) {
       onAction();
     } else {
-      const routePath = type === 'notifications' ? '/permissions/notifications' : type === 'camera' ? '/permissions/camera' : type === 'photos' ? '/permissions/photos' : '/permissions-settings';
-      router.push(routePath);
+      const routeMap = {
+        notifications: '/permissions/notifications',
+        camera: '/permissions/camera',
+        photos: '/permissions/photos',
+        location: '/permissions/location',
+      };
+      router.push(routeMap[type]);
+    }
+  };
+
+  const handleDismiss = () => {
+    console.log('[PermissionBanner] User dismissed banner for:', type);
+    if (onDismiss) {
+      onDismiss();
     }
   };
 
@@ -94,8 +106,6 @@ export function PermissionBanner({
     },
   });
 
-  const iconName = getIcon();
-
   return (
     <View style={styles.container}>
       <View style={styles.iconContainer}>
@@ -112,8 +122,8 @@ export function PermissionBanner({
           <TouchableOpacity style={styles.actionButton} onPress={handleAction}>
             <Text style={styles.actionText}>{actionText}</Text>
           </TouchableOpacity>
-          {onDismiss && (
-            <TouchableOpacity style={styles.dismissButton} onPress={onDismiss}>
+          {showDismiss && onDismiss && (
+            <TouchableOpacity style={styles.dismissButton} onPress={handleDismiss}>
               <Text style={styles.dismissText}>Dismiss</Text>
             </TouchableOpacity>
           )}
