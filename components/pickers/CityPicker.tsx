@@ -14,7 +14,7 @@ import {
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing, inputStyles } from '@/styles/designSystem';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { apiPost } from '@/utils/api';
+import { callEdgeFunction } from '@/utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface CityResult {
@@ -155,29 +155,32 @@ export function CityPicker({
         return;
       }
 
-      // Try API call
+      // Try Edge Function call
       try {
         if (__DEV__) {
-          console.log('[CityPicker] Making API request to /api/location/search-cities');
+          console.log('[CityPicker] Calling Edge Function: location-search-cities');
           console.log('[CityPicker] Request body:', { query, countryCode, limit: 10 });
         }
 
-        const response = await apiPost<{ results: CityResult[] }>(
-          '/api/location/search-cities',
+        const response = await callEdgeFunction<{ results: CityResult[] }>(
+          'location-search-cities',
           {
-            query,
-            countryCode,
-            limit: 10,
+            method: 'POST',
+            body: {
+              query,
+              countryCode,
+              limit: 10,
+            },
           }
         );
 
         if (__DEV__) {
-          console.log('[CityPicker] API response received:', response);
+          console.log('[CityPicker] Edge Function response received:', response);
         }
 
         if (response && response.results && response.results.length > 0) {
           if (__DEV__) {
-            console.log('[CityPicker] City search results from API:', response.results.length);
+            console.log('[CityPicker] City search results from Edge Function:', response.results.length);
           }
           setResults(response.results);
           
@@ -189,9 +192,9 @@ export function CityPicker({
             }
           });
         } else {
-          // API returned empty results - use local fallback
+          // Edge Function returned empty results - use local fallback
           if (__DEV__) {
-            console.log('[CityPicker] API returned no results, using local fallback');
+            console.log('[CityPicker] Edge Function returned no results, using local fallback');
           }
           const localResults = searchLocalCities(query, countryCode);
           
@@ -205,14 +208,14 @@ export function CityPicker({
         }
       } catch (apiError: any) {
         if (__DEV__) {
-          console.error('[CityPicker] API call failed:', apiError);
+          console.error('[CityPicker] Edge Function call failed:', apiError);
           console.error('[CityPicker] Error details:', {
             message: apiError.message,
             name: apiError.name,
           });
         }
         
-        // Fallback to local dataset on API error
+        // Fallback to local dataset on Edge Function error
         const localResults = searchLocalCities(query, countryCode);
         
         if (localResults.length > 0) {

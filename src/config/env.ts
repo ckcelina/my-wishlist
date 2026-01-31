@@ -65,7 +65,8 @@ export const ENV: EnvConfig = {
   SUPABASE_URL: normalizeBaseUrl(getEnvVar('supabaseUrl')),
   SUPABASE_ANON_KEY: getEnvVar('supabaseAnonKey'),
   SUPABASE_EDGE_FUNCTIONS_URL: normalizeBaseUrl(
-    getEnvVar('supabaseEdgeFunctionsUrl') || getEnvVar('supabaseUrl')
+    getEnvVar('supabaseEdgeFunctionsUrl') || 
+    (getEnvVar('supabaseUrl') ? `${normalizeBaseUrl(getEnvVar('supabaseUrl'))}/functions/v1` : '')
   ),
 };
 
@@ -78,10 +79,6 @@ export function validateEnv(): string | null {
   const invalid: string[] = [];
   
   // Check required variables
-  if (!ENV.API_BASE_URL) {
-    missing.push('EXPO_PUBLIC_API_BASE_URL (backendUrl in app.config.js)');
-  }
-  
   if (!ENV.SUPABASE_URL) {
     missing.push('EXPO_PUBLIC_SUPABASE_URL (supabaseUrl in app.config.js)');
   }
@@ -90,11 +87,11 @@ export function validateEnv(): string | null {
     missing.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (supabaseAnonKey in app.config.js)');
   }
   
-  // Validate URL formats
-  if (ENV.API_BASE_URL && !ENV.API_BASE_URL.startsWith('http')) {
-    invalid.push('API_BASE_URL must start with http:// or https://');
+  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
+    missing.push('EXPO_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL (supabaseEdgeFunctionsUrl in app.config.js)');
   }
   
+  // Validate URL formats
   if (ENV.SUPABASE_URL && !ENV.SUPABASE_URL.includes('supabase.co')) {
     invalid.push('SUPABASE_URL must be a valid Supabase URL');
   }
@@ -150,6 +147,7 @@ export function logEnvironmentConfig(): void {
   console.log(`  API Base URL: ${ENV.API_BASE_URL || '❌ NOT CONFIGURED'}`);
   console.log(`  Supabase URL: ${ENV.SUPABASE_URL || '❌ NOT CONFIGURED'}`);
   console.log(`  Supabase Key: ${ENV.SUPABASE_ANON_KEY ? '✅ Configured' : '❌ NOT CONFIGURED'}`);
+  console.log(`  Edge Functions URL: ${ENV.SUPABASE_EDGE_FUNCTIONS_URL || '❌ NOT CONFIGURED'}`);
   console.log('═══════════════════════════════════════════════════');
   
   const validationError = validateEnv();

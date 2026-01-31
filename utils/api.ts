@@ -7,9 +7,11 @@ import { logError, logEvent } from './observability';
 import { ENV, validateEnv } from '@/src/config/env';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🔌 API CLIENT - ROBUST BASE URL CONFIGURATION
+// 🔌 API CLIENT - SUPABASE EDGE FUNCTIONS + LEGACY BACKEND SUPPORT
 // ═══════════════════════════════════════════════════════════════════════════
 // This file provides a unified API client with:
+// - Supabase Edge Functions for new endpoints
+// - Legacy backend support for existing endpoints
 // - Centralized base URL configuration from src/config/env.ts
 // - Runtime validation of environment variables
 // - Proper URL construction (no relative paths)
@@ -23,6 +25,7 @@ console.log('[API] ════════════════════�
 console.log('[API] 🔌 API CLIENT INITIALIZATION');
 console.log('[API] ═══════════════════════════════════════════════════');
 console.log('[API] API Base URL:', ENV.API_BASE_URL || '❌ NOT CONFIGURED');
+console.log('[API] Supabase Edge Functions URL:', ENV.SUPABASE_EDGE_FUNCTIONS_URL || '❌ NOT CONFIGURED');
 console.log('[API] Platform:', Platform.OS);
 console.log('[API] Build Type:', __DEV__ ? 'Development' : 'Production');
 console.log('[API] ═══════════════════════════════════════════════════');
@@ -94,6 +97,106 @@ function constructApiUrl(endpoint: string): string {
   }
   
   return fullUrl;
+}
+
+/**
+ * Construct Supabase Edge Function URL
+ */
+function constructEdgeFunctionUrl(functionName: string): string {
+  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
+    const error = new Error('[API] SUPABASE_EDGE_FUNCTIONS_URL is not configured. Cannot call Edge Function.');
+    console.error(error.message);
+    throw error;
+  }
+
+  const fullUrl = `${ENV.SUPABASE_EDGE_FUNCTIONS_URL}/${functionName}`;
+  
+  if (__DEV__) {
+    console.log('[API] Edge Function URL:', fullUrl);
+  }
+  
+  return fullUrl;
+}
+
+/**
+ * Call a Supabase Edge Function with authentication
+ */
+export async function callEdgeFunction<T>(
+  functionName: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    body?: any;
+  } = {}
+): Promise<T> {
+  const url = constructEdgeFunctionUrl(functionName);
+  const token = await getBearerToken();
+  const method = options.method || 'GET';
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  if (__DEV__) {
+    console.log(`[API] ${method} ${url}`);
+    if (options.body) {
+      console.log('[API] Request body:', options.body);
+    }
+  }
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+
+    // Log response status
+    if (__DEV__) {
+      console.log(`[API] Response: ${response.status} ${response.statusText}`);
+    }
+
+    // Log non-2xx responses
+    if (!response.ok) {
+      const errorText = await response.clone().text();
+      console.error(`[API] ❌ Request failed: ${method} ${url}`);
+      console.error(`[API] Status: ${response.status} ${response.statusText}`);
+      console.error(`[API] Response body:`, errorText);
+      
+      const error = new Error(`Edge Function request failed: ${response.status} ${errorText}`);
+      logError(error, {
+        context: 'callEdgeFunction',
+        functionName,
+        method,
+        status: response.status,
+        url,
+      });
+      
+      throw error;
+    }
+
+    const data = await response.json();
+    
+    if (__DEV__) {
+      console.log('[API] Response data:', data);
+    }
+
+    return data;
+  } catch (error) {
+    console.error(`[API] ❌ Network or API error: ${method} ${url}`);
+    console.error('[API] Error details:', error);
+    
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'callEdgeFunction',
+      functionName,
+      method,
+      url,
+    });
+    throw error;
+  }
 }
 
 /**

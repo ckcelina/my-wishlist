@@ -16,7 +16,7 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { authenticatedGet, authenticatedPut } from '@/utils/api';
+import { callEdgeFunction } from '@/utils/api';
 import { colors, typography, spacing } from '@/styles/designSystem';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
@@ -303,10 +303,12 @@ export default function AlertsScreen() {
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching alert settings');
+    console.log('[AlertsScreen] Fetching alert settings from Edge Function');
     try {
       setError(null);
-      const data = await authenticatedGet<AlertSettings>('/api/alert-settings');
+      const data = await callEdgeFunction<AlertSettings>('alert-settings-get', {
+        method: 'GET',
+      });
       setSettings(data);
       console.log('[AlertsScreen] Settings loaded successfully');
     } catch (err) {
@@ -324,9 +326,11 @@ export default function AlertsScreen() {
   }, [user]);
 
   const fetchItemsWithTargets = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching items with target prices');
+    console.log('[AlertsScreen] Fetching items with target prices from Edge Function');
     try {
-      const data = await authenticatedGet<ItemsWithTargetsResponse>('/api/alert-settings/items-with-targets');
+      const data = await callEdgeFunction<ItemsWithTargetsResponse>('alert-items-with-targets', {
+        method: 'GET',
+      });
       setItemsWithTargets(data);
       console.log('[AlertsScreen] Items with targets:', data.count);
     } catch (err) {
@@ -357,10 +361,13 @@ export default function AlertsScreen() {
   }, [user, authLoading, fetchSettings, fetchItemsWithTargets, checkNotificationPermissionStatus, router]);
 
   const saveSettings = useCallback(async (updates: Partial<AlertSettings>) => {
-    console.log('[AlertsScreen] Saving settings:', updates);
+    console.log('[AlertsScreen] Saving settings to Edge Function:', updates);
     setSaving(true);
     try {
-      const response = await authenticatedPut<{ success: boolean } & AlertSettings>('/api/alert-settings', updates);
+      const response = await callEdgeFunction<{ success: boolean } & AlertSettings>('alert-settings-put', {
+        method: 'PUT',
+        body: updates,
+      });
       // Backend returns { success, ...settings }, extract the settings
       const { success, ...updated } = response;
       setSettings(prev => prev ? { ...prev, ...updated } : null);
