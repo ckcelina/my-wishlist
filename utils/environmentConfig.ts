@@ -330,3 +330,59 @@ export function getEnvironmentSummary(): Record<string, any> {
     },
   };
 }
+
+/**
+ * Check API connectivity on app startup
+ * Returns true if API is reachable, false otherwise
+ */
+export async function checkAPIConnectivity(): Promise<{
+  connected: boolean;
+  error?: string;
+}> {
+  if (!appConfig.backendUrl) {
+    console.warn('[Environment] Backend URL not configured, skipping connectivity check');
+    return {
+      connected: false,
+      error: 'Backend URL not configured',
+    };
+  }
+
+  try {
+    console.log('[Environment] Checking API connectivity:', appConfig.backendUrl);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    const response = await fetch(`${appConfig.backendUrl}/api/countries`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      console.log('[Environment] ✅ API connectivity check passed');
+      return { connected: true };
+    } else {
+      console.warn('[Environment] ⚠️ API returned non-200 status:', response.status);
+      return {
+        connected: false,
+        error: `API returned status ${response.status}`,
+      };
+    }
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      console.error('[Environment] ❌ API connectivity check timed out');
+      return {
+        connected: false,
+        error: 'Connection timeout',
+      };
+    }
+    
+    console.error('[Environment] ❌ API connectivity check failed:', error.message);
+    return {
+      connected: false,
+      error: error.message || 'Connection failed',
+    };
+  }
+}

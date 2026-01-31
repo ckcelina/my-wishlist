@@ -106,8 +106,20 @@ export default function LocationScreen() {
         console.log('[LocationScreen] No location set');
         setHasLocation(false);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[LocationScreen] Error fetching location:', error);
+      
+      // If the error is a 404, it means no location is set (not an error)
+      if (error.message && error.message.includes('404')) {
+        console.log('[LocationScreen] No location set (404)');
+        setHasLocation(false);
+      } else {
+        // For other errors, show a toast but don't block the UI
+        console.error('[LocationScreen] Failed to fetch location:', error.message);
+        setToastMessage('Unable to load location. You can still set it.');
+        setToastType('error');
+        setToastVisible(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -155,11 +167,12 @@ export default function LocationScreen() {
         setToastVisible(true);
         haptics.success();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[LocationScreen] Error saving location:', error);
       
       if (showToast) {
-        setToastMessage('Failed to save location');
+        const errorMessage = error.message || 'Failed to save location';
+        setToastMessage(errorMessage.includes('Backend URL') ? 'Unable to save location. Please try again later.' : 'Failed to save location');
         setToastType('error');
         setToastVisible(true);
         haptics.error();

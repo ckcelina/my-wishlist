@@ -10,7 +10,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
-import { logConfiguration } from '@/utils/environmentConfig';
+import { logConfiguration, checkAPIConnectivity } from '@/utils/environmentConfig';
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -41,6 +41,16 @@ export default function RootLayout() {
     runParityVerification().then(report => {
       if (!report.overallPassed) {
         console.error('🚨 PARITY VERIFICATION FAILED - REVIEW CONFIGURATION');
+      }
+    });
+    
+    // Check API connectivity
+    checkAPIConnectivity().then(result => {
+      if (result.connected) {
+        console.log('✅ Backend API is reachable');
+      } else {
+        console.warn('⚠️ Backend API connectivity issue:', result.error);
+        console.warn('⚠️ Some features may not work correctly');
       }
     });
     

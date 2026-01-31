@@ -79,7 +79,16 @@ export async function authenticatedFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   if (!API_URL) {
-    throw new Error('[API] No backend URL configured. Use Supabase directly instead.');
+    const error = new Error('[API] Backend URL is not configured. Please check app.config.js');
+    console.error('[API] ❌ CRITICAL: Backend URL is undefined');
+    console.error('[API] Expected: Constants.expoConfig?.extra?.backendUrl');
+    console.error('[API] Received:', API_URL);
+    logError(error, {
+      context: 'authenticatedFetch',
+      endpoint,
+      method: options.method || 'GET',
+    });
+    throw error;
   }
 
   const token = await getBearerToken();
@@ -113,6 +122,10 @@ export async function authenticatedFetch(
 
     if (__DEV__) {
       console.log(`[API] Response status: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.clone().text();
+        console.log(`[API] Error response body:`, errorText);
+      }
     }
 
     if (!response.ok) {
@@ -180,7 +193,15 @@ export async function authenticatedDelete<T>(endpoint: string): Promise<T> {
 
 export async function apiGet<T>(endpoint: string): Promise<T> {
   if (!API_URL) {
-    throw new Error('[API] No backend URL configured. Use Supabase directly instead.');
+    const error = new Error('[API] Backend URL is not configured. Please check app.config.js');
+    console.error('[API] ❌ CRITICAL: Backend URL is undefined');
+    console.error('[API] Expected: Constants.expoConfig?.extra?.backendUrl');
+    console.error('[API] Received:', API_URL);
+    logError(error, {
+      context: 'apiGet',
+      endpoint,
+    });
+    throw error;
   }
 
   const url = `${API_URL}${endpoint}`;
@@ -196,6 +217,10 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
 
     if (__DEV__) {
       console.log(`[API] Response status: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.clone().text();
+        console.log(`[API] Error response body:`, errorText);
+      }
     }
 
     if (!response.ok) {
@@ -230,7 +255,15 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
 
 export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
   if (!API_URL) {
-    throw new Error('[API] No backend URL configured. Use Supabase directly instead.');
+    const error = new Error('[API] Backend URL is not configured. Please check app.config.js');
+    console.error('[API] ❌ CRITICAL: Backend URL is undefined');
+    console.error('[API] Expected: Constants.expoConfig?.extra?.backendUrl');
+    console.error('[API] Received:', API_URL);
+    logError(error, {
+      context: 'apiPost',
+      endpoint,
+    });
+    throw error;
   }
 
   const url = `${API_URL}${endpoint}`;
@@ -251,6 +284,10 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
 
     if (__DEV__) {
       console.log(`[API] Response status: ${response.status}`);
+      if (!response.ok) {
+        const errorText = await response.clone().text();
+        console.log(`[API] Error response body:`, errorText);
+      }
     }
 
     if (!response.ok) {

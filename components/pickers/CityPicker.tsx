@@ -150,7 +150,7 @@ export function CityPicker({
           console.log('[CityPicker] Using cached city results');
         }
         const cachedData = JSON.parse(cached);
-        setResults(cachedData.results);
+        setResults(cachedData.results || []);
         setLoading(false);
         return;
       }
@@ -175,14 +175,19 @@ export function CityPicker({
           console.log('[CityPicker] API response received:', response);
         }
 
-        if (response.results && response.results.length > 0) {
+        if (response && response.results && response.results.length > 0) {
           if (__DEV__) {
             console.log('[CityPicker] City search results from API:', response.results.length);
           }
           setResults(response.results);
           
           // Cache successful results
-          await AsyncStorage.setItem(cacheKey, JSON.stringify(response));
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(response)).catch(() => {
+            // Silently fail caching
+            if (__DEV__) {
+              console.log('[CityPicker] Failed to cache results');
+            }
+          });
         } else {
           // API returned empty results - use local fallback
           if (__DEV__) {
@@ -203,7 +208,7 @@ export function CityPicker({
           console.error('[CityPicker] API call failed:', apiError);
           console.error('[CityPicker] Error details:', {
             message: apiError.message,
-            stack: apiError.stack,
+            name: apiError.name,
           });
         }
         
@@ -219,7 +224,7 @@ export function CityPicker({
         } else {
           // No local results either - show helpful error
           setResults([]);
-          setError('No cities found. Try a different search term or select country only.');
+          setError('City search is temporarily unavailable. You can still select your country.');
         }
       }
     } catch (err) {
@@ -231,7 +236,7 @@ export function CityPicker({
         setResults(localResults);
         setUsingFallback(true);
       } else {
-        setError('Unable to search cities. Try a different search term.');
+        setError('City search is temporarily unavailable. You can still select your country.');
         setResults([]);
       }
     } finally {
