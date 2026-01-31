@@ -6,13 +6,16 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
-  Alert,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, Stack } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { IconSymbol } from '@/components/IconSymbol';
-import { colors } from '@/styles/commonStyles';
+import { colors, typography, spacing } from '@/styles/designSystem';
 import { useAuth } from '@/contexts/AuthContext';
+import { authenticatedGet } from '@/utils/api';
+import { Card } from '@/components/design-system/Card';
+import { Divider } from '@/components/design-system/Divider';
 
 interface PriceHistoryEntry {
   id: string;
@@ -21,78 +24,54 @@ interface PriceHistoryEntry {
   recordedAt: string;
 }
 
-interface PriceTrendSummary {
+interface PriceTrend {
   lowestPrice: number | null;
   highestPrice: number | null;
-  firstRecordedPrice: number | null;
-  latestRecordedPrice: number | null;
+  firstPrice: number | null;
+  latestPrice: number | null;
   currency: string;
 }
 
+interface PriceHistoryData {
+  trend: PriceTrend;
+  history: PriceHistoryEntry[];
+}
+
 export default function PriceHistoryScreen() {
+  const router = useRouter();
   const { id } = useLocalSearchParams();
   const { user } = useAuth();
+
   const [loading, setLoading] = useState(true);
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>([]);
+  const [data, setData] = useState<PriceHistoryData | null>(null);
   const [itemTitle, setItemTitle] = useState<string>('');
-  const [summary, setSummary] = useState<PriceTrendSummary | null>(null);
 
   const fetchPriceHistory = useCallback(async () => {
-    console.log('PriceHistoryScreen: Fetching price history for item:', id);
+    console.log('[PriceHistoryScreen] Fetching price history for item:', id);
     try {
       setLoading(true);
-      const { authenticatedGet } = await import('@/utils/api');
+      const historyData = await authenticatedGet<PriceHistoryData>(`/api/items/${id}/price-history`);
+      setData(historyData);
       
-      // Fetch item details to get title
-      const itemData = await authenticatedGet<{ title: string; currency: string }>(`/api/items/${id}`);
+      // Fetch item title
+      const itemData = await authenticatedGet<{ title: string }>(`/api/items/${id}`);
       setItemTitle(itemData.title);
       
-      // Fetch price history with trend summary from new endpoint
-      const priceHistoryData = await authenticatedGet<{
-        trend: {
-          lowestPrice: number | null;
-          highestPrice: number | null;
-          firstPrice: number | null;
-          latestPrice: number | null;
-          currency: string;
-        };
-        history: PriceHistoryEntry[];
-      }>(`/api/items/${id}/price-history`);
-      
-      console.log('PriceHistoryScreen: Fetched', priceHistoryData.history.length, 'price history entries');
-      
-      // Sort by newest first (already sorted by backend, but ensure it)
-      const sortedHistory = [...priceHistoryData.history].sort((a, b) => 
-        new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-      );
-      setPriceHistory(sortedHistory);
-      
-      // Use the trend summary from the backend
-      if (priceHistoryData.trend) {
-        setSummary({
-          lowestPrice: priceHistoryData.trend.lowestPrice,
-          highestPrice: priceHistoryData.trend.highestPrice,
-          firstRecordedPrice: priceHistoryData.trend.firstPrice,
-          latestRecordedPrice: priceHistoryData.trend.latestPrice,
-          currency: priceHistoryData.trend.currency,
-        });
-      }
+      console.log('[PriceHistoryScreen] Price history loaded:', historyData.history.length, 'entries');
     } catch (error) {
-      console.error('PriceHistoryScreen: Error fetching price history:', error);
-      Alert.alert('Error', 'Failed to load price history');
+      console.error('[PriceHistoryScreen] Error fetching price history:', error);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
-    console.log('PriceHistoryScreen: Component mounted, item ID:', id);
-    if (id) {
+    if (id && user) {
       fetchPriceHistory();
     }
-  }, [id, fetchPriceHistory]);
+  }, [id, user, fetchPriceHistory]);
 
-  if (loading) {
+  if (loading || !data) {
     return (
       <>
         <Stack.Screen
@@ -105,47 +84,49 @@ export default function PriceHistoryScreen() {
         <SafeAreaView style={styles.container}>
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Loading price history...</Text>
+            <Text style={styles.loadingText}>Loading...</Text>
           </View>
         </SafeAreaView>
       </>
     );
   }
 
-  const formatPrice = (price: number, currency: string) => {
-    return `${currency} ${price.toFixed(2)}`;
-  };
+  const trendData = data.trend;
+  const historyEntries = data.history;
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString([], { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
+  const lowestPriceText = trendData.lowestPrice !== null 
+    ? `${trendData.currency} ${trendData.lowestPrice.toFixed(2)}` 
+    : 'N/A';
+  
+  const highestPriceText = trendData.highestPrice !== null 
+    ? `${trendData.currency} ${trendData.highestPrice.toFixed(2)}` 
+    : 'N/A';
+  
+  const firstPriceText = trendData.firstPrice !== null 
+    ? `${trendData.currency} ${trendData.firstPrice.toFixed(2)}` 
+    : 'N/A';
+  
+  const latestPriceText = trendData.latestPrice !== null 
+    ? `${trendData.currency} ${trendData.latestPrice.toFixed(2)}` 
+    : 'N/A';
 
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
+  const priceChange = trendData.firstPrice !== null && trendData.latestPrice !== null
+    ? trendData.latestPrice - trendData.firstPrice
+    : null;
 
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const dateText = date.toLocaleDateString([], { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-    const timeText = date.toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-    return `${dateText} at ${timeText}`;
-  };
+  const priceChangePercent = trendData.firstPrice !== null && priceChange !== null && trendData.firstPrice !== 0
+    ? ((priceChange / trendData.firstPrice) * 100)
+    : null;
+
+  const priceChangeText = priceChange !== null
+    ? `${priceChange >= 0 ? '+' : ''}${trendData.currency} ${Math.abs(priceChange).toFixed(2)}`
+    : 'N/A';
+
+  const priceChangePercentText = priceChangePercent !== null
+    ? `${priceChangePercent >= 0 ? '+' : ''}${priceChangePercent.toFixed(1)}%`
+    : '';
+
+  const priceChangeColor = priceChange !== null && priceChange < 0 ? '#10B981' : priceChange !== null && priceChange > 0 ? '#EF4444' : colors.text;
 
   return (
     <>
@@ -157,174 +138,109 @@ export default function PriceHistoryScreen() {
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.scrollContent}>
           {/* Item Title */}
-          {itemTitle && (
-            <View style={styles.titleSection}>
-              <Text style={styles.itemTitle}>{itemTitle}</Text>
-            </View>
-          )}
+          <View style={styles.headerSection}>
+            <Text style={styles.itemTitle}>{itemTitle}</Text>
+          </View>
 
           {/* Price Trend Summary */}
-          {summary && (
-            <View style={styles.summarySection}>
-              <View style={styles.summaryHeader}>
-                <IconSymbol
-                  ios_icon_name="chart.line.uptrend.xyaxis"
-                  android_material_icon_name="trending-up"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={styles.summaryTitle}>Price Trend</Text>
-              </View>
-
-              <View style={styles.summaryGrid}>
-                {/* Lowest Price */}
-                <View style={styles.summaryCard}>
-                  <View style={styles.summaryCardHeader}>
-                    <IconSymbol
-                      ios_icon_name="arrow.down.circle.fill"
-                      android_material_icon_name="arrow-downward"
-                      size={20}
-                      color="#10B981"
-                    />
-                    <Text style={styles.summaryCardLabel}>Lowest Price</Text>
-                  </View>
-                  <Text style={styles.summaryCardValue}>
-                    {summary.lowestPrice !== null 
-                      ? formatPrice(summary.lowestPrice, summary.currency)
-                      : 'N/A'}
-                  </Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Price Trend</Text>
+            <Card>
+              <View style={styles.trendRow}>
+                <View style={styles.trendItem}>
+                  <Text style={styles.trendLabel}>Current Price</Text>
+                  <Text style={styles.trendValue}>{latestPriceText}</Text>
                 </View>
-
-                {/* Highest Price */}
-                <View style={styles.summaryCard}>
-                  <View style={styles.summaryCardHeader}>
-                    <IconSymbol
-                      ios_icon_name="arrow.up.circle.fill"
-                      android_material_icon_name="arrow-upward"
-                      size={20}
-                      color="#EF4444"
-                    />
-                    <Text style={styles.summaryCardLabel}>Highest Price</Text>
-                  </View>
-                  <Text style={styles.summaryCardValue}>
-                    {summary.highestPrice !== null 
-                      ? formatPrice(summary.highestPrice, summary.currency)
-                      : 'N/A'}
+                <View style={styles.trendItem}>
+                  <Text style={styles.trendLabel}>Change</Text>
+                  <Text style={[styles.trendValue, { color: priceChangeColor }]}>
+                    {priceChangeText}
                   </Text>
-                </View>
-
-                {/* First Recorded Price */}
-                <View style={styles.summaryCard}>
-                  <View style={styles.summaryCardHeader}>
-                    <IconSymbol
-                      ios_icon_name="clock.fill"
-                      android_material_icon_name="schedule"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={styles.summaryCardLabel}>First Recorded</Text>
-                  </View>
-                  <Text style={styles.summaryCardValue}>
-                    {summary.firstRecordedPrice !== null 
-                      ? formatPrice(summary.firstRecordedPrice, summary.currency)
-                      : 'N/A'}
-                  </Text>
-                </View>
-
-                {/* Latest Recorded Price */}
-                <View style={styles.summaryCard}>
-                  <View style={styles.summaryCardHeader}>
-                    <IconSymbol
-                      ios_icon_name="clock.badge.checkmark.fill"
-                      android_material_icon_name="check-circle"
-                      size={20}
-                      color={colors.primary}
-                    />
-                    <Text style={styles.summaryCardLabel}>Latest Price</Text>
-                  </View>
-                  <Text style={styles.summaryCardValue}>
-                    {summary.latestRecordedPrice !== null 
-                      ? formatPrice(summary.latestRecordedPrice, summary.currency)
-                      : 'N/A'}
-                  </Text>
+                  {priceChangePercentText && (
+                    <Text style={[styles.trendSubtext, { color: priceChangeColor }]}>
+                      {priceChangePercentText}
+                    </Text>
+                  )}
                 </View>
               </View>
-            </View>
-          )}
 
-          {/* Price History List */}
-          <View style={styles.historySection}>
-            <View style={styles.historyHeader}>
-              <Text style={styles.historyTitle}>Price History</Text>
-              <Text style={styles.historyCount}>
-                {priceHistory.length}
-                {priceHistory.length === 1 ? ' entry' : ' entries'}
-              </Text>
-            </View>
+              <Divider />
 
-            {priceHistory.length === 0 ? (
-              <View style={styles.emptyState}>
+              <View style={styles.trendRow}>
+                <View style={styles.trendItem}>
+                  <Text style={styles.trendLabel}>Lowest Price</Text>
+                  <Text style={[styles.trendValue, styles.lowestPrice]}>
+                    {lowestPriceText}
+                  </Text>
+                </View>
+                <View style={styles.trendItem}>
+                  <Text style={styles.trendLabel}>Highest Price</Text>
+                  <Text style={styles.trendValue}>{highestPriceText}</Text>
+                </View>
+              </View>
+            </Card>
+          </View>
+
+          {/* Price History Chart Placeholder */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Price Chart</Text>
+            <Card>
+              <View style={styles.chartPlaceholder}>
                 <IconSymbol
                   ios_icon_name="chart.line.uptrend.xyaxis"
                   android_material_icon_name="trending-up"
                   size={48}
                   color={colors.textSecondary}
                 />
-                <Text style={styles.emptyStateText}>No price history yet</Text>
-                <Text style={styles.emptyStateSubtext}>
-                  Price history will appear here after price checks
+                <Text style={styles.chartPlaceholderText}>
+                  Price chart visualization coming soon
                 </Text>
               </View>
+            </Card>
+          </View>
+
+          {/* Price History List */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Price History</Text>
+            {historyEntries.length === 0 ? (
+              <Card>
+                <View style={styles.emptyState}>
+                  <IconSymbol
+                    ios_icon_name="clock"
+                    android_material_icon_name="schedule"
+                    size={48}
+                    color={colors.textSecondary}
+                  />
+                  <Text style={styles.emptyStateText}>No price history yet</Text>
+                </View>
+              </Card>
             ) : (
               <View style={styles.historyList}>
-                {priceHistory.map((entry, index) => {
-                  const priceText = formatPrice(entry.price, entry.currency);
-                  const dateText = formatDate(entry.recordedAt);
-                  const timeText = formatTime(entry.recordedAt);
-                  
-                  // Determine if price went up or down compared to previous entry
-                  let priceChange = null;
-                  if (index < priceHistory.length - 1) {
-                    const previousPrice = priceHistory[index + 1].price;
-                    if (entry.price < previousPrice) {
-                      priceChange = 'down';
-                    } else if (entry.price > previousPrice) {
-                      priceChange = 'up';
-                    }
-                  }
-                  
+                {historyEntries.map((entry, index) => {
+                  const entryPriceText = `${entry.currency} ${entry.price.toFixed(2)}`;
+                  const entryDate = new Date(entry.recordedAt);
+                  const entryDateText = entryDate.toLocaleDateString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  });
+                  const entryTimeText = entryDate.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+
                   return (
-                    <View key={entry.id} style={styles.historyItem}>
-                      <View style={styles.historyItemLeft}>
-                        <View style={styles.priceRow}>
-                          <Text style={styles.historyPrice}>{priceText}</Text>
-                          {priceChange === 'down' && (
-                            <View style={styles.priceChangeBadge}>
-                              <IconSymbol
-                                ios_icon_name="arrow.down"
-                                android_material_icon_name="arrow-downward"
-                                size={12}
-                                color="#10B981"
-                              />
-                            </View>
-                          )}
-                          {priceChange === 'up' && (
-                            <View style={[styles.priceChangeBadge, styles.priceChangeBadgeUp]}>
-                              <IconSymbol
-                                ios_icon_name="arrow.up"
-                                android_material_icon_name="arrow-upward"
-                                size={12}
-                                color="#EF4444"
-                              />
-                            </View>
-                          )}
+                    <Card key={entry.id}>
+                      <View style={styles.historyItem}>
+                        <View style={styles.historyItemLeft}>
+                          <Text style={styles.historyPrice}>{entryPriceText}</Text>
+                          <Text style={styles.historyTime}>{entryTimeText}</Text>
                         </View>
-                        <Text style={styles.historyTime}>{timeText}</Text>
+                        <Text style={styles.historyDate}>{entryDateText}</Text>
                       </View>
-                      <Text style={styles.historyDate}>{dateText}</Text>
-                    </View>
+                    </Card>
                   );
                 })}
               </View>
@@ -348,148 +264,96 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    fontSize: 16,
+    ...typography.body,
     color: colors.textSecondary,
-  },
-  scrollView: {
-    flex: 1,
   },
   scrollContent: {
-    paddingBottom: 40,
+    flex: 1,
+    padding: spacing.lg,
   },
-  titleSection: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 12,
+  headerSection: {
+    marginBottom: spacing.lg,
   },
   itemTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    ...typography.h2,
     color: colors.text,
   },
-  summarySection: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  section: {
+    marginBottom: spacing.lg,
   },
-  summaryHeader: {
+  sectionTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  trendRow: {
     flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: spacing.md,
+  },
+  trendItem: {
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  summaryTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  summaryCard: {
     flex: 1,
-    minWidth: '47%',
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  summaryCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  summaryCardLabel: {
-    fontSize: 13,
-    fontWeight: '600',
+  trendLabel: {
+    ...typography.caption,
     color: colors.textSecondary,
+    marginBottom: spacing.xs / 2,
   },
-  summaryCardValue: {
-    fontSize: 18,
-    fontWeight: '700',
+  trendValue: {
+    ...typography.h3,
     color: colors.text,
-  },
-  historySection: {
-    paddingHorizontal: 20,
-    paddingTop: 24,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  historyTitle: {
-    fontSize: 20,
     fontWeight: '700',
-    color: colors.text,
   },
-  historyCount: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.textSecondary,
+  trendSubtext: {
+    ...typography.caption,
+    marginTop: spacing.xs / 2,
   },
-  emptyState: {
+  lowestPrice: {
+    color: '#10B981',
+  },
+  chartPlaceholder: {
     alignItems: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    justifyContent: 'center',
+    paddingVertical: spacing.xl * 2,
+    gap: spacing.md,
   },
-  emptyStateText: {
-    fontSize: 16,
+  chartPlaceholderText: {
+    ...typography.body,
     color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  emptyStateSubtext: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
   },
   historyList: {
-    gap: 12,
+    gap: spacing.sm,
   },
   historyItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
+    paddingVertical: spacing.sm,
   },
   historyItemLeft: {
-    gap: 4,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: spacing.xs / 2,
   },
   historyPrice: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...typography.body,
     color: colors.text,
-  },
-  priceChangeBadge: {
-    backgroundColor: '#D1FAE5',
-    borderRadius: 12,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  priceChangeBadgeUp: {
-    backgroundColor: '#FEE2E2',
+    fontWeight: '600',
   },
   historyTime: {
-    fontSize: 12,
+    ...typography.caption,
     color: colors.textSecondary,
   },
   historyDate: {
-    fontSize: 14,
+    ...typography.body,
+    color: colors.textSecondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl * 2,
+    gap: spacing.md,
+  },
+  emptyStateText: {
+    ...typography.body,
     color: colors.textSecondary,
   },
 });
