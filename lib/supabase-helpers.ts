@@ -495,3 +495,66 @@ export async function updateLanguagePreferences(userId: string, preferences: Lan
   // This can be extended when the backend adds language preferences support
   return preferences;
 }
+
+// ============================================================================
+// PERMISSION CONSENT
+// ============================================================================
+
+export interface PermissionConsent {
+  notifications: boolean;
+  camera: boolean;
+  photos: boolean;
+  location: boolean;
+  notificationsAskedAt: string | null;
+  cameraAskedAt: string | null;
+  photosAskedAt: string | null;
+  locationAskedAt: string | null;
+}
+
+export async function fetchPermissionConsent(userId: string): Promise<PermissionConsent> {
+  console.log('[Supabase] Fetching permission consent for:', userId);
+  
+  // For now, return default values
+  // This can be extended when the backend adds permission consent support
+  return {
+    notifications: false,
+    camera: false,
+    photos: false,
+    location: false,
+    notificationsAskedAt: null,
+    cameraAskedAt: null,
+    photosAskedAt: null,
+    locationAskedAt: null,
+  };
+}
+
+export async function updatePermissionConsent(
+  userId: string,
+  updates: Partial<PermissionConsent>
+): Promise<PermissionConsent> {
+  console.log('[Supabase] Updating permission consent for:', userId, updates);
+  
+  // For now, just return the updated values
+  // This can be extended when the backend adds permission consent support
+  const current = await fetchPermissionConsent(userId);
+  return {
+    ...current,
+    ...updates,
+  };
+}
+
+export async function recordPermissionAsk(
+  userId: string,
+  permissionType: 'notifications' | 'camera' | 'photos' | 'location'
+): Promise<void> {
+  console.log('[Supabase] Recording permission ask for:', userId, permissionType);
+  
+  // For now, just log it
+  // This can be extended when the backend adds permission consent support
+  const askedAtField = `${permissionType}AskedAt` as keyof PermissionConsent;
+  const updates = {
+    [askedAtField]: new Date().toISOString(),
+  };
+  
+  await updatePermissionConsent(userId, updates);
+}

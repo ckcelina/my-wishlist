@@ -6,15 +6,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing } from '@/styles/designSystem';
+import { useAuth } from '@/contexts/AuthContext';
+import { recordPermissionAsk, updatePermissionConsent } from '@/lib/supabase-helpers';
+import { openAppSettings } from '@/utils/permissions';
 
 export default function NotificationsPermissionScreen() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const handleContinue = async () => {
     console.log('[NotificationsPermissionScreen] User tapped Continue');
     
     try {
+      // Record that we asked for permission
+      if (user?.id) {
+        await recordPermissionAsk(user.id, 'notifications');
+      }
+
       const { status } = await Notifications.requestPermissionsAsync();
+      
+      // Save consent
+      if (user?.id) {
+        await updatePermissionConsent(user.id, {
+          notifications: status === 'granted',
+          notificationsAskedAt: new Date().toISOString(),
+        });
+      }
       
       if (status === 'granted') {
         console.log('[NotificationsPermissionScreen] Notifications permission granted');
@@ -23,12 +40,10 @@ export default function NotificationsPermissionScreen() {
         console.log('[NotificationsPermissionScreen] Notifications permission denied');
         Alert.alert(
           'Permission Denied',
-          'Notification access is required to receive price drop alerts. Please enable it in your device settings.',
+          'Notification access is required to receive price drop alerts. You can enable it later in Settings.',
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => {
-              // On iOS, this will open the app settings
-            }},
+            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+            { text: 'Open Settings', onPress: () => openAppSettings() },
           ]
         );
       }

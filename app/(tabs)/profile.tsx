@@ -65,7 +65,6 @@ export default function ProfileScreen() {
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
 
-  // Extract user name from user metadata
   const userName = useMemo(() => {
     if (user?.user_metadata?.name) {
       return user.user_metadata.name;
@@ -560,6 +559,21 @@ export default function ProfileScreen() {
                 }}
               >
                 <Text style={styles.linkText}>Alert Settings</Text>
+              </TouchableOpacity>
+            </Card>
+          </Animated.View>
+
+          <Animated.View entering={FadeInDown.delay(450)} style={styles.section}>
+            <Text style={styles.sectionTitle}>Permissions</Text>
+            <Card>
+              <TouchableOpacity
+                style={styles.linkButton}
+                onPress={() => {
+                  triggerHaptic('light');
+                  router.push('/permissions-settings');
+                }}
+              >
+                <Text style={styles.linkText}>Manage Permissions</Text>
               </TouchableOpacity>
             </Card>
           </Animated.View>

@@ -6,15 +6,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing } from '@/styles/designSystem';
+import { useAuth } from '@/contexts/AuthContext';
+import { recordPermissionAsk, updatePermissionConsent } from '@/lib/supabase-helpers';
+import { openAppSettings } from '@/utils/permissions';
 
 export default function CameraPermissionScreen() {
   const router = useRouter();
+  const { user } = useAuth();
 
   const handleContinue = async () => {
     console.log('[CameraPermissionScreen] User tapped Continue');
     
     try {
+      // Record that we asked for permission
+      if (user?.id) {
+        await recordPermissionAsk(user.id, 'camera');
+      }
+
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      // Save consent
+      if (user?.id) {
+        await updatePermissionConsent(user.id, {
+          camera: status === 'granted',
+          cameraAskedAt: new Date().toISOString(),
+        });
+      }
       
       if (status === 'granted') {
         console.log('[CameraPermissionScreen] Camera permission granted');
@@ -23,13 +40,10 @@ export default function CameraPermissionScreen() {
         console.log('[CameraPermissionScreen] Camera permission denied');
         Alert.alert(
           'Permission Denied',
-          'Camera access is required to take photos. Please enable it in your device settings.',
+          'Camera access is required to take photos. You can enable it later in Settings.',
           [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => {
-              // On iOS, this will open the app settings
-              // On Android, you might need to use a library like expo-linking
-            }},
+            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
+            { text: 'Open Settings', onPress: () => openAppSettings() },
           ]
         );
       }

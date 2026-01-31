@@ -3,53 +3,52 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing } from '@/styles/designSystem';
 import { useAuth } from '@/contexts/AuthContext';
 import { recordPermissionAsk, updatePermissionConsent } from '@/lib/supabase-helpers';
 import { openAppSettings } from '@/utils/permissions';
 
-export default function PhotosPermissionScreen() {
+export default function LocationPermissionScreen() {
   const router = useRouter();
   const { user } = useAuth();
 
   const handleContinue = async () => {
-    console.log('[PhotosPermissionScreen] User tapped Continue');
+    console.log('[LocationPermissionScreen] User tapped Continue');
     
     try {
       // Record that we asked for permission
       if (user?.id) {
-        await recordPermissionAsk(user.id, 'photos');
+        await recordPermissionAsk(user.id, 'location');
       }
 
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } = await Location.requestForegroundPermissionsAsync();
       
       // Save consent
       if (user?.id) {
         await updatePermissionConsent(user.id, {
-          photos: status === 'granted',
-          photosAskedAt: new Date().toISOString(),
+          location: status === 'granted',
+          locationAskedAt: new Date().toISOString(),
         });
       }
       
       if (status === 'granted') {
-        console.log('[PhotosPermissionScreen] Photos permission granted');
+        console.log('[LocationPermissionScreen] Location permission granted');
         router.back();
       } else {
-        console.log('[PhotosPermissionScreen] Photos permission denied');
+        console.log('[LocationPermissionScreen] Location permission denied');
         Alert.alert(
           'Permission Denied',
-          'Photo library access is required to select images. You can enable it later in Settings.',
+          'Location access helps us pre-fill your country and city. You can still set it manually in Settings.',
           [
-            { text: 'Cancel', style: 'cancel', onPress: () => router.back() },
-            { text: 'Open Settings', onPress: () => openAppSettings() },
+            { text: 'OK', onPress: () => router.back() },
           ]
         );
       }
     } catch (error) {
-      console.error('[PhotosPermissionScreen] Error requesting photos permission:', error);
-      Alert.alert('Error', 'Failed to request photos permission');
+      console.error('[LocationPermissionScreen] Error requesting location permission:', error);
+      Alert.alert('Error', 'Failed to request location permission');
     }
   };
 
@@ -57,7 +56,7 @@ export default function PhotosPermissionScreen() {
     <>
       <Stack.Screen
         options={{
-          title: 'Photo Library Access',
+          title: 'Location Access',
           headerBackTitle: 'Back',
         }}
       />
@@ -65,16 +64,16 @@ export default function PhotosPermissionScreen() {
         <View style={styles.content}>
           <View style={styles.iconContainer}>
             <IconSymbol
-              ios_icon_name="photo.fill"
-              android_material_icon_name="photo"
+              ios_icon_name="location.fill"
+              android_material_icon_name="location-on"
               size={80}
               color={colors.accent}
             />
           </View>
 
-          <Text style={styles.title}>Photo Library Access</Text>
+          <Text style={styles.title}>Location Access</Text>
           <Text style={styles.description}>
-            My Wishlist needs access to your photo library to let you select product images for your wishlist items.
+            My Wishlist can use your location to automatically detect your country and city, helping you find stores that ship to your area.
           </Text>
 
           <View style={styles.features}>
@@ -85,7 +84,7 @@ export default function PhotosPermissionScreen() {
                 size={24}
                 color={colors.success}
               />
-              <Text style={styles.featureText}>Choose product photos</Text>
+              <Text style={styles.featureText}>Auto-detect your country</Text>
             </View>
             <View style={styles.feature}>
               <IconSymbol
@@ -94,8 +93,29 @@ export default function PhotosPermissionScreen() {
                 size={24}
                 color={colors.success}
               />
-              <Text style={styles.featureText}>Add images to wishlist items</Text>
+              <Text style={styles.featureText}>Find stores that ship to you</Text>
             </View>
+            <View style={styles.feature}>
+              <IconSymbol
+                ios_icon_name="checkmark.circle.fill"
+                android_material_icon_name="check-circle"
+                size={24}
+                color={colors.success}
+              />
+              <Text style={styles.featureText}>Better price filtering</Text>
+            </View>
+          </View>
+
+          <View style={styles.optionalNote}>
+            <IconSymbol
+              ios_icon_name="info.circle"
+              android_material_icon_name="info"
+              size={20}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.optionalText}>
+              This permission is optional. You can always set your location manually.
+            </Text>
           </View>
         </View>
 
@@ -155,6 +175,7 @@ const styles = StyleSheet.create({
   features: {
     width: '100%',
     gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   feature: {
     flexDirection: 'row',
@@ -163,6 +184,20 @@ const styles = StyleSheet.create({
   },
   featureText: {
     ...typography.bodyLarge,
+    flex: 1,
+  },
+  optionalNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: 12,
+    width: '100%',
+  },
+  optionalText: {
+    ...typography.caption,
+    color: colors.textSecondary,
     flex: 1,
   },
   actions: {

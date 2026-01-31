@@ -16,7 +16,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.MyWishlist",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "My Wishlist needs access to your camera to take photos of products you want to add to your wishlists.",
+        "NSPhotoLibraryUsageDescription": "My Wishlist needs access to your photo library to let you select product images for your wishlist items.",
+        "NSPhotoLibraryAddUsageDescription": "My Wishlist needs permission to save product photos to your photo library.",
+        "NSLocationWhenInUseUsageDescription": "My Wishlist uses your location to pre-fill your country and city, helping you find stores that ship to your area."
       },
       "associatedDomains": [
         "applinks:mywishlist.app",
@@ -36,6 +40,13 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.MyWishlist",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "intentFilters": [
         {
           "action": "VIEW",

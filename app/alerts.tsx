@@ -22,6 +22,8 @@ import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
 import { CurrencyPicker } from '@/components/pickers/CurrencyPicker';
 import { getCurrencyByCode } from '@/constants/currencies';
+import { PermissionBanner } from '@/components/PermissionBanner';
+import { checkNotificationPermission } from '@/utils/permissions';
 import debounce from 'lodash.debounce';
 
 interface AlertSettings {
@@ -294,6 +296,8 @@ export default function AlertsScreen() {
   const [showFrequencyModal, setShowFrequencyModal] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [thresholdValue, setThresholdValue] = useState('');
+  const [notificationPermissionGranted, setNotificationPermissionGranted] = useState(true);
+  const [showPermissionBanner, setShowPermissionBanner] = useState(false);
 
   // Debounced save function
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
@@ -330,6 +334,14 @@ export default function AlertsScreen() {
     }
   }, []);
 
+  const checkNotificationPermissionStatus = useCallback(async () => {
+    console.log('[AlertsScreen] Checking notification permission');
+    const status = await checkNotificationPermission();
+    setNotificationPermissionGranted(status.granted);
+    setShowPermissionBanner(!status.granted);
+    console.log('[AlertsScreen] Notification permission:', status.granted);
+  }, []);
+
   useEffect(() => {
     if (!authLoading && !user) {
       console.log('[AlertsScreen] User not authenticated, redirecting to auth');
@@ -340,8 +352,9 @@ export default function AlertsScreen() {
     if (user) {
       fetchSettings();
       fetchItemsWithTargets();
+      checkNotificationPermissionStatus();
     }
-  }, [user, authLoading, fetchSettings, fetchItemsWithTargets, router]);
+  }, [user, authLoading, fetchSettings, fetchItemsWithTargets, checkNotificationPermissionStatus, router]);
 
   const saveSettings = useCallback(async (updates: Partial<AlertSettings>) => {
     console.log('[AlertsScreen] Saving settings:', updates);
@@ -474,6 +487,21 @@ export default function AlertsScreen() {
       />
 
       <ScrollView style={styles.scrollContent}>
+        {/* Notification Permission Banner */}
+        {showPermissionBanner && !notificationPermissionGranted && (
+          <View style={{ marginBottom: spacing.md }}>
+            <PermissionBanner
+              type="notifications"
+              message="Notifications are disabled. Enable them to receive price drop alerts."
+              onDismiss={() => setShowPermissionBanner(false)}
+              onAction={() => {
+                router.push('/permissions/notifications');
+              }}
+              actionText="Enable"
+            />
+          </View>
+        )}
+
         {/* Error Banner */}
         {error && (
           <View style={styles.errorBanner}>
