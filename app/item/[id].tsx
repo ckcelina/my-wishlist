@@ -42,6 +42,8 @@ interface ItemDetail {
   notes: string | null;
   priceHistory: PriceHistoryEntry[];
   lastCheckedAt?: string | null;
+  trackingEnabled?: boolean;
+  trackingFrequency?: 'daily' | 'weekly';
 }
 
 interface OtherStore {
@@ -424,6 +426,11 @@ export default function ItemDetailScreen() {
     router.push(`/item/price-history/${id}`);
   };
 
+  const handleManageTracking = () => {
+    console.log('[ItemDetailScreen] Navigating to tracking screen');
+    router.push(`/item/tracking/${id}`);
+  };
+
   const handleOpenStoreUrl = async (url: string, storeName: string, storeDomain: string) => {
     console.log('[ItemDetailScreen] Opening store URL:', storeName, url);
     const { openStoreLink } = await import('@/utils/openStoreLink');
@@ -537,6 +544,9 @@ export default function ItemDetailScreen() {
       })
     : 'Never';
 
+  const trackingEnabledValue = item.trackingEnabled || false;
+  const trackingFrequencyValue = item.trackingFrequency || 'daily';
+
   return (
     <>
       <Stack.Screen
@@ -610,6 +620,27 @@ export default function ItemDetailScreen() {
                 </View>
               )}
             </View>
+
+            {/* Price Tracking Status Badge */}
+            {trackingEnabledValue && (
+              <TouchableOpacity style={styles.trackingBadge} onPress={handleManageTracking}>
+                <IconSymbol
+                  ios_icon_name="chart.line.uptrend.xyaxis"
+                  android_material_icon_name="trending-up"
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.trackingBadgeText}>
+                  Tracking {trackingFrequencyValue === 'daily' ? 'daily' : 'weekly'}
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={16}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+            )}
 
             {/* Check Price Button (only if item has originalUrl) */}
             {item.originalUrl && (
@@ -731,6 +762,16 @@ export default function ItemDetailScreen() {
                   color={colors.primary}
                 />
                 <Text style={styles.secondaryButtonText}>View Price History</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.secondaryButton} onPress={handleManageTracking}>
+                <IconSymbol
+                  ios_icon_name="bell.badge"
+                  android_material_icon_name="notifications-active"
+                  size={20}
+                  color={colors.primary}
+                />
+                <Text style={styles.secondaryButtonText}>Manage Price Tracking</Text>
               </TouchableOpacity>
             </View>
 
@@ -1146,6 +1187,24 @@ const styles = StyleSheet.create({
   lastCheckedText: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  trackingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.highlight,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+    gap: 8,
+    marginBottom: 12,
+  },
+  trackingBadgeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
   },
   checkPriceButton: {
     flexDirection: 'row',
