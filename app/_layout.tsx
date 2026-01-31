@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
+import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { verifySupabaseConnection, getSupabaseConfig } from '@/utils/supabase-connection';
 import { runNativelySupabaseVerification, logNativelyConnectionStatus } from '@/utils/natively-supabase-verification';
@@ -207,11 +208,13 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AppThemeProvider>
         <AuthProvider>
-          <I18nProvider>
-            <WidgetProvider>
-              <RootLayoutNav />
-            </WidgetProvider>
-          </I18nProvider>
+          <SmartLocationProvider>
+            <I18nProvider>
+              <WidgetProvider>
+                <RootLayoutNav />
+              </WidgetProvider>
+            </I18nProvider>
+          </SmartLocationProvider>
         </AuthProvider>
       </AppThemeProvider>
     </ErrorBoundary>

@@ -18,10 +18,14 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import { fetchUserLocation } from '@/lib/supabase-helpers';
 import { searchItem } from '@/utils/supabase-edge-functions';
+import { useSmartLocation } from '@/contexts/SmartLocationContext';
+import { TravelBanner } from '@/components/TravelBanner';
+import { CountrySelector } from '@/components/CountrySelector';
+import { getCountryFlag } from '@/constants/countries';
 
 type SearchStage = 'idle' | 'normalizing' | 'finding_stores' | 'checking_prices' | 'verifying_shipping' | 'choosing_photo' | 'complete' | 'error';
+type SearchMode = 'standard' | 'near_me';
 
 interface Offer {
   storeName: string;
@@ -49,6 +53,12 @@ interface ItemDraft {
   offers: Offer[];
 }
 
+interface OfferGroup {
+  type: 'local' | 'international';
+  label: string;
+  offers: Offer[];
+}
+
 export default function SmartSearchScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -56,29 +66,41 @@ export default function SmartSearchScreen() {
   const colors = createColors(theme);
   const typography = createTypography(theme);
   const params = useLocalSearchParams();
+  const { settings, isTraveling, updateActiveSearchCountry } = useSmartLocation();
 
   // Input state
   const [productName, setProductName] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [originalUrl, setOriginalUrl] = useState('');
 
+  // Search mode
+  const [searchMode, setSearchMode] = useState<SearchMode>('standard');
+
   // Search state
   const [searching, setSearching] = useState(false);
   const [currentStage, setCurrentStage] = useState<SearchStage>('idle');
   const [stageProgress, setStageProgress] = useState(0);
   const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null);
+  const [offerGroups, setOfferGroups] = useState<OfferGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // User location
-  const [userLocation, setUserLocation] = useState<{ countryCode: string; city: string | null } | null>(null);
-  const [loadingLocation, setLoadingLocation] = useState(true);
+  // Country selection
+  const [selectedCountry, setSelectedCountry] = useState('');
+  const [selectedCountryName, setSelectedCountryName] = useState('');
 
   // UI state
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   useEffect(() => {
     console.log('[SmartSearch] Initializing');
-    loadUserLocation();
+
+    // Initialize with active_search_country from settings
+    if (settings) {
+      setSelectedCountry(settings.activeSearchCountry);
+      // We'll need to get the country name from the country code
+      // For now, just use the code
+      setSelectedCountryName(settings.activeSearchCountry);
+    }
 
     // Parse params if provided
     if (params.productName) {
@@ -90,28 +112,18 @@ export default function SmartSearchScreen() {
     if (params.originalUrl) {
       setOriginalUrl(params.originalUrl as string);
     }
-  }, [params]);
+  }, [params, settings]);
 
-  const loadUserLocation = async () => {
-    if (!user) return;
+  const handleCountrySelect = async (country: { countryCode: string; countryName: string }) => {
+    console.log('[SmartSearch] User selected country:', country.countryCode);
+    setSelectedCountry(country.countryCode);
+    setSelectedCountryName(country.countryName);
 
+    // Update active_search_country in settings
     try {
-      console.log('[SmartSearch] Loading user location');
-      const locationData = await fetchUserLocation(user.id);
-
-      if (locationData) {
-        setUserLocation({
-          countryCode: locationData.countryCode,
-          city: locationData.city,
-        });
-        console.log('[SmartSearch] User location loaded:', locationData.countryCode);
-      } else {
-        console.log('[SmartSearch] No user location set');
-      }
+      await updateActiveSearchCountry(country.countryCode);
     } catch (error) {
-      console.error('[SmartSearch] Error loading location:', error);
-    } finally {
-      setLoadingLocation(false);
+      console.error('[SmartSearch] Failed to update active search country:', error);
     }
   };
 
@@ -121,13 +133,15 @@ export default function SmartSearchScreen() {
       return;
     }
 
-    if (!userLocation || !userLocation.countryCode) {
-      console.log('[SmartSearch] User location not set, showing modal');
+    if (!selectedCountry) {
+      console.log('[SmartSearch] Country not selected, showing modal');
       setShowLocationModal(true);
       return;
     }
 
     console.log('[SmartSearch] Starting AI Price Search for:', productName);
+    console.log('[SmartSearch] Search mode:', searchMode);
+    console.log('[SmartSearch] Search country:', selectedCountry);
     setSearching(true);
     setError(null);
     setCurrentStage('normalizing');
@@ -137,7 +151,7 @@ export default function SmartSearchScreen() {
       // Stage 1: Normalizing query
       setCurrentStage('normalizing');
       setStageProgress(20);
-      await new Promise(resolve => setTimeout(resolve, 800)); // Simulate processing
+      await new Promise(resolve => setTimeout(resolve, 800));
 
       // Stage 2: Finding stores
       setCurrentStage('finding_stores');
@@ -163,8 +177,8 @@ export default function SmartSearchScreen() {
       console.log('[SmartSearch] Calling search-item Edge Function');
       const response = await searchItem(
         productName.trim(),
-        userLocation.countryCode,
-        userLocation.city || undefined
+        selectedCountry,
+        undefined // city is optional
       );
 
       if (response.error) {
@@ -172,6 +186,34 @@ export default function SmartSearchScreen() {
       }
 
       console.log('[SmartSearch] AI Price Search completed:', response.offers.length, 'offers');
+
+      // Group offers by delivery type
+      const localOffers = response.offers.filter(
+        offer => offer.shippingCountry === selectedCountry && 
+        offer.estimatedDelivery && 
+        parseInt(offer.estimatedDelivery) < 3
+      );
+      const internationalOffers = response.offers.filter(
+        offer => !localOffers.includes(offer)
+      );
+
+      const groups: OfferGroup[] = [];
+      if (localOffers.length > 0) {
+        groups.push({
+          type: 'local',
+          label: 'Local pickup / fast delivery',
+          offers: localOffers,
+        });
+      }
+      if (internationalOffers.length > 0) {
+        groups.push({
+          type: 'international',
+          label: 'Ships internationally',
+          offers: internationalOffers,
+        });
+      }
+
+      setOfferGroups(groups);
 
       // Create ItemDraft
       const draft: ItemDraft = {
@@ -200,7 +242,7 @@ export default function SmartSearchScreen() {
               storeDomain: draft.offers[0]?.storeDomain || '',
               price: draft.offers[0]?.price || null,
               currency: draft.offers[0]?.currency || 'USD',
-              countryAvailability: [userLocation.countryCode],
+              countryAvailability: [selectedCountry],
               alternativeStores: draft.offers.map(offer => ({
                 storeName: offer.storeName,
                 storeDomain: offer.storeDomain,
@@ -263,7 +305,7 @@ export default function SmartSearchScreen() {
     return stageIcons[stage];
   };
 
-  if (loadingLocation) {
+  if (!settings) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -273,6 +315,7 @@ export default function SmartSearchScreen() {
 
   const stageLabel = getStageLabel(currentStage);
   const stageIcon = getStageIcon(currentStage);
+  const countryFlag = getCountryFlag(selectedCountry);
 
   return (
     <>
@@ -288,6 +331,9 @@ export default function SmartSearchScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Travel Banner */}
+          <TravelBanner />
+
           {/* Header */}
           <View style={styles.header}>
             <IconSymbol
@@ -302,6 +348,59 @@ export default function SmartSearchScreen() {
             <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
               Find the best prices across multiple stores
             </Text>
+          </View>
+
+          {/* Search Mode Selector */}
+          <View style={styles.modeSelector}>
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                { borderColor: colors.border },
+                searchMode === 'standard' && { backgroundColor: colors.accent, borderColor: colors.accent },
+              ]}
+              onPress={() => setSearchMode('standard')}
+              disabled={searching}
+            >
+              <IconSymbol
+                ios_icon_name="globe"
+                android_material_icon_name="public"
+                size={20}
+                color={searchMode === 'standard' ? colors.textInverse : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  { color: searchMode === 'standard' ? colors.textInverse : colors.textSecondary },
+                ]}
+              >
+                Standard Search
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modeButton,
+                { borderColor: colors.border },
+                searchMode === 'near_me' && { backgroundColor: colors.accent, borderColor: colors.accent },
+              ]}
+              onPress={() => setSearchMode('near_me')}
+              disabled={searching}
+            >
+              <IconSymbol
+                ios_icon_name="location.fill"
+                android_material_icon_name="location-on"
+                size={20}
+                color={searchMode === 'near_me' ? colors.textInverse : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.modeButtonText,
+                  { color: searchMode === 'near_me' ? colors.textInverse : colors.textSecondary },
+                ]}
+              >
+                Scan Stores Near Me
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Input Fields */}
@@ -339,26 +438,21 @@ export default function SmartSearchScreen() {
             />
           </View>
 
-          {/* Location Info */}
-          {userLocation && (
-            <View style={[styles.locationCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.locationHeader}>
-                <IconSymbol
-                  ios_icon_name="location"
-                  android_material_icon_name="location-on"
-                  size={20}
-                  color={colors.accent}
-                />
-                <Text style={[styles.locationTitle, { color: colors.textPrimary }]}>Shipping Location</Text>
-              </View>
-              <Text style={[styles.locationText, { color: colors.textSecondary }]}>
-                {userLocation.countryCode}{userLocation.city ? `, ${userLocation.city}` : ''}
+          {/* Country Selector */}
+          <View style={styles.countrySection}>
+            <CountrySelector
+              label="Search for delivery to:"
+              selectedCountryCode={selectedCountry}
+              selectedCountryName={selectedCountryName}
+              onSelect={handleCountrySelect}
+              disabled={searching}
+            />
+            {isTraveling && (
+              <Text style={[styles.travelHint, { color: colors.textSecondary }]}>
+                💡 You're traveling. You can search for delivery to someone else or keep your home country.
               </Text>
-              <TouchableOpacity onPress={() => router.push('/location')}>
-                <Text style={[styles.locationChangeText, { color: colors.accent }]}>Change Location</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+            )}
+          </View>
 
           {/* Search Progress */}
           {searching && (
@@ -409,10 +503,10 @@ export default function SmartSearchScreen() {
             style={[
               styles.searchButton,
               { backgroundColor: colors.accent },
-              (searching || !productName.trim()) && styles.searchButtonDisabled,
+              (searching || !productName.trim() || !selectedCountry) && styles.searchButtonDisabled,
             ]}
             onPress={handleStartSearch}
-            disabled={searching || !productName.trim()}
+            disabled={searching || !productName.trim() || !selectedCountry}
           >
             {searching ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
@@ -425,7 +519,7 @@ export default function SmartSearchScreen() {
                   color={colors.textInverse}
                 />
                 <Text style={[styles.searchButtonText, { color: colors.textInverse }]}>
-                  Start Smart Search
+                  {searchMode === 'near_me' ? 'Scan Stores Near Me' : 'Start Smart Search'}
                 </Text>
               </>
             )}
@@ -443,7 +537,7 @@ export default function SmartSearchScreen() {
             <View style={styles.infoItem}>
               <Text style={[styles.infoBullet, { color: colors.accent }]}>2.</Text>
               <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Searches 6-12 online stores based on your location
+                Searches 6-12 online stores based on your selected country
               </Text>
             </View>
             <View style={styles.infoItem}>
@@ -455,7 +549,7 @@ export default function SmartSearchScreen() {
             <View style={styles.infoItem}>
               <Text style={[styles.infoBullet, { color: colors.accent }]}>4.</Text>
               <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Ranks offers by total cost and reliability
+                Groups results by local pickup / fast delivery vs international shipping
               </Text>
             </View>
           </View>
@@ -477,10 +571,10 @@ export default function SmartSearchScreen() {
                 color={colors.accent}
               />
               <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-                Shipping Location Required
+                Country Required
               </Text>
               <Text style={[styles.modalText, { color: colors.textSecondary }]}>
-                To find prices online, we need to know where you want items shipped. Please set your shipping location first.
+                To find prices and check shipping, please select a country for delivery.
               </Text>
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -493,7 +587,7 @@ export default function SmartSearchScreen() {
                   style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.accent }]}
                   onPress={handleSetLocation}
                 >
-                  <Text style={[styles.modalButtonText, { color: colors.textInverse }]}>Set Location</Text>
+                  <Text style={[styles.modalButtonText, { color: colors.textInverse }]}>Select Country</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
@@ -529,6 +623,26 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: 'center',
   },
+  modeSelector: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  modeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
   inputSection: {
     marginBottom: spacing.lg,
   },
@@ -544,29 +658,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
   },
-  locationCard: {
-    borderRadius: 12,
-    padding: spacing.md,
+  countrySection: {
     marginBottom: spacing.lg,
-    borderWidth: 1,
   },
-  locationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.xs,
-  },
-  locationTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  locationText: {
-    fontSize: 14,
-    marginBottom: spacing.xs,
-  },
-  locationChangeText: {
-    fontSize: 14,
-    fontWeight: '500',
+  travelHint: {
+    fontSize: 13,
+    marginTop: spacing.xs,
+    lineHeight: 18,
   },
   progressCard: {
     borderRadius: 12,
