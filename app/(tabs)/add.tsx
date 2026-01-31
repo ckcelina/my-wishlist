@@ -34,6 +34,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { CountrySelector } from '@/components/CountrySelector';
 import * as FileSystem from 'expo-file-system/legacy';
+import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
+import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 
 type ModeType = 'share' | 'url' | 'camera' | 'upload' | 'search' | 'manual';
 
@@ -85,6 +87,9 @@ export default function AddItemScreen() {
   const params = useLocalSearchParams();
   const { settings, updateActiveSearchCountry } = useSmartLocation();
 
+  // Check environment configuration
+  const [configError, setConfigError] = useState<string | null>(null);
+
   // Mode selection
   const [selectedMode, setSelectedMode] = useState<ModeType>('share');
 
@@ -135,6 +140,15 @@ export default function AddItemScreen() {
       router.replace('/auth');
     }
   }, [user, router]);
+
+  useEffect(() => {
+    // Check environment configuration on mount
+    if (!isEnvironmentConfigured()) {
+      const errorMessage = getConfigurationErrorMessage();
+      console.error('[AddItem] Environment not configured:', errorMessage);
+      setConfigError(errorMessage);
+    }
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -192,6 +206,17 @@ export default function AddItemScreen() {
     }
   };
 
+  const handleRetryConfiguration = () => {
+    console.log('[AddItem] User tapped Retry Configuration');
+    // Check configuration again
+    if (isEnvironmentConfigured()) {
+      setConfigError(null);
+    } else {
+      const errorMessage = getConfigurationErrorMessage();
+      setConfigError(errorMessage);
+    }
+  };
+
   // Mode 2: Extract from URL
   const handleExtractUrl = async () => {
     if (!urlInput.trim()) {
@@ -206,6 +231,12 @@ export default function AddItemScreen() {
 
     if (!selectedCountry) {
       Alert.alert('Country Required', 'Please select a delivery country first');
+      return;
+    }
+
+    // Check configuration before making API call
+    if (!isEnvironmentConfigured()) {
+      Alert.alert('Configuration Error', getConfigurationErrorMessage());
       return;
     }
 
@@ -291,6 +322,12 @@ export default function AddItemScreen() {
 
     if (!selectedCountry) {
       Alert.alert('Country Required', 'Please select a delivery country first');
+      return;
+    }
+
+    // Check configuration before making API call
+    if (!isEnvironmentConfigured()) {
+      Alert.alert('Configuration Error', getConfigurationErrorMessage());
       return;
     }
 
@@ -384,6 +421,12 @@ export default function AddItemScreen() {
       return;
     }
 
+    // Check configuration before making API call
+    if (!isEnvironmentConfigured()) {
+      Alert.alert('Configuration Error', getConfigurationErrorMessage());
+      return;
+    }
+
     console.log('[AddItem] Identifying product from uploaded image');
     setIdentifyingUpload(true);
 
@@ -433,6 +476,12 @@ export default function AddItemScreen() {
 
     if (!selectedCountry) {
       Alert.alert('Country Required', 'Please select a delivery country first');
+      return;
+    }
+
+    // Check configuration before making API call
+    if (!isEnvironmentConfigured()) {
+      Alert.alert('Configuration Error', getConfigurationErrorMessage());
       return;
     }
 
@@ -553,6 +602,16 @@ export default function AddItemScreen() {
       setSavingManual(false);
     }
   };
+
+  // Show configuration error UI if environment is not configured
+  if (configError) {
+    return (
+      <>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <ConfigurationError message={configError} onRetry={handleRetryConfiguration} />
+      </>
+    );
+  }
 
   const renderShareMode = () => {
     const deepLinkUrl = Linking.createURL('add');

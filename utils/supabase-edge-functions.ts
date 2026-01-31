@@ -1,6 +1,6 @@
 
 import Constants from 'expo-constants';
-import { ENV } from './environmentConfig';
+import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
 
 // Types for Edge Function requests and responses
 export interface SearchItemRequest {
@@ -158,9 +158,9 @@ export interface SearchByNameResponse {
   error?: string;
 }
 
-// Get Supabase configuration from locked environment
-const SUPABASE_URL = ENV.SUPABASE_URL;
-const SUPABASE_ANON_KEY = ENV.SUPABASE_ANON_KEY;
+// Get Supabase configuration from appConfig with safe fallbacks
+const SUPABASE_URL = appConfig.supabaseUrl || '';
+const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
 // List of expected Edge Functions (case-sensitive)
 const EXPECTED_EDGE_FUNCTIONS = [
@@ -173,8 +173,11 @@ const EXPECTED_EDGE_FUNCTIONS = [
   'price-check',
 ];
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+// Log configuration status on module load
+if (!isEnvironmentConfigured()) {
   console.warn('[Supabase Edge Functions] Configuration missing - check app.json');
+  console.warn('[Supabase Edge Functions] SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Missing');
+  console.warn('[Supabase Edge Functions] SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? 'Set' : 'Missing');
 }
 
 /**
@@ -188,8 +191,11 @@ async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
   request: TRequest
 ): Promise<TResponse> {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error('Supabase configuration is missing - check app.json extra config');
+  // Check if environment is configured
+  if (!isEnvironmentConfigured()) {
+    const errorMessage = getConfigurationErrorMessage();
+    console.error(`[Edge Function] ${errorMessage}`);
+    throw new Error(errorMessage);
   }
 
   // Verify function name is expected (case-sensitive)
@@ -200,7 +206,7 @@ async function callEdgeFunction<TRequest, TResponse>(
 
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
   console.log(`[Edge Function] Calling ${functionName}:`, request);
-  console.log(`[Edge Function] Environment: ${ENV.IS_EXPO_GO ? 'Expo Go' : ENV.IS_PRODUCTION ? 'Production' : 'Development'}`);
+  console.log(`[Edge Function] Environment: ${appConfig.environment}`);
 
   try {
     const response = await fetch(url, {

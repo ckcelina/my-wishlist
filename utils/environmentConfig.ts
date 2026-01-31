@@ -87,6 +87,24 @@ function getEnvironment(): Environment {
 }
 
 /**
+ * Safely get environment variable with fallback
+ */
+function getEnvVar(key: string, fallback: string = ''): string {
+  const extra = Constants.expoConfig?.extra || {};
+  const value = extra[key];
+  
+  if (value && typeof value === 'string') {
+    return value;
+  }
+  
+  if (__DEV__ && !fallback) {
+    console.warn(`[Environment] Missing environment variable: ${key}`);
+  }
+  
+  return fallback;
+}
+
+/**
  * Load configuration from app.json extra
  */
 const extra = Constants.expoConfig?.extra || {};
@@ -95,11 +113,11 @@ export const appConfig: AppConfig = {
   // Environment
   environment: getEnvironment(),
   
-  // API Configuration - LOCKED from app.json
-  supabaseUrl: extra.supabaseUrl || '',
-  supabaseAnonKey: extra.supabaseAnonKey || '',
-  supabaseEdgeFunctionsUrl: extra.supabaseEdgeFunctionsUrl || extra.supabaseUrl || '',
-  backendUrl: extra.backendUrl || '',
+  // API Configuration - LOCKED from app.json with safe fallbacks
+  supabaseUrl: getEnvVar('supabaseUrl', ''),
+  supabaseAnonKey: getEnvVar('supabaseAnonKey', ''),
+  supabaseEdgeFunctionsUrl: getEnvVar('supabaseEdgeFunctionsUrl', getEnvVar('supabaseUrl', '')),
+  backendUrl: getEnvVar('backendUrl', ''),
   
   // Feature Flags - ALL DISABLED FOR PARITY
   showDebugUI: false,
@@ -139,6 +157,42 @@ export const appConfig: AppConfig = {
   requireTrackingConsent: true,
   requireNotificationConsent: true,
 };
+
+/**
+ * Legacy ENV export for backward compatibility
+ * @deprecated Use appConfig instead
+ */
+export const ENV = {
+  SUPABASE_URL: appConfig.supabaseUrl,
+  SUPABASE_ANON_KEY: appConfig.supabaseAnonKey,
+  SUPABASE_EDGE_FUNCTIONS_URL: appConfig.supabaseEdgeFunctionsUrl,
+  BACKEND_URL: appConfig.backendUrl,
+  IS_EXPO_GO: __DEV__,
+  IS_PRODUCTION: appConfig.environment === 'PROD',
+};
+
+/**
+ * Check if environment is properly configured
+ */
+export function isEnvironmentConfigured(): boolean {
+  return !!(appConfig.supabaseUrl && appConfig.supabaseAnonKey);
+}
+
+/**
+ * Get user-friendly error message for missing configuration
+ */
+export function getConfigurationErrorMessage(): string {
+  if (!appConfig.supabaseUrl && !appConfig.supabaseAnonKey) {
+    return 'App configuration is missing. Please contact support.';
+  }
+  if (!appConfig.supabaseUrl) {
+    return 'Database connection is not configured. Please contact support.';
+  }
+  if (!appConfig.supabaseAnonKey) {
+    return 'Authentication is not configured. Please contact support.';
+  }
+  return 'Configuration error. Please contact support.';
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -214,8 +268,8 @@ export function logConfiguration(): void {
   console.log(`App Version: ${Constants.expoConfig?.version || '1.0.0'}`);
   console.log('═══════════════════════════════════════════════════');
   console.log('🔒 LOCKED CONFIGURATION:');
-  console.log(`Supabase URL: ${appConfig.supabaseUrl}`);
-  console.log(`Supabase Key: ${appConfig.supabaseAnonKey ? 'Configured' : 'Missing'}`);
+  console.log(`Supabase URL: ${appConfig.supabaseUrl || 'NOT CONFIGURED'}`);
+  console.log(`Supabase Key: ${appConfig.supabaseAnonKey ? 'Configured' : 'NOT CONFIGURED'}`);
   console.log(`Backend URL: ${appConfig.backendUrl || 'Not configured'}`);
   console.log('═══════════════════════════════════════════════════');
   console.log('🎯 PARITY VERIFICATION:');
