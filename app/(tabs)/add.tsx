@@ -336,6 +336,11 @@ export default function AddItemScreen() {
     });
   };
 
+  const handleSmartSearch = () => {
+    console.log('[AddItem] User tapped Smart Search');
+    router.push('/smart-search');
+  };
+
   const renderShareTab = () => {
     const deepLinkUrl = Linking.createURL('add');
     
@@ -609,6 +614,22 @@ export default function AddItemScreen() {
                 <Text style={styles.searchButtonText}>Search</Text>
               </>
             )}
+          </TouchableOpacity>
+
+          {/* Smart Search Button */}
+          <TouchableOpacity
+            style={[styles.smartSearchButton, { backgroundColor: colors.accentLight, borderColor: colors.accent }]}
+            onPress={handleSmartSearch}
+          >
+            <IconSymbol
+              ios_icon_name="sparkles"
+              android_material_icon_name="auto-fix-high"
+              size={20}
+              color={colors.accent}
+            />
+            <Text style={[styles.smartSearchButtonText, { color: colors.accent }]}>
+              Try Smart Search (AI-Powered)
+            </Text>
           </TouchableOpacity>
         </View>
       </TouchableWithoutFeedback>
@@ -993,6 +1014,20 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
       fontSize: 16,
       fontWeight: '600',
       color: colors.textInverse,
+    },
+    smartSearchButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginTop: spacing.md,
+      borderWidth: 2,
+    },
+    smartSearchButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
     },
     modalOverlay: {
       flex: 1,
