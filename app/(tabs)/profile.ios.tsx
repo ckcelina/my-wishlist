@@ -331,12 +331,13 @@ export default function ProfileScreen() {
                       ios_icon_name="sun.max.fill"
                       android_material_icon_name="light-mode"
                       size={18}
-                      color={themePreference === 'light' ? '#FFFFFF' : theme.colors.textSecondary}
+                      color={themePreference === 'light' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'light' ? '#FFFFFF' : theme.colors.textSecondary 
+                        color: themePreference === 'light' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary,
+                        fontWeight: themePreference === 'light' ? '600' : '500',
                       }
                     ]}>Light</Text>
                   </PressableScale>
@@ -356,12 +357,13 @@ export default function ProfileScreen() {
                       ios_icon_name="moon.fill"
                       android_material_icon_name="dark-mode"
                       size={18}
-                      color={themePreference === 'dark' ? '#FFFFFF' : theme.colors.textSecondary}
+                      color={themePreference === 'dark' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'dark' ? '#FFFFFF' : theme.colors.textSecondary 
+                        color: themePreference === 'dark' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary,
+                        fontWeight: themePreference === 'dark' ? '600' : '500',
                       }
                     ]}>Dark</Text>
                   </PressableScale>
@@ -381,12 +383,13 @@ export default function ProfileScreen() {
                       ios_icon_name="gear"
                       android_material_icon_name="settings"
                       size={18}
-                      color={themePreference === 'system' ? '#FFFFFF' : theme.colors.textSecondary}
+                      color={themePreference === 'system' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary}
                     />
                     <Text style={[
                       styles.themeButtonText,
                       { 
-                        color: themePreference === 'system' ? '#FFFFFF' : theme.colors.textSecondary 
+                        color: themePreference === 'system' ? (isDark ? theme.colors.textPrimary : '#FFFFFF') : theme.colors.textSecondary,
+                        fontWeight: themePreference === 'system' ? '600' : '500',
                       }
                     ]}>System</Text>
                   </PressableScale>
@@ -811,7 +814,6 @@ const styles = StyleSheet.create({
   },
   themeButtonText: {
     ...typography.bodyMedium,
-    fontWeight: '600',
   },
   bottomPadding: {
     height: 100,

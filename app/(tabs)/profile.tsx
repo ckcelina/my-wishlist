@@ -162,7 +162,7 @@ export default function ProfileScreen() {
     },
     themeButtonTextActive: {
       ...typography.body,
-      color: colors.textInverse,
+      color: isDark ? colors.textPrimary : '#FFFFFF',
       fontWeight: '600',
     },
     locationCard: {
@@ -244,7 +244,7 @@ export default function ProfileScreen() {
     modalButtonTextConfirm: {
       color: '#FFFFFF',
     },
-  }), [colors, typography]);
+  }), [colors, typography, isDark]);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -444,7 +444,7 @@ export default function ProfileScreen() {
                     ios_icon_name="sun.max.fill"
                     android_material_icon_name="light-mode"
                     size={18}
-                    color={themePreference === 'light' ? colors.textInverse : colors.textSecondary}
+                    color={themePreference === 'light' ? (isDark ? colors.textPrimary : '#FFFFFF') : colors.textSecondary}
                   />
                   <Text
                     style={
@@ -467,7 +467,7 @@ export default function ProfileScreen() {
                     ios_icon_name="moon.fill"
                     android_material_icon_name="dark-mode"
                     size={18}
-                    color={themePreference === 'dark' ? colors.textInverse : colors.textSecondary}
+                    color={themePreference === 'dark' ? (isDark ? colors.textPrimary : '#FFFFFF') : colors.textSecondary}
                   />
                   <Text
                     style={
@@ -490,7 +490,7 @@ export default function ProfileScreen() {
                     ios_icon_name="gear"
                     android_material_icon_name="settings"
                     size={18}
-                    color={themePreference === 'system' ? colors.textInverse : colors.textSecondary}
+                    color={themePreference === 'system' ? (isDark ? colors.textPrimary : '#FFFFFF') : colors.textSecondary}
                   />
                   <Text
                     style={

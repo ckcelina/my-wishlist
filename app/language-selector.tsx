@@ -150,6 +150,7 @@ export default function LanguageSelectorScreen() {
     languageOptionSelected: {
       borderColor: theme.colors.accent,
       backgroundColor: theme.colors.accentLight,
+      borderWidth: 3,
     },
     languageInfo: {
       flex: 1,
@@ -305,13 +306,14 @@ export default function LanguageSelectorScreen() {
             const languageName = lang.name;
             const nativeName = lang.nativeName;
             const isRTLLang = lang.isRTL || false;
+            const isSelected = selectedLanguage === languageCode;
             
             return (
               <TouchableOpacity
                 key={languageCode}
                 style={[
                   styles.languageOption,
-                  selectedLanguage === languageCode && styles.languageOptionSelected,
+                  isSelected && styles.languageOptionSelected,
                 ]}
                 onPress={() => handleSelectLanguage(languageCode)}
               >
@@ -326,7 +328,7 @@ export default function LanguageSelectorScreen() {
                       <Text style={styles.rtlBadgeText}>RTL</Text>
                     </View>
                   )}
-                  {selectedLanguage === languageCode && (
+                  {isSelected && (
                     <IconSymbol
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check-circle"
