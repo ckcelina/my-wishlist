@@ -3,15 +3,53 @@ import Constants from 'expo-constants';
 import { ENV } from './environmentConfig';
 
 // Types for Edge Function requests and responses
+export interface SearchItemRequest {
+  query: string;
+  country: string;
+  city?: string;
+}
+
+export interface Offer {
+  storeName: string;
+  storeDomain: string;
+  productUrl: string;
+  price: number;
+  currency: string;
+  availability: 'in_stock' | 'out_of_stock' | 'limited_stock' | 'pre_order' | 'unknown';
+  shippingSupported: boolean;
+  shippingCountry: string;
+  estimatedDelivery?: string | null;
+  originalPrice?: number | null;
+  originalCurrency?: string | null;
+  shippingCost?: number | null;
+  confidenceScore?: number | null;
+}
+
+export interface SearchItemResponse {
+  canonical: string;
+  offers: Offer[];
+  images: string[];
+  meta: {
+    requestId: string;
+    durationMs: number;
+    partial: boolean;
+    cached: boolean;
+  };
+  error?: string;
+}
+
 export interface ExtractItemRequest {
   url: string;
+  country: string;
 }
 
 export interface ExtractItemResponse {
   title: string | null;
-  imageUrl: string | null;
   price: number | null;
   currency: string | null;
+  availability: 'in_stock' | 'out_of_stock' | 'pre_order' | 'unknown';
+  images: string[];
+  shippingSupported: boolean;
   sourceDomain: string | null;
   meta: {
     requestId: string;
@@ -126,11 +164,13 @@ const SUPABASE_ANON_KEY = ENV.SUPABASE_ANON_KEY;
 
 // List of expected Edge Functions (case-sensitive)
 const EXPECTED_EDGE_FUNCTIONS = [
+  'search-item',
   'identify-from-image',
   'extract-item',
   'find-alternatives',
   'import-wishlist',
   'search-by-name',
+  'price-check',
 ];
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -195,15 +235,66 @@ async function callEdgeFunction<TRequest, TResponse>(
 }
 
 /**
+ * Search for items across multiple stores using AI
+ * Returns canonical product URL, offers, and images
+ * Works identically in all environments
+ */
+export async function searchItem(
+  query: string,
+  country: string,
+  city?: string
+): Promise<SearchItemResponse> {
+  try {
+    const response = await callEdgeFunction<SearchItemRequest, SearchItemResponse>(
+      'search-item',
+      { query, country, city }
+    );
+
+    // Log warnings for partial results
+    if (response.meta.partial) {
+      console.warn('[searchItem] Partial result returned:', response.error);
+    }
+
+    // Log cache status
+    if (response.meta.cached) {
+      console.log('[searchItem] Result served from cache');
+    }
+
+    return response;
+  } catch (error: any) {
+    console.error('[searchItem] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[searchItem] Edge Function not deployed - returning safe fallback');
+    }
+    
+    // Return safe fallback
+    return {
+      canonical: '',
+      offers: [],
+      images: [],
+      meta: {
+        requestId: 'error',
+        durationMs: 0,
+        partial: true,
+        cached: false,
+      },
+      error: error.message || 'Failed to search for item',
+    };
+  }
+}
+
+/**
  * Extract item details from a URL
  * Returns partial data even if extraction fails
  * Works identically in all environments
  */
-export async function extractItem(url: string): Promise<ExtractItemResponse> {
+export async function extractItem(url: string, country: string): Promise<ExtractItemResponse> {
   try {
     const response = await callEdgeFunction<ExtractItemRequest, ExtractItemResponse>(
       'extract-item',
-      { url }
+      { url, country }
     );
 
     // Log warnings for partial results
@@ -223,9 +314,11 @@ export async function extractItem(url: string): Promise<ExtractItemResponse> {
     // Return safe fallback
     return {
       title: null,
-      imageUrl: null,
       price: null,
       currency: null,
+      availability: 'unknown',
+      images: [],
+      shippingSupported: false,
       sourceDomain: null,
       meta: {
         requestId: 'error',

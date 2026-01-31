@@ -139,7 +139,16 @@ export default function AddItemScreen() {
     setExtracting(true);
 
     try {
-      const result = await extractItem(urlInput.trim());
+      // Get user location for shipping context
+      let userCountry = 'US'; // Default
+      if (user) {
+        const locationData = await fetchUserLocation(user.id);
+        if (locationData) {
+          userCountry = locationData.countryCode;
+        }
+      }
+
+      const result = await extractItem(urlInput.trim(), userCountry);
       console.log('[AddItem] Extraction result:', result);
 
       // Navigate to import preview with extracted data

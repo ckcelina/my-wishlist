@@ -19,7 +19,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { fetchUserLocation } from '@/lib/supabase-helpers';
-import { authenticatedPost } from '@/utils/api';
+import { searchItem } from '@/utils/supabase-edge-functions';
 
 type SearchStage = 'idle' | 'normalizing' | 'finding_stores' | 'checking_prices' | 'verifying_shipping' | 'choosing_photo' | 'complete' | 'error';
 
@@ -159,18 +159,17 @@ export default function SmartSearchScreen() {
       setStageProgress(90);
       await new Promise(resolve => setTimeout(resolve, 600));
 
-      // Call backend AI Price Search endpoint
-      console.log('[SmartSearch] Calling AI Price Search API');
-      const response = await authenticatedPost<{
-        offers: Offer[];
-        message?: string;
-      }>('/api/items/ai-price-search', {
-        productName: productName.trim(),
-        imageUrl: imageUrl.trim() || null,
-        originalUrl: originalUrl.trim() || null,
-        countryCode: userLocation.countryCode,
-        city: userLocation.city || null,
-      });
+      // Call Supabase Edge Function for AI Price Search
+      console.log('[SmartSearch] Calling search-item Edge Function');
+      const response = await searchItem(
+        productName.trim(),
+        userLocation.countryCode,
+        userLocation.city || undefined
+      );
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
 
       console.log('[SmartSearch] AI Price Search completed:', response.offers.length, 'offers');
 
@@ -179,8 +178,8 @@ export default function SmartSearchScreen() {
         title: productName.trim(),
         brand: undefined,
         category: undefined,
-        best_image_url: imageUrl.trim() || undefined,
-        canonical_product_url: originalUrl.trim() || undefined,
+        best_image_url: response.images[0] || imageUrl.trim() || undefined,
+        canonical_product_url: response.canonical || originalUrl.trim() || undefined,
         offers: response.offers,
       };
 
