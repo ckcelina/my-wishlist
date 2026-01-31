@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from '
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
+import { trackAppVersion } from '@/utils/versionTracking';
 
 interface Props {
   children: ReactNode;
@@ -16,6 +17,20 @@ interface State {
   error: Error | null;
   errorInfo: React.ErrorInfo | null;
 }
+
+/**
+ * Safe wrapper for trackAppVersion - ensures it never throws
+ */
+const safeTrackAppVersion = async () => {
+  try {
+    if (typeof trackAppVersion === 'function') {
+      await trackAppVersion();
+    }
+  } catch (e) {
+    // Swallow - never throw from error handler
+    console.warn('[ErrorBoundary] trackAppVersion failed:', e);
+  }
+};
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -43,6 +58,9 @@ export class ErrorBoundary extends Component<Props, State> {
       error,
       errorInfo,
     });
+
+    // Track app version (fire-and-forget, never blocks)
+    safeTrackAppVersion();
 
     this.props.onError?.(error, errorInfo);
   }

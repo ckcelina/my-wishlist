@@ -74,10 +74,8 @@ export default function RootLayout() {
       }
     });
     
-    // Track app version
-    trackAppVersion().catch(error => {
-      console.error('[App] Failed to track app version:', error);
-    });
+    // Track app version (idempotent, cross-platform, never throws)
+    trackAppVersion();
   }, []);
 
   if (!loaded) {
