@@ -22,6 +22,7 @@ interface CityPickerProps {
   onClose: () => void;
   onSelect: (city: CityResult) => void;
   countryCode?: string;
+  preloadedCities?: CityResult[]; // New prop for preloaded cities
 }
 
 const DEBOUNCE_MS = 350; // 250-400ms as per requirements
@@ -33,19 +34,31 @@ export function CityPicker({
   onClose,
   onSelect,
   countryCode,
+  preloadedCities = [],
 }: CityPickerProps) {
   const { theme } = useAppTheme();
   const [searchQuery, setSearchQuery] = useState('');
-  const [results, setResults] = useState<CityResult[]>([]);
+  const [results, setResults] = useState<CityResult[]>(preloadedCities);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingFallback, setUsingFallback] = useState(false);
+
+  // Initialize results with preloaded cities when modal opens
+  useEffect(() => {
+    if (visible && preloadedCities.length > 0 && searchQuery === '') {
+      if (__DEV__) {
+        console.log('[CityPicker] Initializing with preloaded cities:', preloadedCities.length);
+      }
+      setResults(preloadedCities);
+    }
+  }, [visible, preloadedCities, searchQuery]);
 
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce(async (query: string) => {
       if (query.length < MIN_QUERY_LENGTH) {
-        setResults([]);
+        // Show preloaded cities when query is cleared
+        setResults(preloadedCities);
         setUsingFallback(false);
         setError(null);
         setLoading(false);
@@ -82,7 +95,7 @@ export function CityPicker({
         setLoading(false);
       }
     }, DEBOUNCE_MS),
-    [countryCode]
+    [countryCode, preloadedCities]
   );
 
   // Trigger search when query changes
@@ -91,7 +104,8 @@ export function CityPicker({
       setLoading(true); // Show loading immediately
       debouncedSearch(searchQuery);
     } else {
-      setResults([]);
+      // Show preloaded cities when query is empty
+      setResults(preloadedCities);
       setUsingFallback(false);
       setError(null);
       setLoading(false);
@@ -101,7 +115,7 @@ export function CityPicker({
     return () => {
       debouncedSearch.cancel();
     };
-  }, [searchQuery, debouncedSearch]);
+  }, [searchQuery, debouncedSearch, preloadedCities]);
 
   const handleSelect = (city: CityResult) => {
     if (__DEV__) {
@@ -209,6 +223,11 @@ export function CityPicker({
     }
 
     if (searchQuery.length < MIN_QUERY_LENGTH) {
+      // Show preloaded cities hint if available
+      if (preloadedCities.length > 0) {
+        return null; // Don't show empty state, show preloaded cities instead
+      }
+      
       return (
         <View style={styles.emptyState}>
           <IconSymbol

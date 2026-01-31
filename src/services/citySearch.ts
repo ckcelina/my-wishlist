@@ -153,6 +153,7 @@ function scoreCity(
 /**
  * Search local cities dataset
  * Returns scored and sorted results
+ * If query is empty, returns top cities for the country
  */
 function searchLocalCities(
   query: string,
@@ -175,6 +176,23 @@ function searchLocalCities(
       countryCode: normalizedCountryCode,
       limit,
     });
+  }
+
+  // If query is empty and country is specified, return top cities for that country
+  if (!normalizedQuery && normalizedCountryCode) {
+    if (__DEV__) {
+      console.log('[CitySearch] Empty query with country - returning top cities');
+    }
+    
+    const countryCities = localCities
+      .filter(city => normalizeString(city.countryCode) === normalizedCountryCode)
+      .slice(0, limit);
+    
+    if (__DEV__) {
+      console.log(`[CitySearch] Found ${countryCities.length} top cities for country`);
+    }
+    
+    return countryCities;
   }
 
   // Score all cities

@@ -24,6 +24,7 @@ import { CountryPicker } from '@/components/pickers/CountryPicker';
 import { CityPicker } from '@/components/pickers/CityPicker';
 import { getCountryFlag } from '@/constants/countries';
 import debounce from 'lodash.debounce';
+import { determineDefaultLocation, preloadCitiesForCountry } from '@/src/services/locationBootstrap';
 
 interface UserLocation {
   id: string;
@@ -83,6 +84,9 @@ export default function LocationScreen() {
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   
+  const [preloadedCities, setPreloadedCities] = useState<CityResult[]>([]);
+  const [bootstrapComplete, setBootstrapComplete] = useState(false);
+  
   const showAreaFields = COUNTRIES_WITH_AREA_SUPPORT.includes(countryCode);
 
   const fetchLocation = useCallback(async () => {
@@ -102,17 +106,62 @@ export default function LocationScreen() {
         setLng(data.lng);
         setArea(data.area || '');
         setAddressLine(data.addressLine || '');
+        
+        // Preload cities for saved country
+        if (data.countryCode) {
+          console.log('[LocationScreen] Preloading cities for saved country:', data.countryCode);
+          const cities = await preloadCitiesForCountry(data.countryCode);
+          setPreloadedCities(cities);
+        }
       } else {
-        console.log('[LocationScreen] No location set');
+        console.log('[LocationScreen] No location set, running bootstrap');
         setHasLocation(false);
+        
+        // Run automatic location detection
+        const bootstrap = await determineDefaultLocation();
+        
+        if (bootstrap.countryCode && bootstrap.countryName) {
+          console.log('[LocationScreen] Bootstrap detected country:', bootstrap.countryName);
+          setCountryCode(bootstrap.countryCode);
+          setCountryName(bootstrap.countryName);
+          setPreloadedCities(bootstrap.topCities);
+          
+          // Show toast to inform user
+          setToastMessage(`Detected location: ${bootstrap.countryName}`);
+          setToastType('success');
+          setToastVisible(true);
+        } else {
+          console.log('[LocationScreen] Bootstrap could not detect country');
+        }
       }
     } catch (error: any) {
       console.error('[LocationScreen] Error fetching location:', error);
       
       // If the error is a 404, it means no location is set (not an error)
       if (error.message && error.message.includes('404')) {
-        console.log('[LocationScreen] No location set (404)');
+        console.log('[LocationScreen] No location set (404), running bootstrap');
         setHasLocation(false);
+        
+        // Run automatic location detection
+        try {
+          const bootstrap = await determineDefaultLocation();
+          
+          if (bootstrap.countryCode && bootstrap.countryName) {
+            console.log('[LocationScreen] Bootstrap detected country:', bootstrap.countryName);
+            setCountryCode(bootstrap.countryCode);
+            setCountryName(bootstrap.countryName);
+            setPreloadedCities(bootstrap.topCities);
+            
+            // Show toast to inform user
+            setToastMessage(`Detected location: ${bootstrap.countryName}`);
+            setToastType('success');
+            setToastVisible(true);
+          } else {
+            console.log('[LocationScreen] Bootstrap could not detect country');
+          }
+        } catch (bootstrapError) {
+          console.error('[LocationScreen] Bootstrap failed:', bootstrapError);
+        }
       } else {
         // For other errors, show a toast but don't block the UI
         console.error('[LocationScreen] Failed to fetch location:', error.message);
@@ -122,6 +171,7 @@ export default function LocationScreen() {
       }
     } finally {
       setLoading(false);
+      setBootstrapComplete(true);
     }
   }, []);
 
@@ -196,7 +246,7 @@ export default function LocationScreen() {
     };
   }, [debouncedSave]);
 
-  const handleSelectCountry = (country: { countryName: string; countryCode: string }) => {
+  const handleSelectCountry = async (country: { countryName: string; countryCode: string }) => {
     console.log('[LocationScreen] User selected country:', country.countryCode, country.countryName);
     haptics.selection();
     setCountryCode(country.countryCode);
@@ -208,6 +258,11 @@ export default function LocationScreen() {
     setLng(null);
     setArea('');
     setAddressLine('');
+    
+    // Preload cities for newly selected country
+    console.log('[LocationScreen] Preloading cities for selected country:', country.countryCode);
+    const cities = await preloadCitiesForCountry(country.countryCode);
+    setPreloadedCities(cities);
     
     // Autosave after country selection
     setTimeout(() => {
@@ -437,6 +492,7 @@ export default function LocationScreen() {
         onClose={() => setShowCityPicker(false)}
         onSelect={handleSelectCity}
         countryCode={countryCode}
+        preloadedCities={preloadedCities}
       />
     </View>
   );
