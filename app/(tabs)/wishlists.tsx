@@ -344,14 +344,33 @@ export default function WishlistsScreen() {
           }
 
           realtimeDebounceRef.current = setTimeout(() => {
-            fetchWishlistsFromNetwork();
+            if (!isFetchingRef.current && user?.id) {
+              isFetchingRef.current = true;
+              getWishlistWithItemCount(user.id).then((data) => {
+                const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
+                  id: w.id,
+                  name: w.name,
+                  isDefault: index === 0,
+                  itemCount: w.itemCount,
+                  createdAt: w.createdAt,
+                  updatedAt: w.updatedAt,
+                }));
+                const deduplicatedWishlists = dedupeById(formattedWishlists, 'id');
+                setWishlists(deduplicatedWishlists);
+                setCachedData('wishlists', deduplicatedWishlists);
+              }).catch((err) => {
+                console.error('[WishlistsScreen] Realtime update error:', err);
+              }).finally(() => {
+                isFetchingRef.current = false;
+              });
+            }
           }, 500); // Wait 500ms before refetching
         }
       )
       .subscribe();
 
     subscriptionRef.current = channel;
-  }, [user, fetchWishlistsFromNetwork]);
+  }, [user]);
 
   // Cleanup realtime subscription
   const cleanupRealtimeSubscription = useCallback(() => {

@@ -8,7 +8,7 @@ import {
   SmartLocationSettings,
 } from '@/utils/locationDetection';
 
-interface SmartLocationContextType {
+export interface SmartLocationContextType {
   settings: SmartLocationSettings | null;
   loading: boolean;
   isTraveling: boolean;

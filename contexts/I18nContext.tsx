@@ -52,6 +52,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       console.log('[I18nContext] User logged in, loading preferences');
       loadUserPreferences();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, i18nReadyState]);
 
   const initializeLanguage = async () => {

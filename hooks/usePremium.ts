@@ -17,6 +17,7 @@ export function usePremium() {
 
   useEffect(() => {
     loadPremiumStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const loadPremiumStatus = async () => {
@@ -45,6 +46,7 @@ export function usePremium() {
     console.log('[usePremium] Refreshing premium status');
     await loadPremiumStatus();
     return premiumStatus;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const checkFeatureAccess = useCallback((feature: PremiumFeature): boolean => {

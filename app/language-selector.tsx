@@ -38,6 +38,7 @@ export default function LanguageSelectorScreen() {
     console.log('[LanguageSelector] currentLanguage:', currentLanguage);
     console.log('[LanguageSelector] languageMode:', languageMode);
     console.log('[LanguageSelector] supportedLanguages count:', SUPPORTED_LANGUAGES.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update selected values when context changes

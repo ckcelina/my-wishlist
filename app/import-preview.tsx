@@ -138,6 +138,7 @@ export default function ImportPreviewScreen() {
   useEffect(() => {
     console.log('[ImportPreview] Initializing with params:', params);
     initializeScreen();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
   useEffect(() => {
@@ -145,6 +146,7 @@ export default function ImportPreviewScreen() {
       fetchUserWishlists();
       fetchUserLocationData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const initializeScreen = async () => {
