@@ -1,45 +1,58 @@
+
 {
+  "cli": {
+    "version": ">= 5.0.0"
+  },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "autoIncrement": true,
-      "ios": {
-        "simulator": false
+      "env": {
+        "APP_VARIANT": "development"
       },
-      "channel": "development"
+      "ios": {
+        "simulator": true,
+        "buildConfiguration": "Debug"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
       "distribution": "internal",
-      "autoIncrement": true,
+      "env": {
+        "APP_VARIANT": "preview"
+      },
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release"
       },
       "android": {
         "buildType": "apk"
-      },
-      "channel": "preview",
-      "env": {
-        "EXPO_PUBLIC_ENV": "preview"
       }
     },
     "production": {
-      "autoIncrement": true,
+      "distribution": "store",
       "ios": {
         "simulator": false,
         "buildConfiguration": "Release"
       },
       "android": {
         "buildType": "app-bundle"
-      },
-      "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_ENV": "production"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "YOUR_ASC_APP_ID",
+        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./path/to/service-account-key.json",
+        "track": "production"
+      }
+    }
   }
 }
