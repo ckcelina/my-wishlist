@@ -157,6 +157,11 @@ export function CityPicker({
 
       // Try API call
       try {
+        if (__DEV__) {
+          console.log('[CityPicker] Making API request to /api/location/search-cities');
+          console.log('[CityPicker] Request body:', { query, countryCode, limit: 10 });
+        }
+
         const response = await apiPost<{ results: CityResult[] }>(
           '/api/location/search-cities',
           {
@@ -167,7 +172,7 @@ export function CityPicker({
         );
 
         if (__DEV__) {
-          console.log('[CityPicker] API response:', response);
+          console.log('[CityPicker] API response received:', response);
         }
 
         if (response.results && response.results.length > 0) {
@@ -195,7 +200,11 @@ export function CityPicker({
         }
       } catch (apiError: any) {
         if (__DEV__) {
-          console.warn('[CityPicker] API call failed:', apiError);
+          console.error('[CityPicker] API call failed:', apiError);
+          console.error('[CityPicker] Error details:', {
+            message: apiError.message,
+            stack: apiError.stack,
+          });
         }
         
         // Fallback to local dataset on API error
