@@ -89,6 +89,8 @@ interface DuplicateItem {
   similarity: number;
 }
 
+type SearchStage = 'idle' | 'finding_stores' | 'checking_prices' | 'verifying_shipping' | 'choosing_photo' | 'complete';
+
 export default function ImportPreviewScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -131,6 +133,7 @@ export default function ImportPreviewScreen() {
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [alternativeStores, setAlternativeStores] = useState<AlternativeStore[]>([]);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
+  const [searchStage, setSearchStage] = useState<SearchStage>('idle');
   
   // Warnings
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -666,14 +669,20 @@ export default function ImportPreviewScreen() {
     
     console.log('[ImportPreview] Loading AI Price Search results for location:', userLocation.countryCode, userLocation.city);
     setLoadingAlternatives(true);
+    setSearchStage('finding_stores');
     
     try {
+      // Simulate stage progression for better UX
+      setTimeout(() => setSearchStage('checking_prices'), 1000);
+      setTimeout(() => setSearchStage('verifying_shipping'), 2000);
+      setTimeout(() => setSearchStage('choosing_photo'), 3000);
+      
       // Call backend AI Price Search endpoint
       const { authenticatedPost } = await import('@/utils/api');
       const response = await authenticatedPost<{
         offers: AlternativeStore[];
         message?: string;
-      }>('/api/items/ai-price-search', {
+      }>('/api/items/find-prices-online', {
         productName: itemName,
         imageUrl: selectedImage || null,
         originalUrl: productData?.sourceUrl || null,
@@ -681,6 +690,7 @@ export default function ImportPreviewScreen() {
         city: userLocation.city || null,
       });
       
+      setSearchStage('complete');
       console.log('[ImportPreview] AI Price Search results:', response.offers.length, 'offers');
       
       if (response.offers && response.offers.length > 0) {
@@ -695,6 +705,24 @@ export default function ImportPreviewScreen() {
       Alert.alert('Error', 'Failed to search for prices. Please try again.');
     } finally {
       setLoadingAlternatives(false);
+      setSearchStage('idle');
+    }
+  };
+
+  const getStageLabel = (stage: SearchStage): string => {
+    switch (stage) {
+      case 'finding_stores':
+        return 'Finding stores...';
+      case 'checking_prices':
+        return 'Checking prices...';
+      case 'verifying_shipping':
+        return 'Verifying shipping...';
+      case 'choosing_photo':
+        return 'Choosing best photo...';
+      case 'complete':
+        return 'Complete!';
+      default:
+        return '';
     }
   };
 
@@ -961,25 +989,35 @@ export default function ImportPreviewScreen() {
                 )}
               </View>
             ) : (
-              <TouchableOpacity
-                style={[styles.loadAlternativesButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={handleLoadAlternatives}
-                disabled={loadingAlternatives}
-              >
-                {loadingAlternatives ? (
-                  <ActivityIndicator size="small" color={colors.accent} />
-                ) : (
-                  <>
-                    <IconSymbol
-                      ios_icon_name="magnifyingglass"
-                      android_material_icon_name="search"
-                      size={20}
-                      color={colors.accent}
-                    />
-                    <Text style={[styles.loadAlternativesText, { color: colors.accent }]}>Find Prices Online</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={styles.findPricesSection}>
+                <TouchableOpacity
+                  style={[styles.loadAlternativesButton, { backgroundColor: colors.accent }]}
+                  onPress={handleLoadAlternatives}
+                  disabled={loadingAlternatives}
+                >
+                  {loadingAlternatives ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="small" color={colors.textInverse} />
+                      <Text style={[styles.loadingStageText, { color: colors.textInverse }]}>
+                        {getStageLabel(searchStage)}
+                      </Text>
+                    </View>
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="magnifyingglass"
+                        android_material_icon_name="search"
+                        size={20}
+                        color={colors.textInverse}
+                      />
+                      <Text style={[styles.loadAlternativesText, { color: colors.textInverse }]}>Find Prices Online</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <Text style={[styles.findPricesHint, { color: colors.textTertiary }]}>
+                  Search 10+ stores for the best price
+                </Text>
+              </View>
             )}
 
             {/* Confirmation Toggle */}
@@ -1448,6 +1486,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     fontStyle: 'italic',
   },
+  findPricesSection: {
+    marginBottom: spacing.xl,
+    alignItems: 'center',
+  },
   loadAlternativesButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1455,12 +1497,26 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     padding: spacing.md,
     borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: spacing.xl,
+    width: '100%',
+    minHeight: 48,
   },
   loadAlternativesText: {
     fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  loadingStageText: {
+    fontSize: 14,
     fontWeight: '500',
+  },
+  findPricesHint: {
+    fontSize: 12,
+    marginTop: spacing.xs,
+    textAlign: 'center',
   },
   confirmationSection: {
     flexDirection: 'row',
