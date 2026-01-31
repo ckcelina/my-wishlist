@@ -25,13 +25,13 @@ const FEATURES = [
     description: 'Import as many items as you want each month. No limits on wishlist imports from any store.',
   },
   {
-    icon: 'category',
-    title: 'Advanced Organization',
-    description: 'Use smart auto-grouping to organize items by store, category, person, occasion, or price range automatically.',
+    icon: 'public',
+    title: 'Multi-Country Comparison',
+    description: 'Compare prices across multiple countries to find the best deals worldwide.',
   },
   {
     icon: 'notifications-active',
-    title: 'Smart Price Alerts',
+    title: 'Advanced Price Alerts',
     description: 'Set custom price drop alerts for each item. Get notified when any item drops below your target price.',
   },
 ];
@@ -48,6 +48,10 @@ const FAQ = [
   {
     question: 'What happens to my data if I cancel?',
     answer: 'All your wishlists and items remain intact. You\'ll just lose access to premium features.',
+  },
+  {
+    question: 'How do affiliate links work?',
+    answer: 'When you click on store links, we may earn a small commission at no extra cost to you. This helps support the app and keep it free for everyone.',
   },
 ];
 
@@ -161,6 +165,23 @@ export default function PremiumInfoScreen() {
           })}
         </View>
 
+        <View style={[styles.complianceSection, { backgroundColor: currentColors.card, borderColor: currentColors.border }]}>
+          <View style={styles.complianceHeader}>
+            <IconSymbol
+              ios_icon_name="shield.checkmark"
+              android_material_icon_name="verified-user"
+              size={24}
+              color={currentColors.accent}
+            />
+            <Text style={[styles.complianceTitle, { color: currentColors.text }]}>
+              Privacy & Transparency
+            </Text>
+          </View>
+          <Text style={[styles.complianceText, { color: currentColors.textSecondary }]}>
+            We believe in transparency. When you click on store links, we may earn a small commission at no extra cost to you. This helps us keep the app free and continuously improve it. All sponsored offers are clearly labeled, and we never hide tracking or sell your personal data.
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={[styles.upgradeButton, { backgroundColor: currentColors.accent }]}
           onPress={() => router.back()}
@@ -255,6 +276,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   faqAnswer: {
+    ...typography.bodyMedium,
+    lineHeight: 20,
+  },
+  complianceSection: {
+    padding: spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+  },
+  complianceHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  complianceTitle: {
+    ...typography.bodyLarge,
+    fontWeight: '600',
+  },
+  complianceText: {
     ...typography.bodyMedium,
     lineHeight: 20,
   },
