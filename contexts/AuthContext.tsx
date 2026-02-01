@@ -24,6 +24,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * Safe wrapper for version tracking that never crashes auth flow
+   */
+  const safeLogVersion = async (userId: string) => {
+    try {
+      // Guard: Verify function exists and is callable
+      if (typeof logAppVersionToSupabase !== 'function') {
+        console.warn('[AuthContext] logAppVersionToSupabase is not a function, skipping');
+        return;
+      }
+
+      console.log('[AuthContext] Logging app version for user:', userId);
+      await logAppVersionToSupabase(userId);
+    } catch (error) {
+      // Never let version tracking crash the auth flow
+      console.error('[AuthContext] Error logging version (non-critical):', error);
+    }
+  };
+
   useEffect(() => {
     console.log('[AuthContext] Initializing auth state...');
 
@@ -36,12 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         
-        // Log version when user signs in
-        if (initialSession?.user) {
-          console.log('[AuthContext] User authenticated, logging version to Supabase');
-          logAppVersionToSupabase(initialSession.user.id).catch((error) => {
-            console.error('[AuthContext] Error logging version on sign in:', error);
-          });
+        // Log version when user signs in (fire-and-forget, never blocks)
+        if (initialSession?.user?.id) {
+          void safeLogVersion(initialSession.user.id);
         }
       }
       setLoading(false);
@@ -54,12 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         
-        // Log version when user signs in
-        if (event === 'SIGNED_IN' && currentSession?.user) {
-          console.log('[AuthContext] User signed in, logging version to Supabase');
-          logAppVersionToSupabase(currentSession.user.id).catch((error) => {
-            console.error('[AuthContext] Error logging version on sign in:', error);
-          });
+        // Log version when user signs in (fire-and-forget, never blocks)
+        if (event === 'SIGNED_IN' && currentSession?.user?.id) {
+          void safeLogVersion(currentSession.user.id);
         }
         
         setLoading(false);

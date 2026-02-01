@@ -184,6 +184,9 @@ export default {
       addDevPadding: false,
       useDevWrapper: false,
       
+      // Version tracking (optional feature)
+      SUPABASE_VERSION_TRACKING_ENABLED: process.env.SUPABASE_VERSION_TRACKING_ENABLED || 'true',
+      
       // Build metadata
       buildVariant: ENVIRONMENT,
       buildTimestamp: new Date().toISOString(),
