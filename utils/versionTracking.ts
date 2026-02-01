@@ -13,8 +13,16 @@
  * 
  * This function exists solely to prevent crashes in ErrorBoundary.
  * It performs no side effects and always succeeds.
+ * 
+ * @returns Promise that resolves immediately
  */
 export async function trackAppVersion(): Promise<void> {
   // Minimal body as per requirement - no side effects
-  return;
+  // This function intentionally does nothing to prevent crashes
+  return Promise.resolve();
 }
+
+// Default export for compatibility (some bundlers may need this)
+export default {
+  trackAppVersion,
+};

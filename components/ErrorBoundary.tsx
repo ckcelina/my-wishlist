@@ -17,23 +17,6 @@ interface State {
   errorInfo: React.ErrorInfo | null;
 }
 
-/**
- * Safe wrapper for trackAppVersion using defensive dynamic import
- * This ensures ErrorBoundary NEVER crashes even if versionTracking module is missing
- */
-const safeTrack = async () => {
-  try {
-    // Dynamic import to prevent hard dependency and allow graceful failure
-    const mod = await import("../utils/versionTracking");
-    if (typeof mod.trackAppVersion === "function") {
-      await mod.trackAppVersion();
-    }
-  } catch (e) {
-    // Log warning but do not crash the ErrorBoundary
-    console.warn("version tracking unavailable", e);
-  }
-};
-
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -52,6 +35,38 @@ export class ErrorBoundary extends Component<Props, State> {
     };
   }
 
+  /**
+   * Safe wrapper for trackAppVersion using defensive dynamic import
+   * This ensures ErrorBoundary NEVER crashes even if versionTracking module is missing
+   * or malformed. Uses multiple layers of defensive checks.
+   */
+  private safeTrack = async () => {
+    try {
+      // Dynamic import to prevent hard dependency and allow graceful failure
+      const mod = await import("../utils/versionTracking");
+      
+      // Check if the module loaded successfully
+      if (!mod) {
+        console.warn("version tracking module not loaded");
+        return;
+      }
+      
+      // Check if trackAppVersion exists and is a function
+      if (typeof mod.trackAppVersion === "function") {
+        await mod.trackAppVersion();
+      } else if (typeof mod.default?.trackAppVersion === "function") {
+        // Fallback to default export if named export not found
+        await mod.default.trackAppVersion();
+      } else {
+        console.warn("trackAppVersion function not found in module");
+      }
+    } catch (e) {
+      // Log warning but do not crash the ErrorBoundary
+      // This catch block ensures ErrorBoundary is bulletproof
+      console.warn("version tracking unavailable", e);
+    }
+  };
+
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('[ErrorBoundary] Error caught:', error);
     console.error('[ErrorBoundary] Error info:', errorInfo);
@@ -62,7 +77,8 @@ export class ErrorBoundary extends Component<Props, State> {
     });
 
     // Track app version (fire-and-forget, never blocks, never crashes)
-    void safeTrack();
+    // Using void to explicitly ignore the promise
+    void this.safeTrack();
 
     this.props.onError?.(error, errorInfo);
   }
