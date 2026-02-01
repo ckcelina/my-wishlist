@@ -7,11 +7,11 @@ import Constants from 'expo-constants';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * 🔌 API CLIENT - DUAL MODE (BACKEND API + SUPABASE EDGE FUNCTIONS)
+ * 🔌 API CLIENT - UNIFIED INTERFACE FOR BACKEND & SUPABASE EDGE FUNCTIONS
  * ═══════════════════════════════════════════════════════════════════════════
  * This file provides a unified API client for:
  * 1. Backend API (Specular) - for app-specific endpoints
- * 2. Supabase Edge Functions - for Supabase-specific functionality
+ * 2. Supabase Edge Functions - for location, alerts, and health endpoints
  * 
  * Features:
  * - Centralized base URL configuration from src/config/env.ts
@@ -19,7 +19,8 @@ import Constants from 'expo-constants';
  * - Proper URL construction (no relative paths)
  * - Comprehensive error logging
  * - Authentication header injection
- * - Dev-only request/response logging
+ * - Dev-only request/response logging (NO TOKEN LEAKS)
+ * - Automatic routing of /api/* paths to Supabase Edge Functions
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -38,6 +39,49 @@ if (__DEV__) {
 }
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * API ENDPOINT ROUTING - MAP /api/* TO SUPABASE EDGE FUNCTIONS
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+interface RouteMapping {
+  edgeFunctionName: string;
+  isEdgeFunction: boolean;
+}
+
+/**
+ * Map legacy /api/* paths to Supabase Edge Functions
+ * Returns the Edge Function name and whether it should use Edge Functions
+ */
+function mapApiPathToEdgeFunction(path: string): RouteMapping {
+  // Normalize path (remove leading slash if present)
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  // Map specific paths to Edge Functions
+  const edgeFunctionMappings: Record<string, string> = {
+    '/api/users/location': 'users-location',
+    '/api/location/search-cities': 'location-search-cities',
+    '/api/alert-settings': 'alert-settings',
+    '/api/alert-settings/items-with-targets': 'alert-items-with-targets',
+    '/api/health': 'health',
+  };
+
+  // Check if this path should be routed to an Edge Function
+  if (edgeFunctionMappings[normalizedPath]) {
+    return {
+      edgeFunctionName: edgeFunctionMappings[normalizedPath],
+      isEdgeFunction: true,
+    };
+  }
+
+  // Default: use backend API
+  return {
+    edgeFunctionName: '',
+    isEdgeFunction: false,
+  };
+}
+
+/**
  * Get bearer token from Supabase session
  */
 async function getBearerToken(): Promise<string | null> {
@@ -45,13 +89,16 @@ async function getBearerToken(): Promise<string | null> {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
       if (__DEV__) {
-        console.log('[API] Using Supabase access token');
+        console.log('[API] ✅ Using Supabase access token');
       }
       return session.access_token;
     }
+    if (__DEV__) {
+      console.log('[API] ⚠️ No access token available');
+    }
     return null;
   } catch (error) {
-    console.error('[API] Failed to get bearer token:', error);
+    console.error('[API] ❌ Failed to get bearer token:', error);
     logError(error instanceof Error ? error : new Error(String(error)), {
       context: 'getBearerToken',
     });
@@ -61,55 +108,216 @@ async function getBearerToken(): Promise<string | null> {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * BACKEND API CALLS (Specular)
+ * CORE AUTHENTICATED FETCH - WITH VALIDATION & DEV-ONLY LOGGING
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 /**
- * Make an authenticated GET request to the backend API
+ * Core authenticated fetch function with:
+ * - Base URL validation (never calls undefined/invalid URLs)
+ * - Dev-only request/response logging (NO TOKEN LEAKS)
+ * - Automatic routing to Supabase Edge Functions for specific paths
+ * - Proper error handling
  */
-export async function authenticatedGet<T>(endpoint: string): Promise<T> {
+async function authenticatedFetch<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  // Check if this endpoint should be routed to an Edge Function
+  const routing = mapApiPathToEdgeFunction(endpoint);
+
+  if (routing.isEdgeFunction) {
+    // Route to Supabase Edge Function
+    if (__DEV__) {
+      console.log(`[API] 🔀 Routing ${endpoint} → Edge Function: ${routing.edgeFunctionName}`);
+    }
+    return callEdgeFunction<T>(routing.edgeFunctionName, options);
+  }
+
+  // Otherwise, use backend API
   if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
+    const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
+    console.error('[API] ❌', error.message);
+    throw error;
+  }
+
+  // Validate base URL
+  try {
+    new URL(BACKEND_URL);
+  } catch {
+    const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
+    console.error('[API] ❌', error.message);
     throw error;
   }
 
   const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
   const token = await getBearerToken();
+  const method = options.method || 'GET';
 
   const headers: HeadersInit = {
-    'Content-Type': 'application/json',
+    ...options.headers,
   };
+
+  // Only add Content-Type for requests with a body
+  if (options.body && method !== 'GET' && method !== 'DELETE') {
+    headers['Content-Type'] = 'application/json';
+  }
 
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  // Dev-only logging (NO TOKEN LEAKS)
   if (__DEV__) {
-    console.log(`[API] GET ${url}`);
+    console.log(`[API] 📤 ${method} ${url}`);
+    if (options.body) {
+      const bodyPreview = typeof options.body === 'string' 
+        ? options.body.substring(0, 200) 
+        : JSON.stringify(options.body).substring(0, 200);
+      console.log(`[API] 📦 Body: ${bodyPreview}${bodyPreview.length >= 200 ? '...' : ''}`);
+    }
   }
 
   try {
     const response = await fetch(url, {
-      method: 'GET',
+      ...options,
+      method,
       headers,
     });
 
+    // Dev-only response logging
     if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
+      console.log(`[API] 📥 ${method} ${url} - Status: ${response.status} ${response.statusText}`);
     }
 
     if (!response.ok) {
       const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: GET ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
+      const errorPreview = errorText.substring(0, 200);
+      
+      if (__DEV__) {
+        console.error(`[API] ❌ Request failed: ${method} ${url}`);
+        console.error(`[API] Status: ${response.status} ${response.statusText}`);
+        console.error(`[API] Response: ${errorPreview}${errorPreview.length >= 200 ? '...' : ''}`);
+      }
 
       const error = new Error(`API request failed: ${response.status} ${errorText}`);
       logError(error, {
-        context: 'authenticatedGet',
+        context: 'authenticatedFetch',
         endpoint,
+        status: response.status,
+        url,
+        method,
+      });
+
+      throw error;
+    }
+
+    const data = await response.json();
+
+    if (__DEV__) {
+      const dataPreview = JSON.stringify(data).substring(0, 200);
+      console.log(`[API] ✅ Response: ${dataPreview}${dataPreview.length >= 200 ? '...' : ''}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error(`[API] ❌ Network or API error: ${method} ${url}`);
+    console.error('[API] Error details:', error);
+
+    logError(error instanceof Error ? error : new Error(String(error)), {
+      context: 'authenticatedFetch',
+      endpoint,
+      url,
+      method,
+    });
+    throw error;
+  }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SUPABASE EDGE FUNCTIONS
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Call a Supabase Edge Function with authentication
+ * Includes all required headers: Authorization + apikey
+ */
+async function callEdgeFunction<T>(
+  functionName: string,
+  options: RequestInit = {}
+): Promise<T> {
+  // Validate environment configuration
+  const missingKeys = validateEnv();
+  if (missingKeys.length > 0) {
+    const error = new Error(`API base URL missing or invalid. Check env.ts and app config. Missing: ${missingKeys.join(', ')}`);
+    console.error('[API] ❌', error.message);
+    throw error;
+  }
+
+  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
+    const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
+    console.error('[API] ❌', error.message);
+    throw error;
+  }
+
+  const url = `${ENV.SUPABASE_EDGE_FUNCTIONS_URL}/${functionName}`;
+  const token = await getBearerToken();
+  const method = options.method || 'GET';
+
+  const headers: HeadersInit = {
+    ...options.headers,
+    'apikey': ENV.SUPABASE_ANON_KEY,
+  };
+
+  // Only add Content-Type for requests with a body
+  if (options.body && method !== 'GET' && method !== 'DELETE') {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  // Dev-only logging (NO TOKEN LEAKS)
+  if (__DEV__) {
+    console.log(`[API] 📤 ${method} ${url}`);
+    if (options.body) {
+      const bodyPreview = typeof options.body === 'string' 
+        ? options.body.substring(0, 200) 
+        : JSON.stringify(options.body).substring(0, 200);
+      console.log(`[API] 📦 Body: ${bodyPreview}${bodyPreview.length >= 200 ? '...' : ''}`);
+    }
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      method,
+      headers,
+    });
+
+    // Dev-only response logging
+    if (__DEV__) {
+      console.log(`[API] 📥 ${method} ${url} - Status: ${response.status} ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      const errorText = await response.clone().text();
+      const errorPreview = errorText.substring(0, 200);
+      
+      if (__DEV__) {
+        console.error(`[API] ❌ Edge Function failed: ${method} ${url}`);
+        console.error(`[API] Status: ${response.status} ${response.statusText}`);
+        console.error(`[API] Response: ${errorPreview}${errorPreview.length >= 200 ? '...' : ''}`);
+      }
+
+      const error = new Error(`Edge Function request failed: ${response.status} ${errorText}`);
+      logError(error, {
+        context: 'callEdgeFunction',
+        functionName,
+        method,
         status: response.status,
         url,
       });
@@ -120,17 +328,19 @@ export async function authenticatedGet<T>(endpoint: string): Promise<T> {
     const data = await response.json();
 
     if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(data).substring(0, 200));
+      const dataPreview = JSON.stringify(data).substring(0, 200);
+      console.log(`[API] ✅ Response: ${dataPreview}${dataPreview.length >= 200 ? '...' : ''}`);
     }
 
     return data;
   } catch (error) {
-    console.error(`[API] ❌ Network or API error: GET ${url}`);
+    console.error(`[API] ❌ Network or API error: ${method} ${url}`);
     console.error('[API] Error details:', error);
 
     logError(error instanceof Error ? error : new Error(String(error)), {
-      context: 'authenticatedGet',
-      endpoint,
+      context: 'callEdgeFunction',
+      functionName,
+      method,
       url,
     });
     throw error;
@@ -138,237 +348,65 @@ export async function authenticatedGet<T>(endpoint: string): Promise<T> {
 }
 
 /**
- * Make an authenticated POST request to the backend API
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PUBLIC API - CONVENIENCE METHODS
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+/**
+ * Make an authenticated GET request
+ * Automatically routes to Edge Functions for specific paths
+ */
+export async function authenticatedGet<T>(endpoint: string): Promise<T> {
+  return authenticatedFetch<T>(endpoint, { method: 'GET' });
+}
+
+/**
+ * Make an authenticated POST request
+ * Automatically routes to Edge Functions for specific paths
  */
 export async function authenticatedPost<T>(endpoint: string, data: any): Promise<T> {
-  if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
-    throw error;
-  }
-
-  const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  const token = await getBearerToken();
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  if (__DEV__) {
-    console.log(`[API] POST ${url}`);
-    console.log('[API] Request body:', JSON.stringify(data).substring(0, 200));
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data),
-    });
-
-    if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: POST ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
-
-      const error = new Error(`API request failed: ${response.status} ${errorText}`);
-      logError(error, {
-        context: 'authenticatedPost',
-        endpoint,
-        status: response.status,
-        url,
-      });
-
-      throw error;
-    }
-
-    const responseData = await response.json();
-
-    if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(responseData).substring(0, 200));
-    }
-
-    return responseData;
-  } catch (error) {
-    console.error(`[API] ❌ Network or API error: POST ${url}`);
-    console.error('[API] Error details:', error);
-
-    logError(error instanceof Error ? error : new Error(String(error)), {
-      context: 'authenticatedPost',
-      endpoint,
-      url,
-    });
-    throw error;
-  }
+  return authenticatedFetch<T>(endpoint, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 /**
- * Make an authenticated PUT request to the backend API
+ * Make an authenticated PUT request
+ * Automatically routes to Edge Functions for specific paths
  */
 export async function authenticatedPut<T>(endpoint: string, data: any): Promise<T> {
-  if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
-    throw error;
-  }
-
-  const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  const token = await getBearerToken();
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  if (__DEV__) {
-    console.log(`[API] PUT ${url}`);
-    console.log('[API] Request body:', JSON.stringify(data).substring(0, 200));
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(data),
-    });
-
-    if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: PUT ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
-
-      const error = new Error(`API request failed: ${response.status} ${errorText}`);
-      logError(error, {
-        context: 'authenticatedPut',
-        endpoint,
-        status: response.status,
-        url,
-      });
-
-      throw error;
-    }
-
-    const responseData = await response.json();
-
-    if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(responseData).substring(0, 200));
-    }
-
-    return responseData;
-  } catch (error) {
-    console.error(`[API] ❌ Network or API error: PUT ${url}`);
-    console.error('[API] Error details:', error);
-
-    logError(error instanceof Error ? error : new Error(String(error)), {
-      context: 'authenticatedPut',
-      endpoint,
-      url,
-    });
-    throw error;
-  }
+  return authenticatedFetch<T>(endpoint, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }
 
 /**
- * Make an authenticated DELETE request to the backend API
+ * Make an authenticated DELETE request
+ * Automatically routes to Edge Functions for specific paths
  */
 export async function authenticatedDelete<T>(endpoint: string): Promise<T> {
-  if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
-    throw error;
-  }
-
-  const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
-  const token = await getBearerToken();
-
-  const headers: HeadersInit = {};
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  if (__DEV__) {
-    console.log(`[API] DELETE ${url}`);
-  }
-
-  try {
-    const response = await fetch(url, {
-      method: 'DELETE',
-      headers,
-    });
-
-    if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
-    }
-
-    if (!response.ok) {
-      const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: DELETE ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
-
-      const error = new Error(`API request failed: ${response.status} ${errorText}`);
-      logError(error, {
-        context: 'authenticatedDelete',
-        endpoint,
-        status: response.status,
-        url,
-      });
-
-      throw error;
-    }
-
-    const responseData = await response.json();
-
-    if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(responseData).substring(0, 200));
-    }
-
-    return responseData;
-  } catch (error) {
-    console.error(`[API] ❌ Network or API error: DELETE ${url}`);
-    console.error('[API] Error details:', error);
-
-    logError(error instanceof Error ? error : new Error(String(error)), {
-      context: 'authenticatedDelete',
-      endpoint,
-      url,
-    });
-    throw error;
-  }
+  return authenticatedFetch<T>(endpoint, {
+    method: 'DELETE',
+  });
 }
 
 /**
- * Make a public GET request to the backend API (no authentication)
+ * Make a public GET request (no authentication)
  */
 export async function apiGet<T>(endpoint: string): Promise<T> {
   if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
+    const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
+    console.error('[API] ❌', error.message);
     throw error;
   }
 
   const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
   if (__DEV__) {
-    console.log(`[API] GET (public) ${url}`);
+    console.log(`[API] 📤 GET (public) ${url}`);
   }
 
   try {
@@ -380,14 +418,18 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
     });
 
     if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
+      console.log(`[API] 📥 GET ${url} - Status: ${response.status} ${response.statusText}`);
     }
 
     if (!response.ok) {
       const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: GET ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
+      const errorPreview = errorText.substring(0, 200);
+      
+      if (__DEV__) {
+        console.error(`[API] ❌ Request failed: GET ${url}`);
+        console.error(`[API] Status: ${response.status} ${response.statusText}`);
+        console.error(`[API] Response: ${errorPreview}${errorPreview.length >= 200 ? '...' : ''}`);
+      }
 
       const error = new Error(`API request failed: ${response.status} ${errorText}`);
       logError(error, {
@@ -403,7 +445,8 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
     const data = await response.json();
 
     if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(data).substring(0, 200));
+      const dataPreview = JSON.stringify(data).substring(0, 200);
+      console.log(`[API] ✅ Response: ${dataPreview}${dataPreview.length >= 200 ? '...' : ''}`);
     }
 
     return data;
@@ -421,20 +464,21 @@ export async function apiGet<T>(endpoint: string): Promise<T> {
 }
 
 /**
- * Make a public POST request to the backend API (no authentication)
+ * Make a public POST request (no authentication)
  */
 export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
   if (!BACKEND_URL) {
-    const error = new Error('[API] Backend URL is not configured. Cannot make API call.');
-    console.error(error.message);
+    const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
+    console.error('[API] ❌', error.message);
     throw error;
   }
 
   const url = `${BACKEND_URL}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
   if (__DEV__) {
-    console.log(`[API] POST (public) ${url}`);
-    console.log('[API] Request body:', JSON.stringify(data).substring(0, 200));
+    console.log(`[API] 📤 POST (public) ${url}`);
+    const bodyPreview = JSON.stringify(data).substring(0, 200);
+    console.log(`[API] 📦 Body: ${bodyPreview}${bodyPreview.length >= 200 ? '...' : ''}`);
   }
 
   try {
@@ -447,14 +491,18 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
     });
 
     if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
+      console.log(`[API] 📥 POST ${url} - Status: ${response.status} ${response.statusText}`);
     }
 
     if (!response.ok) {
       const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: POST ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
+      const errorPreview = errorText.substring(0, 200);
+      
+      if (__DEV__) {
+        console.error(`[API] ❌ Request failed: POST ${url}`);
+        console.error(`[API] Status: ${response.status} ${response.statusText}`);
+        console.error(`[API] Response: ${errorPreview}${errorPreview.length >= 200 ? '...' : ''}`);
+      }
 
       const error = new Error(`API request failed: ${response.status} ${errorText}`);
       logError(error, {
@@ -470,7 +518,8 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
     const responseData = await response.json();
 
     if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(responseData).substring(0, 200));
+      const dataPreview = JSON.stringify(responseData).substring(0, 200);
+      console.log(`[API] ✅ Response: ${dataPreview}${dataPreview.length >= 200 ? '...' : ''}`);
     }
 
     return responseData;
@@ -481,120 +530,6 @@ export async function apiPost<T>(endpoint: string, data: any): Promise<T> {
     logError(error instanceof Error ? error : new Error(String(error)), {
       context: 'apiPost',
       endpoint,
-      url,
-    });
-    throw error;
-  }
-}
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * SUPABASE EDGE FUNCTIONS
- * ═══════════════════════════════════════════════════════════════════════════
- */
-
-/**
- * Construct Supabase Edge Function URL
- */
-function constructEdgeFunctionUrl(functionName: string): string {
-  const missingKeys = validateEnv();
-  if (missingKeys.length > 0) {
-    const error = new Error(`[API] Environment configuration error. Missing: ${missingKeys.join(', ')}`);
-    console.error(error.message);
-    throw error;
-  }
-
-  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
-    const error = new Error('[API] SUPABASE_EDGE_FUNCTIONS_URL is not configured. Cannot call Edge Function.');
-    console.error(error.message);
-    throw error;
-  }
-
-  const fullUrl = `${ENV.SUPABASE_EDGE_FUNCTIONS_URL}/${functionName}`;
-
-  if (__DEV__) {
-    console.log('[API] Edge Function URL:', fullUrl);
-  }
-
-  return fullUrl;
-}
-
-/**
- * Call a Supabase Edge Function with authentication
- */
-export async function callEdgeFunction<T>(
-  functionName: string,
-  options: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    body?: any;
-  } = {}
-): Promise<T> {
-  const url = constructEdgeFunctionUrl(functionName);
-  const token = await getBearerToken();
-  const method = options.method || 'GET';
-
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    'apikey': ENV.SUPABASE_ANON_KEY,
-  };
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  if (__DEV__) {
-    console.log(`[API] ${method} ${url}`);
-    if (options.body) {
-      console.log('[API] Request body:', JSON.stringify(options.body).substring(0, 200));
-    }
-  }
-
-  try {
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
-
-    // Log response status
-    if (__DEV__) {
-      console.log(`[API] Response: ${response.status} ${response.statusText}`);
-    }
-
-    // Log non-2xx responses
-    if (!response.ok) {
-      const errorText = await response.clone().text();
-      console.error(`[API] ❌ Request failed: ${method} ${url}`);
-      console.error(`[API] Status: ${response.status} ${response.statusText}`);
-      console.error(`[API] Response body:`, errorText.substring(0, 200));
-
-      const error = new Error(`Edge Function request failed: ${response.status} ${errorText}`);
-      logError(error, {
-        context: 'callEdgeFunction',
-        functionName,
-        method,
-        status: response.status,
-        url,
-      });
-
-      throw error;
-    }
-
-    const data = await response.json();
-
-    if (__DEV__) {
-      console.log('[API] Response data:', JSON.stringify(data).substring(0, 200));
-    }
-
-    return data;
-  } catch (error) {
-    console.error(`[API] ❌ Network or API error: ${method} ${url}`);
-    console.error('[API] Error details:', error);
-
-    logError(error instanceof Error ? error : new Error(String(error)), {
-      context: 'callEdgeFunction',
-      functionName,
-      method,
       url,
     });
     throw error;
