@@ -766,9 +766,6 @@ export default function ImportPreviewScreen() {
   // Determine if we're showing placeholder
   const isPlaceholderImage = !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL;
 
-  // Determine delivery country display
-  const deliveryCountryDisplay = userLocation ? userLocation.countryCode : 'Not set';
-
   return (
     <>
       <Stack.Screen
@@ -919,12 +916,6 @@ export default function ImportPreviewScreen() {
                     color={colors.textSecondary}
                   />
                 </TouchableOpacity>
-              </View>
-
-              {/* Deliver to: Country */}
-              <View style={styles.deliverySection}>
-                <Text style={[styles.deliveryLabel, { color: colors.textSecondary }]}>Deliver to:</Text>
-                <Text style={[styles.deliveryCountry, { color: colors.textPrimary }]}>{deliveryCountryDisplay}</Text>
               </View>
 
               <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Notes (optional)</Text>
@@ -1402,21 +1393,6 @@ const styles = StyleSheet.create({
   currencyText: {
     fontSize: 16,
     fontWeight: '500',
-  },
-  deliverySection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  deliveryLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  deliveryCountry: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   notesInput: {
     minHeight: 80,

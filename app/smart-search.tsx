@@ -21,7 +21,6 @@ import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { searchItem } from '@/utils/supabase-edge-functions';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { TravelBanner } from '@/components/TravelBanner';
-import { CountrySelector } from '@/components/CountrySelector';
 import { getCountryFlag } from '@/constants/countries';
 
 type SearchStage = 'idle' | 'normalizing' | 'finding_stores' | 'checking_prices' | 'verifying_shipping' | 'choosing_photo' | 'complete' | 'error';
@@ -84,23 +83,11 @@ export default function SmartSearchScreen() {
   const [offerGroups, setOfferGroups] = useState<OfferGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Country selection
-  const [selectedCountry, setSelectedCountry] = useState('');
-  const [selectedCountryName, setSelectedCountryName] = useState('');
-
   // UI state
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   useEffect(() => {
     console.log('[SmartSearch] Initializing');
-
-    // Initialize with active_search_country from settings
-    if (settings) {
-      setSelectedCountry(settings.activeSearchCountry);
-      // We'll need to get the country name from the country code
-      // For now, just use the code
-      setSelectedCountryName(settings.activeSearchCountry);
-    }
 
     // Parse params if provided
     if (params.productName) {
@@ -114,34 +101,23 @@ export default function SmartSearchScreen() {
     }
   }, [params, settings]);
 
-  const handleCountrySelect = async (country: { countryCode: string; countryName: string }) => {
-    console.log('[SmartSearch] User selected country:', country.countryCode);
-    setSelectedCountry(country.countryCode);
-    setSelectedCountryName(country.countryName);
-
-    // Update active_search_country in settings
-    try {
-      await updateActiveSearchCountry(country.countryCode);
-    } catch (error) {
-      console.error('[SmartSearch] Failed to update active search country:', error);
-    }
-  };
-
   const handleStartSearch = async () => {
     if (!productName.trim()) {
       setError('Please enter a product name');
       return;
     }
 
-    if (!selectedCountry) {
-      console.log('[SmartSearch] Country not selected, showing modal');
+    // Get country from Settings
+    const searchCountry = settings?.activeSearchCountry || 'US';
+    if (!searchCountry) {
+      console.log('[SmartSearch] Country not set in Settings, showing modal');
       setShowLocationModal(true);
       return;
     }
 
     console.log('[SmartSearch] Starting AI Price Search for:', productName);
     console.log('[SmartSearch] Search mode:', searchMode);
-    console.log('[SmartSearch] Search country:', selectedCountry);
+    console.log('[SmartSearch] Search country:', searchCountry);
     setSearching(true);
     setError(null);
     setCurrentStage('normalizing');
@@ -177,7 +153,7 @@ export default function SmartSearchScreen() {
       console.log('[SmartSearch] Calling search-item Edge Function');
       const response = await searchItem(
         productName.trim(),
-        selectedCountry,
+        searchCountry,
         undefined // city is optional
       );
 
@@ -189,7 +165,7 @@ export default function SmartSearchScreen() {
 
       // Group offers by delivery type
       const localOffers = response.offers.filter(
-        offer => offer.shippingCountry === selectedCountry && 
+        offer => offer.shippingCountry === searchCountry && 
         offer.estimatedDelivery && 
         parseInt(offer.estimatedDelivery) < 3
       );
@@ -242,7 +218,7 @@ export default function SmartSearchScreen() {
               storeDomain: draft.offers[0]?.storeDomain || '',
               price: draft.offers[0]?.price || null,
               currency: draft.offers[0]?.currency || 'USD',
-              countryAvailability: [selectedCountry],
+              countryAvailability: [searchCountry],
               alternativeStores: draft.offers.map(offer => ({
                 storeName: offer.storeName,
                 storeDomain: offer.storeDomain,
@@ -315,7 +291,6 @@ export default function SmartSearchScreen() {
 
   const stageLabel = getStageLabel(currentStage);
   const stageIcon = getStageIcon(currentStage);
-  const countryFlag = getCountryFlag(selectedCountry);
 
   return (
     <>
@@ -438,18 +413,34 @@ export default function SmartSearchScreen() {
             />
           </View>
 
-          {/* Country Selector */}
+          {/* Country Info - managed in Settings */}
           <View style={styles.countrySection}>
-            <CountrySelector
-              label="Search for delivery to:"
-              selectedCountryCode={selectedCountry}
-              selectedCountryName={selectedCountryName}
-              onSelect={handleCountrySelect}
-              disabled={searching}
-            />
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+              Searching for delivery to:
+            </Text>
+            <View style={[styles.countryDisplay, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.countryDisplayText, { color: colors.textPrimary }]}>
+                {settings?.activeSearchCountry || 'Not set'}
+              </Text>
+              <TouchableOpacity
+                style={styles.changeCountryButton}
+                onPress={() => router.push('/location')}
+                disabled={searching}
+              >
+                <Text style={[styles.changeCountryText, { color: colors.accent }]}>
+                  Change in Settings
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={14}
+                  color={colors.accent}
+                />
+              </TouchableOpacity>
+            </View>
             {isTraveling && (
               <Text style={[styles.travelHint, { color: colors.textSecondary }]}>
-                💡 You're traveling. You can search for delivery to someone else or keep your home country.
+                💡 You're traveling. You can change your search country in Settings.
               </Text>
             )}
           </View>
@@ -503,10 +494,10 @@ export default function SmartSearchScreen() {
             style={[
               styles.searchButton,
               { backgroundColor: colors.accent },
-              (searching || !productName.trim() || !selectedCountry) && styles.searchButtonDisabled,
+              (searching || !productName.trim() || !settings?.activeSearchCountry) && styles.searchButtonDisabled,
             ]}
             onPress={handleStartSearch}
-            disabled={searching || !productName.trim() || !selectedCountry}
+            disabled={searching || !productName.trim() || !settings?.activeSearchCountry}
           >
             {searching ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
@@ -574,7 +565,7 @@ export default function SmartSearchScreen() {
                 Country Required
               </Text>
               <Text style={[styles.modalText, { color: colors.textSecondary }]}>
-                To find prices and check shipping, please select a country for delivery.
+                To find prices and check shipping, please set your country in Settings.
               </Text>
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -587,7 +578,7 @@ export default function SmartSearchScreen() {
                   style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.accent }]}
                   onPress={handleSetLocation}
                 >
-                  <Text style={[styles.modalButtonText, { color: colors.textInverse }]}>Select Country</Text>
+                  <Text style={[styles.modalButtonText, { color: colors.textInverse }]}>Go to Settings</Text>
                 </TouchableOpacity>
               </View>
             </Pressable>
@@ -660,6 +651,28 @@ const styles = StyleSheet.create({
   },
   countrySection: {
     marginBottom: spacing.lg,
+  },
+  countryDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  countryDisplayText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  changeCountryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs / 2,
+  },
+  changeCountryText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   travelHint: {
     fontSize: 13,

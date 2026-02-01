@@ -526,9 +526,9 @@ export default function ProfileScreen() {
 
               <TouchableOpacity style={styles.settingRow} onPress={handleEditLocation}>
                 <View style={styles.settingLeft}>
-                  <Text style={styles.settingLabel}>{t('profile.location')}</Text>
+                  <Text style={styles.settingLabel}>Shopping Country</Text>
                   <Text style={styles.settingDescription}>
-                    {t('profile.locationDescription')}
+                    Used for search and price tracking
                   </Text>
                 </View>
                 <Text style={styles.settingValue}>{locationDisplay}</Text>

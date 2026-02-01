@@ -32,7 +32,6 @@ import Constants from 'expo-constants';
 import { fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
-import { CountrySelector } from '@/components/CountrySelector';
 import * as FileSystem from 'expo-file-system/legacy';
 import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
@@ -93,11 +92,9 @@ export default function AddItemScreen() {
   // Mode selection
   const [selectedMode, setSelectedMode] = useState<ModeType>('share');
 
-  // Wishlist and country selection (always visible at top)
+  // Wishlist selection (always visible at top)
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [selectedWishlistId, setSelectedWishlistId] = useState('');
-  const [selectedCountry, setSelectedCountry] = useState('');
-  const [selectedCountryName, setSelectedCountryName] = useState('');
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
 
   // Mode 1: Share (instructions only)
@@ -156,13 +153,7 @@ export default function AddItemScreen() {
     }
   }, [user, fetchUserWishlists]);
 
-  useEffect(() => {
-    // Initialize country from SmartLocation settings
-    if (settings) {
-      setSelectedCountry(settings.activeSearchCountry);
-      setSelectedCountryName(settings.activeSearchCountry);
-    }
-  }, [settings]);
+  // Country is now managed in Settings - no local state needed
 
   useEffect(() => {
     // Handle shared URL from other apps
@@ -193,18 +184,7 @@ export default function AddItemScreen() {
     }
   }, [user]);
 
-  const handleCountrySelect = async (country: { countryCode: string; countryName: string }) => {
-    console.log('[AddItem] User selected country:', country.countryCode);
-    setSelectedCountry(country.countryCode);
-    setSelectedCountryName(country.countryName);
-
-    // Update active_search_country in settings
-    try {
-      await updateActiveSearchCountry(country.countryCode);
-    } catch (error) {
-      console.error('[AddItem] Failed to update active search country:', error);
-    }
-  };
+  // Country selection removed - managed in Settings only
 
   const handleRetryConfiguration = () => {
     console.log('[AddItem] User tapped Retry Configuration');
@@ -229,8 +209,10 @@ export default function AddItemScreen() {
       return;
     }
 
-    if (!selectedCountry) {
-      Alert.alert('Country Required', 'Please select a delivery country first');
+    // Get country from Settings
+    const searchCountry = settings?.activeSearchCountry || 'US';
+    if (!searchCountry) {
+      Alert.alert('Country Required', 'Please set your country in Settings first');
       return;
     }
 
@@ -244,7 +226,7 @@ export default function AddItemScreen() {
     setExtracting(true);
 
     try {
-      const result = await extractItem(urlInput.trim(), selectedCountry);
+      const result = await extractItem(urlInput.trim(), searchCountry);
       console.log('[AddItem] Extraction result:', result);
 
       // Navigate to import preview with extracted data
@@ -256,7 +238,7 @@ export default function AddItemScreen() {
         storeDomain: result.sourceDomain || '',
         price: result.price || null,
         currency: result.currency || 'USD',
-        countryAvailability: [selectedCountry],
+        countryAvailability: [searchCountry],
         sourceUrl: urlInput.trim(),
         inputType: 'url',
       };
@@ -320,8 +302,10 @@ export default function AddItemScreen() {
       return;
     }
 
-    if (!selectedCountry) {
-      Alert.alert('Country Required', 'Please select a delivery country first');
+    // Get country from Settings
+    const searchCountry = settings?.activeSearchCountry || 'US';
+    if (!searchCountry) {
+      Alert.alert('Country Required', 'Please set your country in Settings first');
       return;
     }
 
@@ -352,7 +336,7 @@ export default function AddItemScreen() {
         storeDomain: '',
         price: null,
         currency: 'USD',
-        countryAvailability: [selectedCountry],
+        countryAvailability: [searchCountry],
         sourceUrl: '',
         inputType: 'camera',
       };
@@ -416,8 +400,10 @@ export default function AddItemScreen() {
       return;
     }
 
-    if (!selectedCountry) {
-      Alert.alert('Country Required', 'Please select a delivery country first');
+    // Get country from Settings
+    const searchCountry = settings?.activeSearchCountry || 'US';
+    if (!searchCountry) {
+      Alert.alert('Country Required', 'Please set your country in Settings first');
       return;
     }
 
@@ -448,7 +434,7 @@ export default function AddItemScreen() {
         storeDomain: '',
         price: null,
         currency: 'USD',
-        countryAvailability: [selectedCountry],
+        countryAvailability: [searchCountry],
         sourceUrl: '',
         inputType: 'image',
       };
@@ -474,8 +460,10 @@ export default function AddItemScreen() {
       return;
     }
 
-    if (!selectedCountry) {
-      Alert.alert('Country Required', 'Please select a delivery country first');
+    // Get country from Settings
+    const searchCountry = settings?.activeSearchCountry || 'US';
+    if (!searchCountry) {
+      Alert.alert('Country Required', 'Please set your country in Settings first');
       return;
     }
 
@@ -490,7 +478,7 @@ export default function AddItemScreen() {
 
     try {
       const result = await searchByName(searchQuery.trim(), {
-        countryCode: selectedCountry,
+        countryCode: searchCountry,
       });
       console.log('[AddItem] Search results:', result);
 
@@ -521,7 +509,7 @@ export default function AddItemScreen() {
       storeDomain: result.storeDomain,
       price: result.price,
       currency: result.currency || 'USD',
-      countryAvailability: [selectedCountry],
+      countryAvailability: [searchCountry],
       sourceUrl: result.productUrl,
       inputType: 'name',
     };
@@ -583,7 +571,7 @@ export default function AddItemScreen() {
         storeDomain: '',
         price: manualPrice ? parseFloat(manualPrice) : null,
         currency: manualCurrency,
-        countryAvailability: selectedCountry ? [selectedCountry] : [],
+        countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
         sourceUrl: manualStoreLink.trim() || '',
         notes: manualNotes.trim() || '',
         inputType: 'manual',
@@ -1095,7 +1083,7 @@ export default function AddItemScreen() {
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        {/* Always-visible header with Wishlist and Country */}
+        {/* Always-visible header with Wishlist */}
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
           <View style={styles.headerRow}>
             <View style={styles.headerItem}>
@@ -1117,16 +1105,30 @@ export default function AddItemScreen() {
             </View>
           </View>
 
-          <View style={styles.headerRow}>
-            <View style={[styles.headerItem, { flex: 1 }]}>
-              <CountrySelector
-                label="Deliver to:"
-                selectedCountryCode={selectedCountry}
-                selectedCountryName={selectedCountryName}
-                onSelect={handleCountrySelect}
-              />
+          {/* Country is managed in Settings - show current country for reference */}
+          {settings?.activeSearchCountry && (
+            <View style={styles.headerRow}>
+              <View style={[styles.headerItem, { flex: 1 }]}>
+                <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
+                  Searching in: {settings.activeSearchCountry}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.settingsLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => router.push('/location')}
+                >
+                  <Text style={[styles.settingsLinkText, { color: colors.accent }]}>
+                    Change in Settings
+                  </Text>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={14}
+                    color={colors.accent}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* Mode Tabs */}
@@ -1404,6 +1406,20 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
       fontSize: 14,
       flex: 1,
       marginRight: spacing.xs,
+    },
+    settingsLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginTop: spacing.xs / 2,
+    },
+    settingsLinkText: {
+      fontSize: 13,
+      fontWeight: '500',
     },
     tabBar: {
       borderBottomWidth: 1,
