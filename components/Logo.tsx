@@ -15,8 +15,9 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 }
 
 export function Logo({ size = 'medium', style }: LogoProps) {
-  // Use the new My Wishlist logo for all in-app usage
-  const logoSource = require('@/assets/images/ec248172-ed06-4d69-8ea4-a9ead5f8fc68.png');
+  // Use the new My Wishlist logo (purple gift box with text) for all in-app usage
+  // The app download icon (final_quest_240x240.png) is configured separately in app.config.js
+  const logoSource = require('@/assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png');
   
   const sizeStyles = {
     small: { width: 80, height: 80 },
@@ -24,7 +25,7 @@ export function Logo({ size = 'medium', style }: LogoProps) {
     large: { width: 160, height: 160 },
   };
   
-  console.log('[Logo] Rendering My Wishlist logo');
+  console.log('[Logo] Rendering My Wishlist in-app logo');
   
   return (
     <Image
