@@ -1,12 +1,12 @@
 
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
@@ -19,6 +19,51 @@ import { ConfigurationError } from '@/components/design-system/ConfigurationErro
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+function RootLayoutNav() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (loading) {
+      console.log('[RootLayout] Auth loading, waiting...');
+      return;
+    }
+
+    const inAuthGroup = segments[0] === '(tabs)';
+
+    console.log('[RootLayout] Navigation guard:', {
+      user: user?.id || 'none',
+      loading,
+      inAuthGroup,
+      segments,
+    });
+
+    if (!user && inAuthGroup) {
+      // User is not signed in and trying to access protected routes
+      console.log('[RootLayout] Redirecting to /auth');
+      router.replace('/auth');
+    } else if (user && !inAuthGroup && segments[0] !== 'wishlist' && segments[0] !== 'item' && segments[0] !== 'shared' && segments[0] !== 'auth-callback') {
+      // User is signed in but not in protected routes (and not in specific screens)
+      console.log('[RootLayout] Redirecting to /(tabs)/wishlists');
+      router.replace('/(tabs)/wishlists');
+    }
+  }, [user, loading, segments, router]);
+
+  return (
+    <>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+        <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+        <Stack.Screen name="+not-found" />
+      </Stack>
+      <StatusBar style="auto" />
+    </>
+  );
+}
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -91,14 +136,7 @@ export default function RootLayout() {
           <I18nProvider>
             <SmartLocationProvider>
               <LocationProvider>
-                <Stack>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                  <Stack.Screen name="+not-found" />
-                </Stack>
-                <StatusBar style="auto" />
+                <RootLayoutNav />
               </LocationProvider>
             </SmartLocationProvider>
           </I18nProvider>

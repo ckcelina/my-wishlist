@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,16 @@ import { Logo } from '@/components/Logo';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { IconSymbol } from '@/components/IconSymbol';
+import { useRouter } from 'expo-router';
 
 type Mode = 'signin' | 'signup' | 'forgot-password';
 
 export default function AuthScreen() {
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, resetPassword } = useAuth();
+  const { user, signInWithEmail, signUpWithEmail, signInWithGoogle, signInWithApple, resetPassword } = useAuth();
   const { theme } = useAppTheme();
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
+  const router = useRouter();
   
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
@@ -34,6 +36,14 @@ export default function AuthScreen() {
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [confirmationEmailSent, setConfirmationEmailSent] = useState(false);
   const [rateLimitError, setRateLimitError] = useState(false);
+
+  // Redirect to app if user is already logged in
+  useEffect(() => {
+    if (user) {
+      console.log('[AuthScreen] User already logged in, redirecting to app');
+      router.replace('/(tabs)/wishlists');
+    }
+  }, [user, router]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -226,10 +236,12 @@ export default function AuthScreen() {
         console.log('[AuthScreen] User tapped Sign In button with email:', trimmedEmail);
         await signInWithEmail(trimmedEmail, trimmedPassword);
         console.log('[AuthScreen] Sign in successful');
+        // Navigation will be handled by the auth guard in _layout.tsx
       } else {
         console.log('[AuthScreen] User tapped Sign Up button with email:', trimmedEmail);
         await signUpWithEmail(trimmedEmail, trimmedPassword, trimmedName);
         console.log('[AuthScreen] Sign up successful');
+        // Navigation will be handled by the auth guard in _layout.tsx
       }
     } catch (error: any) {
       console.error('[AuthScreen] Authentication error:', error);
@@ -303,6 +315,7 @@ export default function AuthScreen() {
         await signInWithApple();
       }
       console.log(`[AuthScreen] ${provider} sign in initiated`);
+      // Navigation will be handled by the auth callback
     } catch (error: any) {
       console.error(`[AuthScreen] ${provider} sign in error:`, error);
       
