@@ -276,14 +276,17 @@ export default function WishlistsScreen() {
 
       const data = await getWishlistWithItemCount(user.id);
 
-      const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
+      // Map data and preserve is_default from database
+      const formattedWishlists: Wishlist[] = data.map((w: any) => ({
         id: w.id,
         name: w.name,
-        isDefault: index === 0,
+        isDefault: w.isDefault || false, // Read from DB, not from array position
         itemCount: w.itemCount,
         createdAt: w.createdAt,
         updatedAt: w.updatedAt,
       }));
+
+      console.log('[WishlistsScreen] Fetched wishlists:', formattedWishlists.map(w => ({ id: w.id, name: w.name, isDefault: w.isDefault })));
 
       // Apply deduplication
       const deduplicatedWishlists = dedupeById(formattedWishlists, 'id');
@@ -326,10 +329,11 @@ export default function WishlistsScreen() {
       const wishlistData = {
         user_id: user.id,
         name: 'My Wishlist',
+        is_default: true, // First wishlist is always default
       };
       
       const newWishlist = await createWishlist(wishlistData);
-      console.log('[WishlistsScreen] First wishlist created:', newWishlist.id);
+      console.log('[WishlistsScreen] First wishlist created:', newWishlist.id, 'is_default:', newWishlist.is_default);
       
       // Refresh the list
       await fetchWishlistsFromNetwork();
@@ -362,6 +366,7 @@ export default function WishlistsScreen() {
           filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
+          console.log('[WishlistsScreen] Realtime update received:', payload.eventType);
           // Debounce realtime updates to prevent multiple rapid fetches
           if (realtimeDebounceRef.current) {
             clearTimeout(realtimeDebounceRef.current);
@@ -371,14 +376,15 @@ export default function WishlistsScreen() {
             if (!isFetchingRef.current && user?.id) {
               isFetchingRef.current = true;
               getWishlistWithItemCount(user.id).then((data) => {
-                const formattedWishlists: Wishlist[] = data.map((w: any, index: number) => ({
+                const formattedWishlists: Wishlist[] = data.map((w: any) => ({
                   id: w.id,
                   name: w.name,
-                  isDefault: index === 0,
+                  isDefault: w.isDefault || false, // Read from DB
                   itemCount: w.itemCount,
                   createdAt: w.createdAt,
                   updatedAt: w.updatedAt,
                 }));
+                console.log('[WishlistsScreen] Realtime update - wishlists:', formattedWishlists.map(w => ({ id: w.id, name: w.name, isDefault: w.isDefault })));
                 const deduplicatedWishlists = dedupeById(formattedWishlists, 'id');
                 setWishlists(deduplicatedWishlists);
                 setCachedData('wishlists', deduplicatedWishlists);
@@ -449,18 +455,12 @@ export default function WishlistsScreen() {
       const wishlistData = {
         user_id: user.id,
         name: trimmedName,
+        is_default: setAsDefault, // Only set as default if user explicitly toggled it
       };
       
-      // Create wishlist
+      // Create wishlist (the helper function handles the default logic)
       const newWishlist = await createWishlist(wishlistData);
-      
-      // Only set as default if user explicitly toggled it ON
-      if (setAsDefault) {
-        console.log('[WishlistsScreen] User explicitly set wishlist as default');
-        await updateWishlist(newWishlist.id, { is_default: true });
-      } else {
-        console.log('[WishlistsScreen] Wishlist created, NOT setting as default (user did not toggle)');
-      }
+      console.log('[WishlistsScreen] Wishlist created:', newWishlist.id, 'is_default:', newWishlist.is_default);
 
       setCreateModalVisible(false);
       setNewWishlistName('');

@@ -54,11 +54,43 @@ export async function fetchWishlistById(wishlistId: string) {
 }
 
 export async function createWishlist(wishlist: WishlistInsert) {
-  console.log('[Supabase] Creating wishlist:', wishlist.name);
+  console.log('[Supabase] Creating wishlist:', wishlist.name, 'is_default:', wishlist.is_default);
   
+  // Check if this is the user's first wishlist
+  const { data: existingWishlists, error: checkError } = await supabase
+    .from('wishlists')
+    .select('id')
+    .eq('user_id', wishlist.user_id);
+
+  if (checkError) {
+    console.error('[Supabase] Error checking existing wishlists:', checkError);
+  }
+
+  const isFirstWishlist = !existingWishlists || existingWishlists.length === 0;
+  const shouldBeDefault = isFirstWishlist || wishlist.is_default === true;
+
+  console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault);
+
+  // If setting as default, unset all other defaults first
+  if (shouldBeDefault) {
+    console.log('[Supabase] Unsetting all other defaults for user:', wishlist.user_id);
+    const { error: updateError } = await supabase
+      .from('wishlists')
+      .update({ is_default: false })
+      .eq('user_id', wishlist.user_id)
+      .eq('is_default', true);
+
+    if (updateError) {
+      console.error('[Supabase] Error unsetting defaults:', updateError);
+    }
+  }
+
   const { data, error } = await supabase
     .from('wishlists')
-    .insert(wishlist)
+    .insert({
+      ...wishlist,
+      is_default: shouldBeDefault,
+    })
     .select()
     .single();
 
@@ -67,13 +99,40 @@ export async function createWishlist(wishlist: WishlistInsert) {
     throw new Error(`Failed to create wishlist: ${error.message}`);
   }
 
-  console.log('[Supabase] Created wishlist:', data.id);
+  console.log('[Supabase] Created wishlist:', data.id, 'is_default:', data.is_default);
   return data as Wishlist;
 }
 
 export async function updateWishlist(wishlistId: string, updates: WishlistUpdate) {
-  console.log('[Supabase] Updating wishlist:', wishlistId);
+  console.log('[Supabase] Updating wishlist:', wishlistId, 'updates:', updates);
   
+  // If setting as default, unset all other defaults first
+  if (updates.is_default === true) {
+    // Get the wishlist to find the user_id
+    const { data: wishlist, error: fetchError } = await supabase
+      .from('wishlists')
+      .select('user_id')
+      .eq('id', wishlistId)
+      .single();
+
+    if (fetchError) {
+      console.error('[Supabase] Error fetching wishlist for update:', fetchError);
+      throw new Error(`Failed to fetch wishlist: ${fetchError.message}`);
+    }
+
+    console.log('[Supabase] Unsetting all other defaults for user:', wishlist.user_id);
+    const { error: updateError } = await supabase
+      .from('wishlists')
+      .update({ is_default: false })
+      .eq('user_id', wishlist.user_id)
+      .eq('is_default', true)
+      .neq('id', wishlistId);
+
+    if (updateError) {
+      console.error('[Supabase] Error unsetting defaults:', updateError);
+    }
+  }
+
   const { data, error } = await supabase
     .from('wishlists')
     .update(updates)
@@ -86,12 +145,25 @@ export async function updateWishlist(wishlistId: string, updates: WishlistUpdate
     throw new Error(`Failed to update wishlist: ${error.message}`);
   }
 
+  console.log('[Supabase] Updated wishlist:', data.id, 'is_default:', data.is_default);
   return data as Wishlist;
 }
 
 export async function deleteWishlist(wishlistId: string) {
   console.log('[Supabase] Deleting wishlist:', wishlistId);
   
+  // Check if this is the default wishlist
+  const { data: wishlist, error: fetchError } = await supabase
+    .from('wishlists')
+    .select('user_id, is_default')
+    .eq('id', wishlistId)
+    .single();
+
+  if (fetchError) {
+    console.error('[Supabase] Error fetching wishlist for deletion:', fetchError);
+    throw new Error(`Failed to fetch wishlist: ${fetchError.message}`);
+  }
+
   const { error } = await supabase
     .from('wishlists')
     .delete()
@@ -100,6 +172,32 @@ export async function deleteWishlist(wishlistId: string) {
   if (error) {
     console.error('[Supabase] Error deleting wishlist:', error);
     throw new Error(`Failed to delete wishlist: ${error.message}`);
+  }
+
+  // If we deleted the default wishlist, set another one as default
+  if (wishlist.is_default) {
+    console.log('[Supabase] Deleted default wishlist, setting another as default');
+    const { data: remainingWishlists, error: fetchRemainingError } = await supabase
+      .from('wishlists')
+      .select('id')
+      .eq('user_id', wishlist.user_id)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (fetchRemainingError) {
+      console.error('[Supabase] Error fetching remaining wishlists:', fetchRemainingError);
+    } else if (remainingWishlists && remainingWishlists.length > 0) {
+      const { error: updateError } = await supabase
+        .from('wishlists')
+        .update({ is_default: true })
+        .eq('id', remainingWishlists[0].id);
+
+      if (updateError) {
+        console.error('[Supabase] Error setting new default:', updateError);
+      } else {
+        console.log('[Supabase] Set new default wishlist:', remainingWishlists[0].id);
+      }
+    }
   }
 
   console.log('[Supabase] Deleted wishlist:', wishlistId);
@@ -359,9 +457,10 @@ export async function getWishlistWithItemCount(userId: string) {
     createdAt: wishlist.created_at,
     updatedAt: wishlist.updated_at,
     itemCount: wishlist.wishlist_items?.[0]?.count || 0,
-    isDefault: false, // Can be determined by checking if it's the first wishlist
+    isDefault: wishlist.is_default || false,
   }));
 
+  console.log('[Supabase] Fetched wishlists with counts:', wishlistsWithCounts.length);
   return wishlistsWithCounts;
 }
 
