@@ -47,26 +47,37 @@ export class ErrorBoundary extends Component<Props, State> {
    * - Any other unexpected error occurs
    * 
    * Uses multiple layers of defensive checks and error handling.
+   * This is BEST-EFFORT ONLY - if it fails, the ErrorBoundary still works.
+   * 
+   * GUARANTEES:
+   * - Never throws
+   * - Never blocks error display
+   * - Never causes secondary errors
+   * - Safe to call in production and development
    */
   private safeTrackVersion = () => {
     // Fire-and-forget: Don't await, don't block error display
+    // Wrapped in IIFE to handle async without blocking
     (async () => {
       try {
-        // Layer 1: Dynamic import with error handling
-        const versionModule = await import('../utils/versionTracking').catch((importError) => {
+        // Layer 1: Dynamic import with explicit error handling
+        let versionModule: any = null;
+        try {
+          versionModule = await import('../utils/versionTracking');
+        } catch (importError: any) {
           // Import failed - module doesn't exist or has syntax errors
           if (__DEV__) {
             console.warn('[VersionTracking] Module import failed:', importError?.message || 'unknown');
           }
-          return null;
-        });
+          return; // Exit early
+        }
 
         // Layer 2: Check if module loaded successfully
         if (!versionModule) {
           if (__DEV__) {
             console.warn('[VersionTracking] Module not available');
           }
-          return;
+          return; // Exit early
         }
 
         // Layer 3: Check if trackAppVersion exists (named export)
@@ -74,24 +85,26 @@ export class ErrorBoundary extends Component<Props, State> {
           try {
             // Layer 4: Call function with its own error handling
             versionModule.trackAppVersion();
+            return; // Success, exit
           } catch (callError: any) {
             if (__DEV__) {
               console.warn('[VersionTracking] Function call failed:', callError?.message || 'unknown');
             }
+            return; // Exit after logging
           }
-          return;
         }
 
         // Layer 5: Check if trackAppVersion exists (default export)
         if (versionModule.default && typeof versionModule.default.trackAppVersion === 'function') {
           try {
             versionModule.default.trackAppVersion();
+            return; // Success, exit
           } catch (callError: any) {
             if (__DEV__) {
               console.warn('[VersionTracking] Default function call failed:', callError?.message || 'unknown');
             }
+            return; // Exit after logging
           }
-          return;
         }
 
         // Function not found in module
@@ -118,15 +131,23 @@ export class ErrorBoundary extends Component<Props, State> {
     });
 
     // Track app version (best-effort only, never blocks, never crashes)
-    this.safeTrackVersion();
+    // This is wrapped in try-catch as an extra safety measure
+    try {
+      this.safeTrackVersion();
+    } catch (trackError: any) {
+      // Even if safeTrackVersion somehow throws (it shouldn't), catch it
+      if (__DEV__) {
+        console.warn('[ErrorBoundary] Version tracking wrapper failed:', trackError?.message || 'unknown');
+      }
+    }
 
     // Call optional error handler
     if (this.props.onError) {
       try {
         this.props.onError(error, errorInfo);
-      } catch (handlerError) {
+      } catch (handlerError: any) {
         // Even the error handler can't crash the ErrorBoundary
-        console.error('[ErrorBoundary] Error handler failed:', handlerError);
+        console.error('[ErrorBoundary] Error handler failed:', handlerError?.message || 'unknown');
       }
     }
   }
@@ -149,8 +170,8 @@ export class ErrorBoundary extends Component<Props, State> {
       if (Platform.OS === 'web') {
         alert('Diagnostics copied to clipboard');
       }
-    } catch (error) {
-      console.error('[ErrorBoundary] Failed to copy diagnostics:', error);
+    } catch (error: any) {
+      console.error('[ErrorBoundary] Failed to copy diagnostics:', error?.message || 'unknown');
     }
   };
 
@@ -184,8 +205,11 @@ ${componentStack}
 
 === END DIAGNOSTICS ===
       `.trim();
-    } catch (e) {
+    } catch (e: any) {
       // Even diagnostics generation can't crash the ErrorBoundary
+      if (__DEV__) {
+        console.warn('[ErrorBoundary] Failed to generate diagnostics:', e?.message || 'unknown');
+      }
       return 'Error generating diagnostics';
     }
   };
@@ -196,8 +220,8 @@ ${componentStack}
         return this.props.fallback;
       }
 
-      // Determine theme colors (default to light theme if theme context unavailable)
-      const isDark = true; // Default to dark for better error visibility
+      // Determine theme colors (default to dark theme for better error visibility)
+      const isDark = true;
       const backgroundColor = isDark ? '#765943' : '#ede8e3';
       const textColor = isDark ? '#FFFFFF' : '#000000';
       const secondaryTextColor = isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';

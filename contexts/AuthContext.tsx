@@ -31,29 +31,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * - Catches all errors (import errors, function errors, etc.)
    * - Never blocks auth state initialization
    * - Logs warnings in dev mode only (no sensitive data)
+   * - Fire-and-forget: Does not await, does not block
+   * 
+   * GUARANTEES:
+   * - Never throws
+   * - Never blocks auth initialization
+   * - Safe to call in production and development
    */
   const safeLogVersion = (userId: string) => {
     // Fire-and-forget: Don't await, don't block auth flow
+    // Wrapped in IIFE to handle async without blocking
     (async () => {
       try {
         // Dynamic import to handle missing module gracefully
-        const versionModule = await import('@/utils/versionTracking');
+        const versionModule = await import('@/utils/versionTracking').catch((importError: any) => {
+          // Import failed - module doesn't exist or has syntax errors
+          if (__DEV__) {
+            console.warn('[VersionTracking] failed (no sensitive data):', importError?.message || 'import failed');
+          }
+          return null;
+        });
+
+        // Check if module loaded successfully
+        if (!versionModule) {
+          return;
+        }
         
         // Verify function exists and is callable
         if (typeof versionModule.logAppVersionToSupabase !== 'function') {
           if (__DEV__) {
-            console.warn('[VersionTracking] logAppVersionToSupabase not found');
+            console.warn('[VersionTracking] failed (no sensitive data): function not found');
           }
           return;
         }
 
         // Call the function (it handles its own errors internally)
-        await versionModule.logAppVersionToSupabase(userId);
+        // Don't await - fire and forget
+        versionModule.logAppVersionToSupabase(userId).catch((callError: any) => {
+          // Extra safety: catch any promise rejections
+          if (__DEV__) {
+            console.warn('[VersionTracking] failed (no sensitive data):', callError?.message || 'call failed');
+          }
+        });
       } catch (error: any) {
         // Catch ALL errors (import errors, function errors, etc.)
         // Never let version tracking crash the auth flow
         if (__DEV__) {
-          console.warn('[VersionTracking] failed (non-critical):', error?.message || 'unknown error');
+          console.warn('[VersionTracking] failed (no sensitive data):', error?.message || 'unknown error');
         }
       }
     })();
@@ -76,6 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           safeLogVersion(initialSession.user.id);
         }
       }
+      // CRITICAL: Always set loading to false, even if version tracking fails
+      setLoading(false);
+    }).catch((sessionError) => {
+      // Extra safety: catch any session errors
+      console.error('[AuthContext] Unexpected error getting session:', sessionError);
       setLoading(false);
     });
 
@@ -91,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           safeLogVersion(currentSession.user.id);
         }
         
+        // CRITICAL: Always set loading to false, even if version tracking fails
         setLoading(false);
       }
     );

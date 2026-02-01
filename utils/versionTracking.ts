@@ -12,10 +12,12 @@
  * - Functions return Promise<void> or void consistently
  * - Gracefully handles missing config/session/Supabase
  * - Safe to call in production and development
+ * - Non-blocking: Can be called without awaiting
  */
 
 import * as Application from 'expo-application';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 // Lazy import Supabase to avoid hard dependency
 let supabaseClient: any = null;
@@ -24,6 +26,7 @@ let supabaseImportAttempted = false;
 /**
  * Safely get Supabase client with defensive checks
  * Returns null if Supabase is not available or configured
+ * Never throws - all errors caught internally
  */
 async function getSupabaseClient(): Promise<any> {
   // Only attempt import once to avoid repeated failures
@@ -32,9 +35,17 @@ async function getSupabaseClient(): Promise<any> {
     try {
       const module = await import('@/lib/supabase');
       supabaseClient = module.supabase;
-    } catch (e) {
+      
+      // Verify client has required methods
+      if (!supabaseClient || typeof supabaseClient.from !== 'function') {
+        if (__DEV__) {
+          console.warn('[VersionTracking] Supabase client invalid or missing methods');
+        }
+        supabaseClient = null;
+      }
+    } catch (e: any) {
       if (__DEV__) {
-        console.warn('[VersionTracking] Supabase module not available:', e);
+        console.warn('[VersionTracking] Supabase module not available:', e?.message || 'unknown');
       }
       supabaseClient = null;
     }
@@ -46,14 +57,15 @@ async function getSupabaseClient(): Promise<any> {
 /**
  * Check if version tracking is enabled
  * Returns false if config is missing or disabled
+ * Never throws - all errors caught internally
  */
 function isVersionTrackingEnabled(): boolean {
   try {
     const enabled = Constants.expoConfig?.extra?.SUPABASE_VERSION_TRACKING_ENABLED;
     return enabled === 'true' || enabled === true;
-  } catch (e) {
+  } catch (e: any) {
     if (__DEV__) {
-      console.warn('[VersionTracking] Failed to check if enabled:', e);
+      console.warn('[VersionTracking] Failed to check if enabled:', e?.message || 'unknown');
     }
     return false;
   }
@@ -72,17 +84,13 @@ function gatherVersionInfo(): {
   try {
     const appVersion = Application.nativeApplicationVersion || 'unknown';
     const buildVersion = Application.nativeBuildVersion || 'unknown';
-    const platform = Constants.platform?.ios 
-      ? 'ios' 
-      : Constants.platform?.android 
-      ? 'android' 
-      : 'web';
+    const platform = Platform.OS || 'unknown';
     const deviceName = Constants.deviceName || 'unknown';
     
     return { appVersion, buildVersion, platform, deviceName };
-  } catch (e) {
+  } catch (e: any) {
     if (__DEV__) {
-      console.warn('[VersionTracking] Failed to gather version info:', e);
+      console.warn('[VersionTracking] Failed to gather version info:', e?.message || 'unknown');
     }
     return {
       appVersion: 'unknown',
@@ -101,6 +109,7 @@ function gatherVersionInfo(): {
  * - Returns Promise<void> that always resolves
  * - Safe to call without awaiting (fire-and-forget)
  * - Handles missing userId, Supabase, or config gracefully
+ * - Non-blocking: Does not block auth state initialization
  * 
  * @param userId - The user ID to log version for
  * @returns Promise that always resolves (never rejects)
@@ -136,7 +145,7 @@ export async function logAppVersionToSupabase(userId: string): Promise<void> {
     const versionInfo = gatherVersionInfo();
     
     if (__DEV__) {
-      console.log('[VersionTracking] Logging version for user:', userId, versionInfo);
+      console.log('[VersionTracking] Logging version for user:', userId.substring(0, 8) + '...', versionInfo);
     }
 
     // Attempt to upsert version data
@@ -166,9 +175,10 @@ export async function logAppVersionToSupabase(userId: string): Promise<void> {
   } catch (error: any) {
     // Catch ALL errors to ensure this function NEVER throws
     if (__DEV__) {
-      console.warn('[VersionTracking] Unexpected error in logAppVersionToSupabase:', error?.message || error);
+      console.warn('[VersionTracking] Unexpected error in logAppVersionToSupabase:', error?.message || 'unknown');
     }
   }
+  // Always return void (never reject)
 }
 
 /**
@@ -179,6 +189,7 @@ export async function logAppVersionToSupabase(userId: string): Promise<void> {
  * - Returns void (synchronous, no promises)
  * - Safe to call from ErrorBoundary
  * - Handles missing config gracefully
+ * - Non-blocking: Completes immediately
  * 
  * This function only logs to console and does not make network requests.
  * Suitable for use in ErrorBoundary and other critical error paths.
@@ -205,9 +216,10 @@ export function trackAppVersion(): void {
   } catch (error: any) {
     // Catch ALL errors to ensure this function NEVER throws
     if (__DEV__) {
-      console.warn('[VersionTracking] Unexpected error in trackAppVersion:', error?.message || error);
+      console.warn('[VersionTracking] Unexpected error in trackAppVersion:', error?.message || 'unknown');
     }
   }
+  // Always return void (never throw)
 }
 
 // Default export for compatibility
