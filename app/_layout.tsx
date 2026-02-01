@@ -9,7 +9,7 @@ import 'react-native-reanimated';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
-import { SmartLocationProvider } from '@/contexts/SmartLocationProvider';
+import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
 import { LocationProvider } from '@/contexts/LocationContext';
 import { WidgetProvider } from '@/contexts/WidgetContext';
 import { runParityVerification } from '@/utils/parityVerification';

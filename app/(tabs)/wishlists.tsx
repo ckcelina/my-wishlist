@@ -291,7 +291,7 @@ export default function WishlistsScreen() {
     } finally {
       setInitializing(false);
     }
-  }, [user, initializing, router]);
+  }, [user, initializing, router, fetchWishlistsFromNetwork]);
 
   const fetchWishlistsFromNetwork = useCallback(async () => {
     if (!user?.id || isFetchingRef.current) {
@@ -428,7 +428,7 @@ export default function WishlistsScreen() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchWishlistsFromNetwork();
-  }, []);
+  }, [fetchWishlistsFromNetwork]);
 
   const handleCreateWishlist = async () => {
     const trimmedName = newWishlistName.trim();
