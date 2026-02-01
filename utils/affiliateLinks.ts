@@ -4,13 +4,15 @@ import { logEvent } from './observability';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * 💰 AFFILIATE LINK MANAGEMENT
+ * 💰 AFFILIATE LINK MANAGEMENT - COUNTRY-SPECIFIC DOMAINS & MONETIZATION
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * This module handles affiliate link generation and tracking for monetization.
  * 
  * Features:
  * - Append affiliate IDs to store URLs
+ * - Country-specific store domains (e.g., amazon.com → amazon.co.uk for GB)
+ * - Country-specific affiliate IDs (e.g., different Amazon Associates tags per country)
  * - Track outbound clicks per store and item
  * - Support for multiple affiliate networks
  * - Compliance with App Store guidelines
@@ -58,13 +60,15 @@ export function detectAffiliateNetwork(storeDomain: string): AffiliateNetwork | 
 
 /**
  * Get country-specific store domain for affiliate links
+ * Maps generic domains (e.g., amazon.com) to country-specific ones (e.g., amazon.co.uk)
  */
 export function getCountrySpecificDomain(storeDomain: string, countryCode: string): string {
   const domain = storeDomain.toLowerCase();
+  const country = countryCode.toUpperCase();
   
   // Amazon country-specific domains
   if (domain.includes('amazon')) {
-    switch (countryCode.toUpperCase()) {
+    switch (country) {
       case 'GB': return 'amazon.co.uk';
       case 'DE': return 'amazon.de';
       case 'FR': return 'amazon.fr';
@@ -78,13 +82,18 @@ export function getCountrySpecificDomain(storeDomain: string, countryCode: strin
       case 'BR': return 'amazon.com.br';
       case 'AE': return 'amazon.ae';
       case 'SA': return 'amazon.sa';
+      case 'NL': return 'amazon.nl';
+      case 'SE': return 'amazon.se';
+      case 'PL': return 'amazon.pl';
+      case 'TR': return 'amazon.com.tr';
+      case 'SG': return 'amazon.sg';
       default: return 'amazon.com'; // US default
     }
   }
   
   // eBay country-specific domains
   if (domain.includes('ebay')) {
-    switch (countryCode.toUpperCase()) {
+    switch (country) {
       case 'GB': return 'ebay.co.uk';
       case 'DE': return 'ebay.de';
       case 'FR': return 'ebay.fr';
@@ -92,6 +101,12 @@ export function getCountrySpecificDomain(storeDomain: string, countryCode: strin
       case 'ES': return 'ebay.es';
       case 'CA': return 'ebay.ca';
       case 'AU': return 'ebay.com.au';
+      case 'AT': return 'ebay.at';
+      case 'BE': return 'ebay.be';
+      case 'CH': return 'ebay.ch';
+      case 'IE': return 'ebay.ie';
+      case 'NL': return 'ebay.nl';
+      case 'PL': return 'ebay.pl';
       default: return 'ebay.com'; // US default
     }
   }
@@ -101,7 +116,34 @@ export function getCountrySpecificDomain(storeDomain: string, countryCode: strin
 }
 
 /**
+ * Get country-specific affiliate ID for a network
+ * Some affiliate programs require different IDs per country
+ */
+function getCountrySpecificAffiliateId(
+  network: AffiliateNetwork,
+  countryCode: string
+): string | null {
+  const country = countryCode.toUpperCase();
+  
+  // For now, use the same affiliate ID for all countries
+  // In production, you would have different IDs per country
+  // Example: appConfig.affiliateIds.amazon_uk, appConfig.affiliateIds.amazon_de, etc.
+  
+  const baseAffiliateId = appConfig.affiliateIds[network];
+  
+  if (!baseAffiliateId) {
+    return null;
+  }
+  
+  // TODO: Implement country-specific affiliate IDs
+  // For Amazon Associates, you need different tags per country
+  // For now, return the base ID
+  return baseAffiliateId;
+}
+
+/**
  * Append affiliate ID to URL based on store and country
+ * Also updates domain to country-specific version if available
  */
 export function appendAffiliateId(url: string, storeDomain: string, countryCode?: string): string {
   const network = detectAffiliateNetwork(storeDomain);
@@ -111,10 +153,12 @@ export function appendAffiliateId(url: string, storeDomain: string, countryCode?
     return url;
   }
   
-  const affiliateId = appConfig.affiliateIds[network];
+  const affiliateId = countryCode 
+    ? getCountrySpecificAffiliateId(network, countryCode)
+    : appConfig.affiliateIds[network];
   
   if (!affiliateId) {
-    console.log('[Affiliate] No affiliate ID configured for network:', network);
+    console.log('[Affiliate] No affiliate ID configured for network:', network, 'country:', countryCode);
     return url;
   }
   
@@ -170,7 +214,7 @@ export function appendAffiliateId(url: string, storeDomain: string, countryCode?
     }
     
     const affiliatedUrl = urlObj.toString();
-    console.log('[Affiliate] Appended affiliate ID for', network, ':', affiliatedUrl);
+    console.log('[Affiliate] Appended affiliate ID for', network, 'country:', countryCode || 'default', ':', affiliatedUrl);
     return affiliatedUrl;
     
   } catch (error) {
@@ -236,4 +280,52 @@ export function hasAffiliateSupport(storeDomain: string): boolean {
   }
   
   return !!appConfig.affiliateIds[network];
+}
+
+/**
+ * Check if a store ships to a specific country
+ * Returns true if the store has a country-specific domain or is known to ship there
+ */
+export function storeShipsToCountry(storeDomain: string, countryCode: string): boolean {
+  const domain = storeDomain.toLowerCase();
+  const country = countryCode.toUpperCase();
+  
+  // Amazon ships to most countries where they have a domain
+  if (domain.includes('amazon')) {
+    const countryDomain = getCountrySpecificDomain(storeDomain, countryCode);
+    return countryDomain !== 'amazon.com' || country === 'US';
+  }
+  
+  // eBay ships internationally from most domains
+  if (domain.includes('ebay')) {
+    return true;
+  }
+  
+  // Walmart primarily ships within US
+  if (domain.includes('walmart')) {
+    return country === 'US';
+  }
+  
+  // Target primarily ships within US
+  if (domain.includes('target')) {
+    return country === 'US';
+  }
+  
+  // Best Buy primarily ships within US and Canada
+  if (domain.includes('bestbuy')) {
+    return country === 'US' || country === 'CA';
+  }
+  
+  // Etsy ships internationally
+  if (domain.includes('etsy')) {
+    return true;
+  }
+  
+  // AliExpress ships internationally
+  if (domain.includes('aliexpress')) {
+    return true;
+  }
+  
+  // Unknown store - assume it ships to the country
+  return true;
 }

@@ -30,6 +30,7 @@ import {
   Platform,
   Modal,
   Pressable,
+  Switch,
 } from 'react-native';
 import { EmptyState } from '@/components/design-system/EmptyState';
 
@@ -60,6 +61,7 @@ export default function WishlistsScreen() {
   const [selectedWishlist, setSelectedWishlist] = useState<Wishlist | null>(null);
   const [newWishlistName, setNewWishlistName] = useState('');
   const [renameWishlistName, setRenameWishlistName] = useState('');
+  const [setAsDefault, setSetAsDefault] = useState(false); // New state for "Set as default" toggle
 
   const { user } = useAuth();
   const router = useRouter();
@@ -144,7 +146,7 @@ export default function WishlistsScreen() {
       gap: spacing.sm,
     },
     defaultBadge: {
-      backgroundColor: colors.accentLight,
+      backgroundColor: colors.accent,
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
       borderRadius: 6,
@@ -152,7 +154,7 @@ export default function WishlistsScreen() {
     defaultBadgeText: {
       fontSize: 11,
       fontWeight: '600',
-      color: colors.accent,
+      color: '#FFFFFF',
     },
     moreButton: {
       padding: spacing.sm,
@@ -191,6 +193,18 @@ export default function WishlistsScreen() {
       fontSize: 16,
       color: colors.textPrimary,
       marginBottom: spacing.md,
+    },
+    modalToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    modalToggleLabel: {
+      ...typography.body,
+      color: colors.textPrimary,
+      flex: 1,
     },
     modalButtons: {
       flexDirection: 'row',
@@ -241,11 +255,10 @@ export default function WishlistsScreen() {
     },
     createButton: {
       backgroundColor: colors.accent,
-      borderWidth: 2,
-      borderColor: colors.accent,
+      borderWidth: 0,
     },
     createButtonText: {
-      color: colors.textInverse,
+      color: '#FFFFFF',
       fontWeight: '600',
     },
   }), [colors, typography, insets.bottom]);
@@ -431,28 +444,27 @@ export default function WishlistsScreen() {
     }
 
     try {
-      console.log('[WishlistsScreen] Creating new wishlist:', trimmedName);
-      
-      // Check if this is the first wishlist (no existing wishlists)
-      const isFirstWishlist = wishlists.length === 0;
+      console.log('[WishlistsScreen] Creating new wishlist:', trimmedName, 'setAsDefault:', setAsDefault);
       
       const wishlistData = {
         user_id: user.id,
         name: trimmedName,
       };
       
-      // Create wishlist - only set as default if it's the first one
+      // Create wishlist
       const newWishlist = await createWishlist(wishlistData);
       
-      if (isFirstWishlist) {
-        console.log('[WishlistsScreen] First wishlist created, setting as default');
+      // Only set as default if user explicitly toggled it ON
+      if (setAsDefault) {
+        console.log('[WishlistsScreen] User explicitly set wishlist as default');
         await updateWishlist(newWishlist.id, { is_default: true });
       } else {
-        console.log('[WishlistsScreen] Additional wishlist created, NOT setting as default');
+        console.log('[WishlistsScreen] Wishlist created, NOT setting as default (user did not toggle)');
       }
 
       setCreateModalVisible(false);
       setNewWishlistName('');
+      setSetAsDefault(false); // Reset toggle
       handleRefresh();
       Alert.alert('Success', 'Wishlist created successfully');
     } catch (err) {
@@ -523,6 +535,7 @@ export default function WishlistsScreen() {
 
   const openCreateModal = () => {
     setNewWishlistName('');
+    setSetAsDefault(false); // Default to OFF
     setCreateModalVisible(true);
   };
 
@@ -682,6 +695,15 @@ export default function WishlistsScreen() {
                 onChangeText={setNewWishlistName}
                 autoFocus
               />
+              <View style={styles.modalToggleRow}>
+                <Text style={styles.modalToggleLabel}>Set as default</Text>
+                <Switch
+                  value={setAsDefault}
+                  onValueChange={setSetAsDefault}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor={colors.surface}
+                />
+              </View>
               <View style={styles.modalButtons}>
                 <Button
                   title="Cancel"
@@ -745,6 +767,15 @@ export default function WishlistsScreen() {
                 onChangeText={setNewWishlistName}
                 autoFocus
               />
+              <View style={styles.modalToggleRow}>
+                <Text style={styles.modalToggleLabel}>Set as default</Text>
+                <Switch
+                  value={setAsDefault}
+                  onValueChange={setSetAsDefault}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor={colors.surface}
+                />
+              </View>
               <View style={styles.modalButtons}>
                 <Button
                   title="Cancel"

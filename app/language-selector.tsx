@@ -129,12 +129,16 @@ export default function LanguageSelectorScreen() {
     },
     modeOptionSelected: {
       borderColor: theme.colors.accent,
-      backgroundColor: theme.colors.accentLight,
+      backgroundColor: theme.colors.accent,
     },
     modeOptionText: {
       fontSize: typography.sizes.md,
       color: theme.colors.text,
       fontWeight: typography.weights.medium as any,
+    },
+    modeOptionTextSelected: {
+      color: '#FFFFFF',
+      fontWeight: typography.weights.semibold as any,
     },
     languageOption: {
       flexDirection: 'row',
@@ -149,7 +153,7 @@ export default function LanguageSelectorScreen() {
     },
     languageOptionSelected: {
       borderColor: theme.colors.accent,
-      backgroundColor: theme.colors.accentLight,
+      backgroundColor: theme.colors.accent,
       borderWidth: 3,
     },
     languageInfo: {
@@ -160,10 +164,18 @@ export default function LanguageSelectorScreen() {
       color: theme.colors.text,
       fontWeight: typography.weights.medium as any,
     },
+    languageNameSelected: {
+      color: '#FFFFFF',
+      fontWeight: typography.weights.semibold as any,
+    },
     languageNative: {
       fontSize: typography.sizes.sm,
       color: theme.colors.textSecondary,
       marginTop: 2,
+    },
+    languageNativeSelected: {
+      color: '#FFFFFF',
+      opacity: 0.9,
     },
     rtlBadge: {
       backgroundColor: theme.colors.accent + '20',
@@ -172,10 +184,16 @@ export default function LanguageSelectorScreen() {
       borderRadius: 6,
       marginLeft: spacing.sm,
     },
+    rtlBadgeSelected: {
+      backgroundColor: '#FFFFFF30',
+    },
     rtlBadgeText: {
       fontSize: typography.sizes.xs,
       color: theme.colors.accent,
       fontWeight: typography.weights.semibold as any,
+    },
+    rtlBadgeTextSelected: {
+      color: '#FFFFFF',
     },
     saveButton: {
       backgroundColor: theme.colors.accent,
@@ -268,13 +286,18 @@ export default function LanguageSelectorScreen() {
             ]}
             onPress={() => handleSelectMode('system')}
           >
-            <Text style={styles.modeOptionText}>{t('profile.systemAuto')}</Text>
+            <Text style={[
+              styles.modeOptionText,
+              selectedMode === 'system' && styles.modeOptionTextSelected,
+            ]}>
+              {t('profile.systemAuto')}
+            </Text>
             {selectedMode === 'system' && (
               <IconSymbol
                 ios_icon_name="checkmark.circle.fill"
                 android_material_icon_name="check-circle"
                 size={24}
-                color={theme.colors.accent}
+                color="#FFFFFF"
               />
             )}
           </TouchableOpacity>
@@ -286,13 +309,18 @@ export default function LanguageSelectorScreen() {
             ]}
             onPress={() => handleSelectMode('manual')}
           >
-            <Text style={styles.modeOptionText}>{t('profile.selectLanguage')}</Text>
+            <Text style={[
+              styles.modeOptionText,
+              selectedMode === 'manual' && styles.modeOptionTextSelected,
+            ]}>
+              {t('profile.selectLanguage')}
+            </Text>
             {selectedMode === 'manual' && (
               <IconSymbol
                 ios_icon_name="checkmark.circle.fill"
                 android_material_icon_name="check-circle"
                 size={24}
-                color={theme.colors.accent}
+                color="#FFFFFF"
               />
             )}
           </TouchableOpacity>
@@ -318,14 +346,32 @@ export default function LanguageSelectorScreen() {
                 onPress={() => handleSelectLanguage(languageCode)}
               >
                 <View style={styles.languageInfo}>
-                  <Text style={styles.languageName}>{languageName}</Text>
-                  <Text style={styles.languageNative}>{nativeName}</Text>
+                  <Text style={[
+                    styles.languageName,
+                    isSelected && styles.languageNameSelected,
+                  ]}>
+                    {languageName}
+                  </Text>
+                  <Text style={[
+                    styles.languageNative,
+                    isSelected && styles.languageNativeSelected,
+                  ]}>
+                    {nativeName}
+                  </Text>
                 </View>
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   {isRTLLang && (
-                    <View style={styles.rtlBadge}>
-                      <Text style={styles.rtlBadgeText}>RTL</Text>
+                    <View style={[
+                      styles.rtlBadge,
+                      isSelected && styles.rtlBadgeSelected,
+                    ]}>
+                      <Text style={[
+                        styles.rtlBadgeText,
+                        isSelected && styles.rtlBadgeTextSelected,
+                      ]}>
+                        RTL
+                      </Text>
                     </View>
                   )}
                   {isSelected && (
@@ -333,7 +379,7 @@ export default function LanguageSelectorScreen() {
                       ios_icon_name="checkmark.circle.fill"
                       android_material_icon_name="check-circle"
                       size={24}
-                      color={theme.colors.accent}
+                      color="#FFFFFF"
                     />
                   )}
                 </View>

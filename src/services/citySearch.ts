@@ -6,13 +6,20 @@
  * 
  * This service provides robust city search with:
  * - Primary: Remote search via Supabase Edge Function (location-search-cities)
- * - Fallback: Local search from bundled cities.min.json dataset
+ * - Fallback: Local search from bundled cities.min.json dataset + majorCitiesByCountry.json
  * - Normalization: Lowercase, trim, remove diacritics for consistent matching
  * - Scoring: Prefix matches > substring matches, country match boost
  * - Consistent result shape for UI regardless of source
+ * 
+ * UX Rules (as per requirements):
+ * - Debounce: 250-400ms (implemented in CityPicker component)
+ * - Show spinner while searching online
+ * - If API fails → auto fallback to local
+ * - Label fallback results as "Offline results"
  */
 
 import { callEdgeFunction } from '@/utils/api';
+import majorCitiesByCountry from '@/src/data/cities/majorCitiesByCountry.json';
 
 export interface CityResult {
   id?: string;
@@ -151,6 +158,105 @@ function scoreCity(
 }
 
 /**
+ * Search major cities from static JSON (ultra-fast fallback)
+ * Returns cities from majorCitiesByCountry.json
+ */
+function searchMajorCities(
+  query: string,
+  countryCode?: string,
+  limit: number = 20
+): CityResult[] {
+  const normalizedQuery = normalizeString(query);
+  const normalizedCountryCode = countryCode ? normalizeString(countryCode) : undefined;
+
+  if (__DEV__) {
+    console.log('[CitySearch] Searching major cities:', {
+      query: normalizedQuery,
+      countryCode: normalizedCountryCode,
+      limit,
+    });
+  }
+
+  // If country code is specified, search only that country's cities
+  if (normalizedCountryCode) {
+    const countryKey = normalizedCountryCode.toUpperCase();
+    const majorCitiesData = majorCitiesByCountry as Record<string, string[]>;
+    const countryCities = majorCitiesData[countryKey] || [];
+
+    if (__DEV__) {
+      console.log(`[CitySearch] Found ${countryCities.length} major cities for ${countryKey}`);
+    }
+
+    // If query is empty, return all major cities for the country
+    if (!normalizedQuery) {
+      return countryCities.slice(0, limit).map((cityName) => ({
+        name: cityName,
+        region: null,
+        countryCode: countryKey,
+        countryName: countryKey, // We don't have full country names in this dataset
+        lat: null,
+        lng: null,
+        geonameId: null,
+      }));
+    }
+
+    // Filter by query (case-insensitive, diacritics-insensitive)
+    const filtered = countryCities
+      .filter((cityName) => normalizeString(cityName).includes(normalizedQuery))
+      .slice(0, limit)
+      .map((cityName) => ({
+        name: cityName,
+        region: null,
+        countryCode: countryKey,
+        countryName: countryKey,
+        lat: null,
+        lng: null,
+        geonameId: null,
+      }));
+
+    if (__DEV__) {
+      console.log(`[CitySearch] Major cities search found ${filtered.length} matches`);
+    }
+
+    return filtered;
+  }
+
+  // If no country code, search all major cities
+  const majorCitiesData = majorCitiesByCountry as Record<string, string[]>;
+  const allResults: CityResult[] = [];
+
+  for (const [countryKey, cities] of Object.entries(majorCitiesData)) {
+    for (const cityName of cities) {
+      if (normalizeString(cityName).includes(normalizedQuery)) {
+        allResults.push({
+          name: cityName,
+          region: null,
+          countryCode: countryKey,
+          countryName: countryKey,
+          lat: null,
+          lng: null,
+          geonameId: null,
+        });
+
+        if (allResults.length >= limit) {
+          break;
+        }
+      }
+    }
+
+    if (allResults.length >= limit) {
+      break;
+    }
+  }
+
+  if (__DEV__) {
+    console.log(`[CitySearch] Major cities global search found ${allResults.length} matches`);
+  }
+
+  return allResults;
+}
+
+/**
  * Search local cities dataset
  * Returns scored and sorted results
  * If query is empty, returns top cities for the country
@@ -162,9 +268,9 @@ function searchLocalCities(
 ): CityResult[] {
   if (!localCities || localCities.length === 0) {
     if (__DEV__) {
-      console.warn('[CitySearch] Local cities not loaded yet');
+      console.warn('[CitySearch] Local cities not loaded yet, using major cities fallback');
     }
-    return [];
+    return searchMajorCities(query, countryCode, limit);
   }
 
   const normalizedQuery = normalizeString(query);
@@ -231,7 +337,8 @@ function searchLocalCities(
  * Flow:
  * 1. Try remote Edge Function (location-search-cities)
  * 2. If remote fails or returns empty, use local dataset
- * 3. Return consistent result shape with source indicator
+ * 3. If local dataset not loaded, use major cities JSON
+ * 4. Return consistent result shape with source indicator
  * 
  * @param query - Search query (city name)
  * @param countryCode - Optional country filter (ISO 2-letter code)
