@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Image, StyleSheet, ImageSourcePropType } from 'react-native';
-import { useAppTheme } from '@/contexts/ThemeContext';
 
 interface LogoProps {
   size?: 'small' | 'medium' | 'large';
@@ -16,15 +15,8 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 }
 
 export function Logo({ size = 'medium', style }: LogoProps) {
-  const { isDark } = useAppTheme();
-  
-  // My Wishlist logos - theme aware
-  // Light mode: light purple background with purple gift box
-  const lightModeLogo = require('@/assets/images/047add85-2230-4e4c-9a0d-56a73d2890cc.png');
-  // Dark mode: dark purple background with purple gift box
-  const darkModeLogo = require('@/assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png');
-  
-  const logoSource = isDark ? darkModeLogo : lightModeLogo;
+  // Use the new My Wishlist logo for all in-app usage
+  const logoSource = require('@/assets/images/ec248172-ed06-4d69-8ea4-a9ead5f8fc68.png');
   
   const sizeStyles = {
     small: { width: 80, height: 80 },
@@ -32,7 +24,7 @@ export function Logo({ size = 'medium', style }: LogoProps) {
     large: { width: 160, height: 160 },
   };
   
-  console.log('[Logo] Rendering My Wishlist logo for theme:', isDark ? 'dark' : 'light');
+  console.log('[Logo] Rendering My Wishlist logo');
   
   return (
     <Image
@@ -45,6 +37,6 @@ export function Logo({ size = 'medium', style }: LogoProps) {
 
 const styles = StyleSheet.create({
   logo: {
-    borderRadius: 20,
+    borderRadius: 0, // Remove border radius to show full logo
   },
 });
