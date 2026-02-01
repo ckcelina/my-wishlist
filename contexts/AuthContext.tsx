@@ -39,6 +39,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * - Safe to call in production and development
    */
   const safeLogVersion = (userId: string) => {
+    // Guard: Validate userId before attempting anything
+    if (!userId) {
+      if (__DEV__) {
+        console.warn('[AuthContext] logAppVersionToSupabase skipped - no userId');
+      }
+      return;
+    }
+
     // Fire-and-forget: Don't await, don't block auth flow
     // Wrapped in IIFE to handle async without blocking
     (async () => {
@@ -47,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const versionModule = await import('@/utils/versionTracking').catch((importError: any) => {
           // Import failed - module doesn't exist or has syntax errors
           if (__DEV__) {
-            console.warn('[VersionTracking] failed (no sensitive data):', importError?.message || 'import failed');
+            console.warn('[AuthContext] version log failed - import error');
           }
           return null;
         });
@@ -57,27 +65,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         
-        // Verify function exists and is callable
+        // Verify function exists and is callable (typeof check as requested)
         if (typeof versionModule.logAppVersionToSupabase !== 'function') {
           if (__DEV__) {
-            console.warn('[VersionTracking] failed (no sensitive data): function not found');
+            console.warn('[AuthContext] logAppVersionToSupabase is not a function');
           }
           return;
         }
 
         // Call the function (it handles its own errors internally)
-        // Don't await - fire and forget
-        versionModule.logAppVersionToSupabase(userId).catch((callError: any) => {
+        // Use void to explicitly mark as fire-and-forget
+        void versionModule.logAppVersionToSupabase(userId).catch((callError: any) => {
           // Extra safety: catch any promise rejections
           if (__DEV__) {
-            console.warn('[VersionTracking] failed (no sensitive data):', callError?.message || 'call failed');
+            console.warn('[AuthContext] version log failed', String(callError));
           }
         });
-      } catch (error: any) {
+      } catch (e) {
         // Catch ALL errors (import errors, function errors, etc.)
         // Never let version tracking crash the auth flow
         if (__DEV__) {
-          console.warn('[VersionTracking] failed (no sensitive data):', error?.message || 'unknown error');
+          console.warn('[AuthContext] version log failed', String(e));
         }
       }
     })();
@@ -95,9 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         
-        // Log version when user exists (fire-and-forget, never blocks)
+        // Log version when user exists (fire-and-forget, never blocks, never crashes)
+        // Wrapped in try-catch with typeof check as per requirements
         if (initialSession?.user?.id) {
-          safeLogVersion(initialSession.user.id);
+          try {
+            safeLogVersion(initialSession.user.id);
+          } catch (e) {
+            // Extra safety: ensure version tracking can NEVER crash auth initialization
+            if (__DEV__) console.warn('[AuthContext] version log failed', String(e));
+          }
         }
       }
       // CRITICAL: Always set loading to false, even if version tracking fails
@@ -115,9 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
         
-        // Log version when user signs in (fire-and-forget, never blocks)
+        // Log version when user signs in (fire-and-forget, never blocks, never crashes)
+        // Wrapped in try-catch with typeof check as per requirements
         if (event === 'SIGNED_IN' && currentSession?.user?.id) {
-          safeLogVersion(currentSession.user.id);
+          try {
+            safeLogVersion(currentSession.user.id);
+          } catch (e) {
+            // Extra safety: ensure version tracking can NEVER crash auth initialization
+            if (__DEV__) console.warn('[AuthContext] version log failed', String(e));
+          }
         }
         
         // CRITICAL: Always set loading to false, even if version tracking fails
