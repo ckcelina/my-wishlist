@@ -9,8 +9,9 @@ import 'react-native-reanimated';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
-import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
+import { SmartLocationProvider } from '@/contexts/SmartLocationProvider';
 import { LocationProvider } from '@/contexts/LocationContext';
+import { WidgetProvider } from '@/contexts/WidgetContext';
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -88,20 +89,22 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AuthProvider>
         <AppThemeProvider>
-          <I18nProvider>
-            <SmartLocationProvider>
-              <LocationProvider>
-                <Stack>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                  <Stack.Screen name="+not-found" />
-                </Stack>
-                <StatusBar style="auto" />
-              </LocationProvider>
-            </SmartLocationProvider>
-          </I18nProvider>
+          <WidgetProvider>
+            <I18nProvider>
+              <SmartLocationProvider>
+                <LocationProvider>
+                  <Stack>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                    <Stack.Screen name="+not-found" />
+                  </Stack>
+                  <StatusBar style="auto" />
+                </LocationProvider>
+              </SmartLocationProvider>
+            </I18nProvider>
+          </WidgetProvider>
         </AppThemeProvider>
       </AuthProvider>
     </ErrorBoundary>
