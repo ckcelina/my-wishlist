@@ -36,35 +36,76 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   /**
-   * Safe wrapper for trackAppVersion using defensive dynamic import
-   * This ensures ErrorBoundary NEVER crashes even if versionTracking module is missing
-   * or malformed. Uses multiple layers of defensive checks.
+   * Safe wrapper for trackAppVersion with MAXIMUM defensive programming
+   * 
+   * This function GUARANTEES that ErrorBoundary NEVER crashes, even if:
+   * - versionTracking module is missing
+   * - versionTracking module is malformed
+   * - trackAppVersion function doesn't exist
+   * - trackAppVersion function throws an error
+   * - Dynamic import fails
+   * - Any other unexpected error occurs
+   * 
+   * Uses multiple layers of defensive checks and error handling.
    */
-  private safeTrack = async () => {
-    try {
-      // Dynamic import to prevent hard dependency and allow graceful failure
-      const mod = await import("../utils/versionTracking");
-      
-      // Check if the module loaded successfully
-      if (!mod) {
-        console.warn("version tracking module not loaded");
-        return;
+  private safeTrackVersion = () => {
+    // Fire-and-forget: Don't await, don't block error display
+    (async () => {
+      try {
+        // Layer 1: Dynamic import with error handling
+        const versionModule = await import('../utils/versionTracking').catch((importError) => {
+          // Import failed - module doesn't exist or has syntax errors
+          if (__DEV__) {
+            console.warn('[VersionTracking] Module import failed:', importError?.message || 'unknown');
+          }
+          return null;
+        });
+
+        // Layer 2: Check if module loaded successfully
+        if (!versionModule) {
+          if (__DEV__) {
+            console.warn('[VersionTracking] Module not available');
+          }
+          return;
+        }
+
+        // Layer 3: Check if trackAppVersion exists (named export)
+        if (typeof versionModule.trackAppVersion === 'function') {
+          try {
+            // Layer 4: Call function with its own error handling
+            versionModule.trackAppVersion();
+          } catch (callError: any) {
+            if (__DEV__) {
+              console.warn('[VersionTracking] Function call failed:', callError?.message || 'unknown');
+            }
+          }
+          return;
+        }
+
+        // Layer 5: Check if trackAppVersion exists (default export)
+        if (versionModule.default && typeof versionModule.default.trackAppVersion === 'function') {
+          try {
+            versionModule.default.trackAppVersion();
+          } catch (callError: any) {
+            if (__DEV__) {
+              console.warn('[VersionTracking] Default function call failed:', callError?.message || 'unknown');
+            }
+          }
+          return;
+        }
+
+        // Function not found in module
+        if (__DEV__) {
+          console.warn('[VersionTracking] trackAppVersion function not found in module');
+        }
+      } catch (outerError: any) {
+        // Layer 6: Catch ANY unexpected errors
+        // This is the final safety net - ErrorBoundary MUST NOT crash
+        if (__DEV__) {
+          console.warn('[VersionTracking] Unexpected error:', outerError?.message || 'unknown');
+        }
       }
-      
-      // Check if trackAppVersion exists and is a function
-      if (typeof mod.trackAppVersion === "function") {
-        await mod.trackAppVersion();
-      } else if (typeof mod.default?.trackAppVersion === "function") {
-        // Fallback to default export if named export not found
-        await mod.default.trackAppVersion();
-      } else {
-        console.warn("trackAppVersion function not found in module");
-      }
-    } catch (e) {
-      // Log warning but do not crash the ErrorBoundary
-      // This catch block ensures ErrorBoundary is bulletproof
-      console.warn("version tracking unavailable", e);
-    }
+    })();
   };
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -76,11 +117,18 @@ export class ErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
-    // Track app version (fire-and-forget, never blocks, never crashes)
-    // Using void to explicitly ignore the promise
-    void this.safeTrack();
+    // Track app version (best-effort only, never blocks, never crashes)
+    this.safeTrackVersion();
 
-    this.props.onError?.(error, errorInfo);
+    // Call optional error handler
+    if (this.props.onError) {
+      try {
+        this.props.onError(error, errorInfo);
+      } catch (handlerError) {
+        // Even the error handler can't crash the ErrorBoundary
+        console.error('[ErrorBoundary] Error handler failed:', handlerError);
+      }
+    }
   }
 
   handleReset = () => {
@@ -107,16 +155,17 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   getDiagnosticsText = (): string => {
-    const appVersion = Constants.expoConfig?.version || 'unknown';
-    const buildNumber = Application.nativeBuildVersion || 'unknown';
-    const platform = Platform.OS;
-    const platformVersion = Platform.Version;
-    
-    const errorMessage = this.state.error?.message || 'Unknown error';
-    const errorStack = this.state.error?.stack || 'No stack trace';
-    const componentStack = this.state.errorInfo?.componentStack || 'No component stack';
-    
-    return `
+    try {
+      const appVersion = Constants.expoConfig?.version || 'unknown';
+      const buildNumber = Application.nativeBuildVersion || 'unknown';
+      const platform = Platform.OS;
+      const platformVersion = Platform.Version;
+      
+      const errorMessage = this.state.error?.message || 'Unknown error';
+      const errorStack = this.state.error?.stack || 'No stack trace';
+      const componentStack = this.state.errorInfo?.componentStack || 'No component stack';
+      
+      return `
 === MY WISHLIST ERROR DIAGNOSTICS ===
 
 App Version: ${appVersion}
@@ -134,7 +183,11 @@ ${errorStack}
 ${componentStack}
 
 === END DIAGNOSTICS ===
-    `.trim();
+      `.trim();
+    } catch (e) {
+      // Even diagnostics generation can't crash the ErrorBoundary
+      return 'Error generating diagnostics';
+    }
   };
 
   render() {

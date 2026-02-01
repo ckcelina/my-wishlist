@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
-import { logAppVersionToSupabase } from '@/utils/versionTracking';
 import { createWishlist } from '@/lib/supabase-helpers';
 
 interface AuthContextType {
@@ -25,22 +24,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   /**
-   * Safe wrapper for version tracking that never crashes auth flow
+   * Safe wrapper for version tracking that NEVER crashes auth flow
+   * 
+   * This function:
+   * - Uses dynamic import to avoid hard dependency
+   * - Catches all errors (import errors, function errors, etc.)
+   * - Never blocks auth state initialization
+   * - Logs warnings in dev mode only (no sensitive data)
    */
-  const safeLogVersion = async (userId: string) => {
-    try {
-      // Guard: Verify function exists and is callable
-      if (typeof logAppVersionToSupabase !== 'function') {
-        console.warn('[AuthContext] logAppVersionToSupabase is not a function, skipping');
-        return;
-      }
+  const safeLogVersion = (userId: string) => {
+    // Fire-and-forget: Don't await, don't block auth flow
+    (async () => {
+      try {
+        // Dynamic import to handle missing module gracefully
+        const versionModule = await import('@/utils/versionTracking');
+        
+        // Verify function exists and is callable
+        if (typeof versionModule.logAppVersionToSupabase !== 'function') {
+          if (__DEV__) {
+            console.warn('[VersionTracking] logAppVersionToSupabase not found');
+          }
+          return;
+        }
 
-      console.log('[AuthContext] Logging app version for user:', userId);
-      await logAppVersionToSupabase(userId);
-    } catch (error) {
-      // Never let version tracking crash the auth flow
-      console.error('[AuthContext] Error logging version (non-critical):', error);
-    }
+        // Call the function (it handles its own errors internally)
+        await versionModule.logAppVersionToSupabase(userId);
+      } catch (error: any) {
+        // Catch ALL errors (import errors, function errors, etc.)
+        // Never let version tracking crash the auth flow
+        if (__DEV__) {
+          console.warn('[VersionTracking] failed (non-critical):', error?.message || 'unknown error');
+        }
+      }
+    })();
   };
 
   useEffect(() => {
@@ -55,9 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(initialSession);
         setUser(initialSession?.user ?? null);
         
-        // Log version when user signs in (fire-and-forget, never blocks)
+        // Log version when user exists (fire-and-forget, never blocks)
         if (initialSession?.user?.id) {
-          void safeLogVersion(initialSession.user.id);
+          safeLogVersion(initialSession.user.id);
         }
       }
       setLoading(false);
@@ -72,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // Log version when user signs in (fire-and-forget, never blocks)
         if (event === 'SIGNED_IN' && currentSession?.user?.id) {
-          void safeLogVersion(currentSession.user.id);
+          safeLogVersion(currentSession.user.id);
         }
         
         setLoading(false);
