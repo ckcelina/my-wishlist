@@ -1,39 +1,35 @@
 
 import * as React from "react";
 import { createContext, useCallback, useContext } from "react";
-import { 
-  updateWidgetData as syncWidgetData, 
-  refreshWidget as reloadWidget,
-  initializeWidget,
-  WidgetData,
-} from "@/utils/widgetSync";
+import { ExtensionStorage } from "@bacons/apple-targets";
+
+// Initialize storage with My Wishlist group ID
+const storage = new ExtensionStorage(
+  "group.com.anonymous.MyWishlist"
+);
 
 type WidgetContextType = {
   refreshWidget: () => void;
-  updateWidgetData: (wishlists: WidgetData['wishlists']) => Promise<void>;
 };
 
 const WidgetContext = createContext<WidgetContextType | null>(null);
 
 export function WidgetProvider({ children }: { children: React.ReactNode }) {
-  // Initialize widget with new color scheme on mount
+  // Update widget state whenever what we want to show changes
   React.useEffect(() => {
-    console.log('Initializing widget with new light mode color scheme');
-    initializeWidget();
+    // set widget_state to null if we want to reset the widget
+    // storage.set("widget_state", null);
+
+    // Refresh widget
+    ExtensionStorage.reloadWidget();
   }, []);
 
   const refreshWidget = useCallback(() => {
-    console.log('Refreshing widget with new color scheme');
-    reloadWidget();
-  }, []);
-
-  const updateWidgetData = useCallback(async (wishlists: WidgetData['wishlists']) => {
-    console.log('Updating widget data with wishlists:', wishlists.length);
-    await syncWidgetData(wishlists);
+    ExtensionStorage.reloadWidget();
   }, []);
 
   return (
-    <WidgetContext.Provider value={{ refreshWidget, updateWidgetData }}>
+    <WidgetContext.Provider value={{ refreshWidget }}>
       {children}
     </WidgetContext.Provider>
   );

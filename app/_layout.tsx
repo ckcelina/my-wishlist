@@ -11,7 +11,6 @@ import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
 import { LocationProvider } from '@/contexts/LocationContext';
-import { WidgetProvider } from '@/contexts/WidgetContext';
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -89,22 +88,20 @@ export default function RootLayout() {
     <ErrorBoundary>
       <AuthProvider>
         <AppThemeProvider>
-          <WidgetProvider>
-            <I18nProvider>
-              <SmartLocationProvider>
-                <LocationProvider>
-                  <Stack>
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-                    <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-                    <Stack.Screen name="+not-found" />
-                  </Stack>
-                  <StatusBar style="auto" />
-                </LocationProvider>
-              </SmartLocationProvider>
-            </I18nProvider>
-          </WidgetProvider>
+          <I18nProvider>
+            <SmartLocationProvider>
+              <LocationProvider>
+                <Stack>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+                  <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
+                  <Stack.Screen name="+not-found" />
+                </Stack>
+                <StatusBar style="auto" />
+              </LocationProvider>
+            </SmartLocationProvider>
+          </I18nProvider>
         </AppThemeProvider>
       </AuthProvider>
     </ErrorBoundary>

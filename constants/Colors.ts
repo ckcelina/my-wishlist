@@ -1,4 +1,4 @@
-const tintColorLight = "#652DF5";
+const tintColorLight = "#0a7ea4";
 const tintColorDark = "#fff";
 
 export const zincColors = {
@@ -23,10 +23,10 @@ export const appleGreen = "#34C759";
 export const Colors = {
   light: {
     text: "#11181C",
-    background: "#EFEFFF",
+    background: "#fff",
     tint: tintColorLight,
-    icon: "#5b4f66",
-    tabIconDefault: "#5b4f66",
+    icon: "#687076",
+    tabIconDefault: "#687076",
     tabIconSelected: tintColorLight,
   },
   dark: {

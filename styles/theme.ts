@@ -135,28 +135,27 @@ export const darkTheme: Theme = {
 
 // ═══════════════════════════════════════════════════════
 // ☀️ LIGHT MODE THEME
-// Brand base: #EFEFFF (Light purple background)
-// Accent: #652DF5 (Purple primary button)
+// Brand base: #ede8e3
 // ═══════════════════════════════════════════════════════
 
 export const lightTheme: Theme = {
   mode: 'light',
   colors: {
-    // Core tokens - NEW PURPLE PALETTE
-    background: '#EFEFFF',
-    surface: '#E1E2FC',
-    surface2: '#E1E2FC',
+    // Core tokens - EXACT specifications
+    background: '#ede8e3',
+    surface: 'rgba(43,31,25,0.06)',
+    surface2: 'rgba(43,31,25,0.10)',
     
     textPrimary: '#2b1f19',
     textSecondary: 'rgba(43,31,25,0.70)',
     
-    border: 'rgba(101,45,245,0.15)',
+    border: 'rgba(43,31,25,0.14)',
     
-    icon: '#5b4f66',
+    icon: '#2b1f19',
     
-    // Accent colors - NEW PURPLE ACCENT
-    accent: '#652DF5',
-    accentLight: 'rgba(101,45,245,0.15)',
+    // Accent colors
+    accent: '#2b1f19',
+    accentLight: 'rgba(43,31,25,0.08)',
     
     // Semantic colors
     success: '#34C759',
@@ -166,9 +165,9 @@ export const lightTheme: Theme = {
     
     // Legacy aliases (map to core tokens)
     text: '#2b1f19',
-    card: '#E1E2FC',
-    backgroundSecondary: '#E1E2FC',
-    divider: 'rgba(101,45,245,0.12)',
+    card: 'rgba(43,31,25,0.06)',
+    backgroundSecondary: 'rgba(43,31,25,0.04)',
+    divider: 'rgba(43,31,25,0.14)',
     shadow: 'rgba(0,0,0,0.08)',
   },
   

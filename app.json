@@ -1,17 +1,16 @@
-
 {
   "expo": {
     "name": "My Wishlist",
     "slug": "My Wishlist",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png",
+    "icon": "./assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png",
+      "image": "./assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png",
       "resizeMode": "contain",
-      "backgroundColor": "#EFEFFF"
+      "backgroundColor": "#7A6550"
     },
     "ios": {
       "supportsTablet": true,
@@ -37,8 +36,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png",
-        "backgroundColor": "#EFEFFF"
+        "foregroundImage": "./assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png",
+        "backgroundColor": "#7A6550"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.anonymous.MyWishlist",
@@ -82,7 +81,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png",
+      "favicon": "./assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -92,8 +91,8 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png",
-          "color": "#652DF5",
+          "icon": "./assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png",
+          "color": "#7A6550",
           "defaultChannel": "price-drops"
         }
       ]
@@ -118,25 +117,7 @@
       "targetAffiliateId": "",
       "bestbuyAffiliateId": "",
       "etsyAffiliateId": "",
-      "aliexpressAffiliateId": "",
-      "widgetColors": {
-        "light": {
-          "background": "#EFEFFF",
-          "surface": "#E1E2FC",
-          "accent": "#652DF5",
-          "textPrimary": "#2b1f19",
-          "textSecondary": "rgba(43,31,25,0.70)",
-          "border": "rgba(101,45,245,0.15)"
-        },
-        "dark": {
-          "background": "#765943",
-          "surface": "rgba(255,255,255,0.10)",
-          "accent": "#FFFFFF",
-          "textPrimary": "#FFFFFF",
-          "textSecondary": "rgba(255,255,255,0.75)",
-          "border": "rgba(255,255,255,0.16)"
-        }
-      }
+      "aliexpressAffiliateId": ""
     },
     "updates": {
       "url": "https://u.expo.dev/YOUR_PROJECT_ID"
