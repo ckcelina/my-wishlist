@@ -263,36 +263,6 @@ export default function WishlistsScreen() {
     },
   }), [colors, typography, insets.bottom]);
 
-  const initializeDefaultWishlist = useCallback(async () => {
-    if (!user?.id || initializing || hasInitializedRef.current) {
-      return;
-    }
-
-    setInitializing(true);
-    try {
-      console.log('[WishlistsScreen] Creating first default wishlist for new user');
-      const wishlistData = {
-        user_id: user.id,
-        name: 'My Wishlist',
-      };
-      
-      const newWishlist = await createWishlist(wishlistData);
-      console.log('[WishlistsScreen] First wishlist created:', newWishlist.id);
-      
-      // Refresh the list
-      await fetchWishlistsFromNetwork();
-      
-      // Navigate to the new wishlist
-      router.push(`/wishlist/${newWishlist.id}`);
-    } catch (err) {
-      console.error('[WishlistsScreen] Error creating default wishlist:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create default wishlist';
-      Alert.alert('Error', errorMessage);
-    } finally {
-      setInitializing(false);
-    }
-  }, [user, initializing, router]);
-
   const fetchWishlistsFromNetwork = useCallback(async () => {
     if (!user?.id || isFetchingRef.current) {
       return;
@@ -343,7 +313,37 @@ export default function WishlistsScreen() {
       setRefreshing(false);
       isFetchingRef.current = false;
     }
-  }, [user, initializing, initializeDefaultWishlist]);
+  }, [user, initializing]);
+
+  const initializeDefaultWishlist = useCallback(async () => {
+    if (!user?.id || initializing || hasInitializedRef.current) {
+      return;
+    }
+
+    setInitializing(true);
+    try {
+      console.log('[WishlistsScreen] Creating first default wishlist for new user');
+      const wishlistData = {
+        user_id: user.id,
+        name: 'My Wishlist',
+      };
+      
+      const newWishlist = await createWishlist(wishlistData);
+      console.log('[WishlistsScreen] First wishlist created:', newWishlist.id);
+      
+      // Refresh the list
+      await fetchWishlistsFromNetwork();
+      
+      // Navigate to the new wishlist
+      router.push(`/wishlist/${newWishlist.id}`);
+    } catch (err) {
+      console.error('[WishlistsScreen] Error creating default wishlist:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create default wishlist';
+      Alert.alert('Error', errorMessage);
+    } finally {
+      setInitializing(false);
+    }
+  }, [user, initializing, router, fetchWishlistsFromNetwork]);
 
   // Setup realtime subscription (only once)
   const setupRealtimeSubscription = useCallback(() => {
@@ -428,7 +428,7 @@ export default function WishlistsScreen() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchWishlistsFromNetwork();
-  }, []);
+  }, [fetchWishlistsFromNetwork]);
 
   const handleCreateWishlist = async () => {
     const trimmedName = newWishlistName.trim();
