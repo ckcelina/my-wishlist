@@ -19,10 +19,10 @@ export function Logo({ size = 'medium', style }: LogoProps) {
   const { isDark } = useAppTheme();
   
   // My Wishlist logos - theme aware
-  // Dark mode: brown background with white text/bow
-  const darkModeLogo = require('@/assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png');
-  // Light mode: light background with brown text/bow
-  const lightModeLogo = require('@/assets/images/14005d75-8318-4ff7-a6e2-8f9610c72de8.png');
+  // Light mode: light purple background with purple gift box
+  const lightModeLogo = require('@/assets/images/047add85-2230-4e4c-9a0d-56a73d2890cc.png');
+  // Dark mode: dark purple background with purple gift box
+  const darkModeLogo = require('@/assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png');
   
   const logoSource = isDark ? darkModeLogo : lightModeLogo;
   

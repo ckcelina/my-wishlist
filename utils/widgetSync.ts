@@ -1,4 +1,5 @@
 
+
 import { ExtensionStorage } from "@bacons/apple-targets";
 
 // Light mode color scheme for widget (matches styles/theme.ts)
@@ -59,7 +60,7 @@ export async function updateWidgetData(wishlists: WidgetData['wishlists']): Prom
         light: WIDGET_LIGHT_MODE_COLORS,
         dark: WIDGET_DARK_MODE_COLORS,
       },
-      appIcon: 'assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png',
+      appIcon: 'assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
       lastUpdated: new Date().toISOString(),
     };
 
@@ -94,7 +95,7 @@ export function initializeWidget(): void {
     const config = {
       lightModeColors: WIDGET_LIGHT_MODE_COLORS,
       darkModeColors: WIDGET_DARK_MODE_COLORS,
-      appIcon: 'assets/images/26cf9b07-bf29-4b30-99ac-b91580012793.png',
+      appIcon: 'assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
     };
     
     console.log('Initializing widget with color scheme:', config);
@@ -107,3 +108,4 @@ export function initializeWidget(): void {
     console.error('Failed to initialize widget:', error);
   }
 }
+

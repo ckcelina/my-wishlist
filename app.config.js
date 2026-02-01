@@ -1,4 +1,5 @@
 
+
 const IS_DEV = process.env.APP_VARIANT === 'development';
 const IS_PREVIEW = process.env.APP_VARIANT === 'preview';
 const IS_PROD = !IS_DEV && !IS_PREVIEW;
@@ -54,13 +55,13 @@ export default {
     slug: 'My Wishlist',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png',
+    icon: './assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     splash: {
-      image: './assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png',
+      image: './assets/images/047add85-2230-4e4c-9a0d-56a73d2890cc.png',
       resizeMode: 'contain',
-      backgroundColor: '#7A6550',
+      backgroundColor: '#EFEFFF',
     },
     ios: {
       supportsTablet: true,
@@ -86,8 +87,8 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png',
-        backgroundColor: '#7A6550',
+        foregroundImage: './assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
+        backgroundColor: '#EFEFFF',
       },
       edgeToEdgeEnabled: true,
       package: PACKAGE_NAME,
@@ -126,7 +127,7 @@ export default {
       ],
     },
     web: {
-      favicon: './assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png',
+      favicon: './assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
       bundler: 'metro',
     },
     plugins: [
@@ -136,8 +137,8 @@ export default {
       [
         'expo-notifications',
         {
-          icon: './assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png',
-          color: '#7A6550',
+          icon: './assets/images/6c7b263c-7920-4d07-94f3-fac6c2f0b3c0.png',
+          color: '#652DF5',
           defaultChannel: 'price-drops',
         },
       ],
@@ -194,3 +195,4 @@ export default {
   },
   scheme: 'My Wishlist',
 };
+
