@@ -636,34 +636,6 @@ export default function AddItemScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={[styles.storesNearMeButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={() => router.push('/stores-near-me')}
-        >
-          <View style={styles.storesNearMeContent}>
-            <IconSymbol
-              ios_icon_name="map"
-              android_material_icon_name="store"
-              size={24}
-              color={colors.accent}
-            />
-            <View style={styles.storesNearMeText}>
-              <Text style={[styles.storesNearMeTitle, { color: colors.textPrimary }]}>
-                Scan Stores Near Me
-              </Text>
-              <Text style={[styles.storesNearMeSubtitle, { color: colors.textSecondary }]}>
-                Find stores that deliver to your location
-              </Text>
-            </View>
-          </View>
-          <IconSymbol
-            ios_icon_name="chevron.right"
-            android_material_icon_name="chevron-right"
-            size={20}
-            color={colors.textTertiary}
-          />
-        </TouchableOpacity>
-
         <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <IconSymbol
             ios_icon_name="info.circle"
@@ -1675,32 +1647,6 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
     resultPrice: {
       fontSize: 14,
       fontWeight: '600',
-    },
-    storesNearMeButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: spacing.md,
-      borderRadius: 12,
-      borderWidth: 1,
-      marginBottom: spacing.md,
-    },
-    storesNearMeContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      flex: 1,
-    },
-    storesNearMeText: {
-      flex: 1,
-    },
-    storesNearMeTitle: {
-      fontSize: 16,
-      fontWeight: '600',
-      marginBottom: spacing.xs / 2,
-    },
-    storesNearMeSubtitle: {
-      fontSize: 13,
     },
   });
 }
