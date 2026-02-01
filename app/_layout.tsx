@@ -4,19 +4,18 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
 import { LocationProvider } from '@/contexts/LocationContext';
-import { logConfiguration, checkAPIConnectivity } from '@/utils/environmentConfig';
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { validateEnv, logEnvironmentConfig } from '@/src/config/env';
-import { preloadLocalCities } from '@/src/services/citySearch';
+import { validateEnv, logEnvironmentConfig, getConfigurationErrorMessage } from '@/src/config/env';
+import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -25,6 +24,9 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  const [envErrors, setEnvErrors] = useState<string[]>([]);
+  const [envChecked, setEnvChecked] = useState(false);
 
   useEffect(() => {
     if (loaded) {
@@ -35,27 +37,24 @@ export default function RootLayout() {
   useEffect(() => {
     // Log environment configuration on app start
     console.log('═══════════════════════════════════════════════════');
-    console.log('🚀 APP STARTING - PRODUCTION PARITY ENFORCED');
+    console.log('🚀 APP STARTING - SUPABASE EDGE FUNCTIONS');
     console.log('═══════════════════════════════════════════════════');
     
     // Validate environment configuration (from src/config/env.ts)
-    const envValidationError = validateEnv();
-    if (envValidationError) {
+    const missingKeys = validateEnv();
+    if (missingKeys.length > 0) {
       console.error('❌ ENVIRONMENT CONFIGURATION ERROR:');
-      console.error(envValidationError);
-      console.error('❌ Some features may not work correctly');
+      missingKeys.forEach(key => console.error(`  • ${key}`));
+      console.error('❌ App cannot start without required configuration');
+      setEnvErrors(missingKeys);
     } else {
       console.log('✅ Environment configuration validated successfully');
     }
     
-    logConfiguration();
+    setEnvChecked(true);
     
-    // Preload local cities dataset for fallback search
-    preloadLocalCities().then(() => {
-      console.log('✅ Local cities dataset preloaded');
-    }).catch(error => {
-      console.error('❌ Failed to preload local cities:', error);
-    });
+    // Log full environment config
+    logEnvironmentConfig();
     
     // Run parity verification
     runParityVerification().then(report => {
@@ -64,22 +63,25 @@ export default function RootLayout() {
       }
     });
     
-    // Check API connectivity
-    checkAPIConnectivity().then(result => {
-      if (result.connected) {
-        console.log('✅ Backend API is reachable');
-      } else {
-        console.warn('⚠️ Backend API connectivity issue:', result.error);
-        console.warn('⚠️ Some features may not work correctly');
-      }
-    });
-    
     // Track app version (idempotent, cross-platform, never throws)
     trackAppVersion();
   }, []);
 
-  if (!loaded) {
+  if (!loaded || !envChecked) {
     return null;
+  }
+
+  // Show configuration error screen if environment is not configured
+  if (envErrors.length > 0 && __DEV__) {
+    return (
+      <ConfigurationError 
+        missingKeys={envErrors} 
+        onRetry={() => {
+          const missingKeys = validateEnv();
+          setEnvErrors(missingKeys);
+        }} 
+      />
+    );
   }
 
   return (

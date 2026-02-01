@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * 🔒 ENVIRONMENT CONFIGURATION - ROBUST API BASE URL HANDLING
+ * 🔒 ENVIRONMENT CONFIGURATION - SINGLE SOURCE OF TRUTH
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * This module provides centralized environment variable management with:
@@ -12,10 +12,10 @@ import { Platform } from 'react-native';
  * - Graceful error handling for missing configuration
  * - Consistent behavior across dev, preview, and production builds
  * - Clear diagnostic logging for debugging
+ * - Supabase Edge Functions as primary API
  */
 
 export interface EnvConfig {
-  API_BASE_URL: string;
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_EDGE_FUNCTIONS_URL: string;
@@ -36,12 +36,12 @@ function getEnvVar(key: string): string {
 }
 
 /**
- * Normalize API base URL:
+ * Normalize URL:
  * - Remove trailing slashes
  * - Validate URL format
  * - Return empty string if invalid
  */
-function normalizeBaseUrl(url: string): string {
+function normalizeUrl(url: string): string {
   if (!url) return '';
   
   // Remove trailing slashes
@@ -52,7 +52,9 @@ function normalizeBaseUrl(url: string): string {
     new URL(normalized);
     return normalized;
   } catch {
-    console.error('[ENV] Invalid URL format:', url);
+    if (__DEV__) {
+      console.error('[ENV] Invalid URL format:', url);
+    }
     return '';
   }
 }
@@ -61,75 +63,56 @@ function normalizeBaseUrl(url: string): string {
  * Load and normalize environment configuration
  */
 export const ENV: EnvConfig = {
-  API_BASE_URL: normalizeBaseUrl(getEnvVar('backendUrl')),
-  SUPABASE_URL: normalizeBaseUrl(getEnvVar('supabaseUrl')),
+  SUPABASE_URL: normalizeUrl(getEnvVar('supabaseUrl')),
   SUPABASE_ANON_KEY: getEnvVar('supabaseAnonKey'),
-  SUPABASE_EDGE_FUNCTIONS_URL: normalizeBaseUrl(
+  SUPABASE_EDGE_FUNCTIONS_URL: normalizeUrl(
     getEnvVar('supabaseEdgeFunctionsUrl') || 
-    (getEnvVar('supabaseUrl') ? `${normalizeBaseUrl(getEnvVar('supabaseUrl'))}/functions/v1` : '')
+    (getEnvVar('supabaseUrl') ? `${normalizeUrl(getEnvVar('supabaseUrl'))}/functions/v1` : '')
   ),
 };
 
 /**
  * Validate environment configuration at runtime
- * Returns error message if validation fails, null if all checks pass
+ * Returns array of missing keys, empty array if all checks pass
  */
-export function validateEnv(): string | null {
+export function validateEnv(): string[] {
   const missing: string[] = [];
-  const invalid: string[] = [];
   
   // Check required variables
   if (!ENV.SUPABASE_URL) {
-    missing.push('EXPO_PUBLIC_SUPABASE_URL (supabaseUrl in app.config.js)');
+    missing.push('SUPABASE_URL');
   }
   
   if (!ENV.SUPABASE_ANON_KEY) {
-    missing.push('EXPO_PUBLIC_SUPABASE_ANON_KEY (supabaseAnonKey in app.config.js)');
+    missing.push('SUPABASE_ANON_KEY');
   }
   
   if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
-    missing.push('EXPO_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL (supabaseEdgeFunctionsUrl in app.config.js)');
+    missing.push('SUPABASE_EDGE_FUNCTIONS_URL');
   }
   
   // Validate URL formats
   if (ENV.SUPABASE_URL && !ENV.SUPABASE_URL.includes('supabase.co')) {
-    invalid.push('SUPABASE_URL must be a valid Supabase URL');
+    missing.push('SUPABASE_URL (invalid format - must be a Supabase URL)');
   }
   
-  // Build error message
-  if (missing.length > 0 || invalid.length > 0) {
-    const errors: string[] = [];
-    
-    if (missing.length > 0) {
-      errors.push(`Missing required environment variables:\n${missing.map(m => `  • ${m}`).join('\n')}`);
-    }
-    
-    if (invalid.length > 0) {
-      errors.push(`Invalid configuration:\n${invalid.map(i => `  • ${i}`).join('\n')}`);
-    }
-    
-    return errors.join('\n\n');
-  }
-  
-  return null;
+  return missing;
 }
 
 /**
  * Get user-friendly error message for missing configuration
  */
-export function getConfigurationErrorMessage(): string {
-  const validationError = validateEnv();
-  
-  if (!validationError) {
+export function getConfigurationErrorMessage(missingKeys: string[]): string {
+  if (missingKeys.length === 0) {
     return '';
   }
   
   if (__DEV__) {
     // In development, show detailed error
-    return `App configuration error:\n\n${validationError}\n\nPlease check your app.config.js file.`;
+    return `Missing environment variables:\n\n${missingKeys.map(k => `• ${k}`).join('\n')}\n\nPlease check your app.config.js file and ensure these variables are set in the extra section.`;
   } else {
     // In production, show user-friendly message
-    return 'App configuration is missing. Please contact support or reinstall the app.';
+    return 'App configuration is missing. Please reinstall the app or contact support.';
   }
 }
 
@@ -143,17 +126,16 @@ export function logEnvironmentConfig(): void {
   console.log(`Platform: ${Platform.OS}`);
   console.log(`Build Type: ${__DEV__ ? 'Development' : 'Production'}`);
   console.log('═══════════════════════════════════════════════════');
-  console.log('📡 API Configuration:');
-  console.log(`  API Base URL: ${ENV.API_BASE_URL || '❌ NOT CONFIGURED'}`);
-  console.log(`  Supabase URL: ${ENV.SUPABASE_URL || '❌ NOT CONFIGURED'}`);
-  console.log(`  Supabase Key: ${ENV.SUPABASE_ANON_KEY ? '✅ Configured' : '❌ NOT CONFIGURED'}`);
+  console.log('📡 Supabase Configuration:');
+  console.log(`  URL: ${ENV.SUPABASE_URL || '❌ NOT CONFIGURED'}`);
+  console.log(`  Anon Key: ${ENV.SUPABASE_ANON_KEY ? '✅ Configured' : '❌ NOT CONFIGURED'}`);
   console.log(`  Edge Functions URL: ${ENV.SUPABASE_EDGE_FUNCTIONS_URL || '❌ NOT CONFIGURED'}`);
   console.log('═══════════════════════════════════════════════════');
   
-  const validationError = validateEnv();
-  if (validationError) {
+  const missingKeys = validateEnv();
+  if (missingKeys.length > 0) {
     console.error('❌ CONFIGURATION ERRORS:');
-    console.error(validationError);
+    missingKeys.forEach(key => console.error(`  • ${key}`));
     console.log('═══════════════════════════════════════════════════');
   } else {
     console.log('✅ All environment variables configured correctly');
@@ -162,4 +144,6 @@ export function logEnvironmentConfig(): void {
 }
 
 // Log configuration on module load
-logEnvironmentConfig();
+if (__DEV__) {
+  logEnvironmentConfig();
+}

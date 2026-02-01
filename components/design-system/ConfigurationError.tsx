@@ -1,129 +1,166 @@
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
-import { IconSymbol } from '@/components/IconSymbol';
-import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import { useAppTheme } from '@/contexts/ThemeContext';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { IconSymbol } from '@/components/IconSymbol';
+import { colors, typography, spacing } from '@/styles/designSystem';
 
 interface ConfigurationErrorProps {
-  message: string;
-  onRetry?: () => void;
+  missingKeys: string[];
+  onRetry: () => void;
 }
 
-/**
- * Configuration Error Screen
- * 
- * Displays a user-friendly error message when environment configuration is missing or invalid.
- * Shows a retry button if onRetry callback is provided.
- */
-export function ConfigurationError({ message, onRetry }: ConfigurationErrorProps) {
-  const { theme } = useAppTheme();
-  const colors = createColors(theme);
-  const typography = createTypography(theme);
-
-  const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-    },
-    content: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: spacing.xl,
-    },
-    iconContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: colors.surface2,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: spacing.lg,
-    },
-    title: {
-      ...typography.h2,
-      color: colors.text,
-      textAlign: 'center',
-      marginBottom: spacing.md,
-    },
-    message: {
-      ...typography.body,
-      color: colors.textSecondary,
-      textAlign: 'center',
-      lineHeight: 24,
-      marginBottom: spacing.xl,
-    },
-    retryButton: {
-      backgroundColor: colors.accent,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.xl,
-      borderRadius: 12,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-    },
-    retryButtonText: {
-      ...typography.body,
-      color: '#FFFFFF',
-      fontWeight: '600',
-    },
-    devMessage: {
-      marginTop: spacing.xl,
-      padding: spacing.md,
-      backgroundColor: colors.surface2,
-      borderRadius: 12,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.error,
-    },
-    devMessageText: {
-      ...typography.caption,
-      color: colors.textSecondary,
-      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    },
-  });
-
+export function ConfigurationError({ missingKeys, onRetry }: ConfigurationErrorProps) {
+  const isDev = __DEV__;
+  
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.iconContainer}>
           <IconSymbol
             ios_icon_name="exclamationmark.triangle.fill"
             android_material_icon_name="warning"
-            size={40}
+            size={64}
             color={colors.error}
           />
         </View>
-
+        
         <Text style={styles.title}>Configuration Error</Text>
-
-        <Text style={styles.message}>{message}</Text>
-
-        {onRetry && (
-          <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-            <IconSymbol
-              ios_icon_name="arrow.clockwise"
-              android_material_icon_name="refresh"
-              size={20}
-              color="#FFFFFF"
-            />
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
+        
+        <Text style={styles.message}>
+          {isDev 
+            ? 'The app is missing required environment variables. Please check your configuration.'
+            : 'The app configuration is incomplete. Please reinstall the app or contact support.'}
+        </Text>
+        
+        {isDev && missingKeys.length > 0 && (
+          <View style={styles.detailsContainer}>
+            <Text style={styles.detailsTitle}>Missing Variables:</Text>
+            {missingKeys.map((key, index) => (
+              <View key={index} style={styles.keyItem}>
+                <IconSymbol
+                  ios_icon_name="xmark.circle"
+                  android_material_icon_name="cancel"
+                  size={20}
+                  color={colors.error}
+                />
+                <Text style={styles.keyText}>{key}</Text>
+              </View>
+            ))}
+          </View>
         )}
-
-        {__DEV__ && (
-          <View style={styles.devMessage}>
-            <Text style={styles.devMessageText}>
-              Development Mode:{'\n'}
-              Check app.config.js for missing environment variables:{'\n'}
-              • EXPO_PUBLIC_API_BASE_URL{'\n'}
-              • EXPO_PUBLIC_SUPABASE_URL{'\n'}
-              • EXPO_PUBLIC_SUPABASE_ANON_KEY
+        
+        {isDev && (
+          <View style={styles.instructionsContainer}>
+            <Text style={styles.instructionsTitle}>How to fix:</Text>
+            <Text style={styles.instructionText}>
+              1. Open app.config.js
+            </Text>
+            <Text style={styles.instructionText}>
+              2. Ensure all required variables are set in the extra section
+            </Text>
+            <Text style={styles.instructionText}>
+              3. Restart the development server
             </Text>
           </View>
         )}
-      </View>
+        
+        <TouchableOpacity style={styles.button} onPress={onRetry}>
+          <IconSymbol
+            ios_icon_name="arrow.clockwise"
+            android_material_icon_name="refresh"
+            size={20}
+            color={colors.background}
+          />
+          <Text style={styles.buttonText}>Retry</Text>
+        </TouchableOpacity>
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flex: 1,
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainer: {
+    marginBottom: spacing.xl,
+  },
+  title: {
+    ...typography.h1,
+    color: colors.text,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  message: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  detailsContainer: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  detailsTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  keyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  keyText: {
+    ...typography.body,
+    color: colors.text,
+    flex: 1,
+  },
+  instructionsContainer: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  instructionsTitle: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  instructionText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minWidth: 200,
+  },
+  buttonText: {
+    ...typography.button,
+    color: colors.background,
+  },
+});

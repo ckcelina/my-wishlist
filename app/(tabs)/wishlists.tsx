@@ -415,7 +415,7 @@ export default function WishlistsScreen() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchWishlistsFromNetwork();
-  }, [fetchWishlistsFromNetwork]);
+  }, []);
 
   const handleCreateWishlist = async () => {
     const trimmedName = newWishlistName.trim();

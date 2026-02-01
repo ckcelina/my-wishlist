@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, Fragment } from 'react';
+import React, { useState, useEffect, useMemo, Fragment, useCallback } from 'react';
 import {
   View,
   Text,
@@ -154,7 +154,7 @@ export default function AddItemScreen() {
     if (user) {
       fetchUserWishlists();
     }
-  }, [user]);
+  }, [user, fetchUserWishlists]);
 
   useEffect(() => {
     // Initialize country from SmartLocation settings
@@ -175,7 +175,7 @@ export default function AddItemScreen() {
 
   const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
 
-  const fetchUserWishlists = async () => {
+  const fetchUserWishlists = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -191,7 +191,7 @@ export default function AddItemScreen() {
     } catch (error) {
       console.error('[AddItem] Error fetching wishlists:', error);
     }
-  };
+  }, [user]);
 
   const handleCountrySelect = async (country: { countryCode: string; countryName: string }) => {
     console.log('[AddItem] User selected country:', country.countryCode);

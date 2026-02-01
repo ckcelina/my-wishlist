@@ -1267,7 +1267,7 @@ export default function WishlistDetailScreen() {
       fontSize: 14,
       color: colors.textSecondary,
     },
-  }), [colors, typography, isDark, insets.bottom]);
+  }), [colors, isDark, insets.bottom]);
 
   if (loading && !wishlist) {
     return (

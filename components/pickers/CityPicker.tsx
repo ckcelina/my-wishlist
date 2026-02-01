@@ -54,6 +54,7 @@ export function CityPicker({
   }, [visible, preloadedCities, searchQuery]);
 
   // Debounced search function
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedSearch = useCallback(
     debounce(async (query: string) => {
       if (query.length < MIN_QUERY_LENGTH) {
