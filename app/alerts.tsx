@@ -16,7 +16,7 @@ import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
-import { callEdgeFunction } from '@/utils/api';
+import { authenticatedGet, authenticatedPut } from '@/utils/api';
 import { colors, typography, spacing } from '@/styles/designSystem';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
@@ -303,12 +303,10 @@ export default function AlertsScreen() {
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching alert settings from Edge Function');
+    console.log('[AlertsScreen] Fetching alert settings from backend API');
     try {
       setError(null);
-      const data = await callEdgeFunction<AlertSettings>('alert-settings-get', {
-        method: 'GET',
-      });
+      const data = await authenticatedGet<AlertSettings>('/api/alert-settings');
       setSettings(data);
       console.log('[AlertsScreen] Settings loaded successfully');
     } catch (err) {
@@ -326,11 +324,9 @@ export default function AlertsScreen() {
   }, [user]);
 
   const fetchItemsWithTargets = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching items with target prices from Edge Function');
+    console.log('[AlertsScreen] Fetching items with target prices from backend API');
     try {
-      const data = await callEdgeFunction<ItemsWithTargetsResponse>('alert-items-with-targets', {
-        method: 'GET',
-      });
+      const data = await authenticatedGet<ItemsWithTargetsResponse>('/api/alert-settings/items-with-targets');
       setItemsWithTargets(data);
       console.log('[AlertsScreen] Items with targets:', data.count);
     } catch (err) {
@@ -361,13 +357,10 @@ export default function AlertsScreen() {
   }, [user, authLoading, fetchSettings, fetchItemsWithTargets, checkNotificationPermissionStatus, router]);
 
   const saveSettings = useCallback(async (updates: Partial<AlertSettings>) => {
-    console.log('[AlertsScreen] Saving settings to Edge Function:', updates);
+    console.log('[AlertsScreen] Saving settings to backend API:', updates);
     setSaving(true);
     try {
-      const response = await callEdgeFunction<{ success: boolean } & AlertSettings>('alert-settings-put', {
-        method: 'PUT',
-        body: updates,
-      });
+      const response = await authenticatedPut<{ success: boolean } & AlertSettings>('/api/alert-settings', updates);
       // Backend returns { success, ...settings }, extract the settings
       const { success, ...updated } = response;
       setSettings(prev => prev ? { ...prev, ...updated } : null);
@@ -428,28 +421,28 @@ export default function AlertsScreen() {
   const checkFrequencyValue = settings.checkFrequency || 'daily';
   const preferredCurrencyValue = settings.preferredCurrency || 'USD';
 
-  const thresholdTypeDisplay = priceDropThresholdTypeValue === 'any' 
-    ? 'Any price drop' 
-    : priceDropThresholdTypeValue === 'percentage' 
-    ? `${priceDropThresholdValueValue || 0}% drop` 
+  const thresholdTypeDisplay = priceDropThresholdTypeValue === 'any'
+    ? 'Any price drop'
+    : priceDropThresholdTypeValue === 'percentage'
+    ? `${priceDropThresholdValueValue || 0}% drop`
     : `${preferredCurrencyValue} ${priceDropThresholdValueValue || 0} drop`;
 
-  const frequencyDisplay = checkFrequencyValue === 'daily' 
-    ? 'Once daily' 
-    : checkFrequencyValue === 'twice_daily' 
-    ? 'Twice daily' 
+  const frequencyDisplay = checkFrequencyValue === 'daily'
+    ? 'Once daily'
+    : checkFrequencyValue === 'twice_daily'
+    ? 'Twice daily'
     : 'Every hour';
 
   const currencyInfo = getCurrencyByCode(preferredCurrencyValue);
-  const currencyDisplay = currencyInfo 
-    ? `${currencyInfo.symbol} ${currencyInfo.name}` 
+  const currencyDisplay = currencyInfo
+    ? `${currencyInfo.symbol} ${currencyInfo.name}`
     : preferredCurrencyValue;
 
   const handleThresholdTypeSelect = (type: 'any' | 'percentage' | 'amount') => {
     console.log('[AlertsScreen] Threshold type selected:', type);
     setSettings(prev => prev ? { ...prev, priceDropThresholdType: type } : null);
     debouncedSaveRef.current?.({ priceDropThresholdType: type });
-    
+
     if (type === 'any') {
       setSettings(prev => prev ? { ...prev, priceDropThresholdValue: null } : null);
       debouncedSaveRef.current?.({ priceDropThresholdValue: null });
@@ -462,7 +455,7 @@ export default function AlertsScreen() {
     if (isNaN(value) || value <= 0) {
       return;
     }
-    
+
     console.log('[AlertsScreen] Threshold value saved:', value);
     setSettings(prev => prev ? { ...prev, priceDropThresholdValue: value } : null);
     debouncedSaveRef.current?.({ priceDropThresholdValue: value });
@@ -772,7 +765,7 @@ export default function AlertsScreen() {
         >
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Price Drop Threshold</Text>
-            
+
             <TouchableOpacity
               style={[
                 styles.thresholdOption,
@@ -898,7 +891,7 @@ export default function AlertsScreen() {
         >
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Price Check Frequency</Text>
-            
+
             <TouchableOpacity
               style={[
                 styles.frequencyOption,
