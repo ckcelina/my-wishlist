@@ -4,7 +4,6 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from '
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { trackAppVersion } from '@/utils/versionTracking';
 
 interface Props {
   children: ReactNode;
@@ -19,16 +18,19 @@ interface State {
 }
 
 /**
- * Safe wrapper for trackAppVersion - ensures it never throws
+ * Safe wrapper for trackAppVersion using defensive dynamic import
+ * This ensures ErrorBoundary NEVER crashes even if versionTracking module is missing
  */
-const safeTrackAppVersion = async () => {
+const safeTrack = async () => {
   try {
-    if (typeof trackAppVersion === 'function') {
-      await trackAppVersion();
+    // Dynamic import to prevent hard dependency and allow graceful failure
+    const mod = await import("../utils/versionTracking");
+    if (typeof mod.trackAppVersion === "function") {
+      await mod.trackAppVersion();
     }
   } catch (e) {
-    // Swallow - never throw from error handler
-    console.warn('[ErrorBoundary] trackAppVersion failed:', e);
+    // Log warning but do not crash the ErrorBoundary
+    console.warn("version tracking unavailable", e);
   }
 };
 
@@ -59,8 +61,8 @@ export class ErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
-    // Track app version (fire-and-forget, never blocks)
-    safeTrackAppVersion();
+    // Track app version (fire-and-forget, never blocks, never crashes)
+    void safeTrack();
 
     this.props.onError?.(error, errorInfo);
   }
