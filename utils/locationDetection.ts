@@ -1,6 +1,8 @@
 
 import * as Location from 'expo-location';
 import { authenticatedGet, authenticatedPost } from './api';
+import Constants from 'expo-constants';
+import { supabase } from '@/lib/supabase';
 
 export interface LocationData {
   countryCode: string;
@@ -12,10 +14,11 @@ export interface LocationData {
 }
 
 export interface SmartLocationSettings {
-  homeCountry: string; // User-selected preferred country
-  currentCountry: string; // Auto-detected current country
-  activeSearchCountry: string; // User-selected country for specific searches
-  lastLocationUpdate: string | null;
+  enabled: boolean;
+  mode: 'manual' | 'auto';
+  countryCode: string | null;
+  city: string | null;
+  currencyCode: string | null;
 }
 
 /**
@@ -91,15 +94,69 @@ export async function updateCurrentCountryInBackground(): Promise<void> {
 }
 
 /**
- * Get user's smart location settings
+ * Get user's smart location settings from Supabase Edge Function
+ * Always returns a valid object, never throws
  */
-export async function getSmartLocationSettings(): Promise<SmartLocationSettings | null> {
+export async function getSmartLocationSettings(): Promise<SmartLocationSettings> {
+  const defaultSettings: SmartLocationSettings = {
+    enabled: false,
+    mode: 'manual',
+    countryCode: null,
+    city: null,
+    currencyCode: null,
+  };
+
   try {
-    const response = await authenticatedGet<SmartLocationSettings>('/api/location/smart-settings');
-    return response;
+    console.log('[LocationDetection] Fetching smart location settings from Supabase Edge Function');
+    
+    // Get Supabase configuration
+    const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl;
+    const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey;
+
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      console.warn('[LocationDetection] Supabase URL or ANON_KEY not configured. Returning defaults.');
+      return defaultSettings;
+    }
+
+    // Get access token from Supabase session
+    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+
+    // Build headers with Supabase auth pattern
+    const headers: HeadersInit = {
+      'apikey': SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+    };
+
+    // Add Authorization header if user is authenticated
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+      console.log('[LocationDetection] Using authenticated request');
+    } else {
+      console.log('[LocationDetection] Using unauthenticated request');
+    }
+
+    // Call Supabase Edge Function
+    const edgeFunctionUrl = `${SUPABASE_URL}/functions/v1/location-smart-settings`;
+    console.log('[LocationDetection] Calling:', edgeFunctionUrl);
+
+    const response = await fetch(edgeFunctionUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!response.ok) {
+      console.error(`[LocationDetection] Edge Function returned ${response.status}: ${response.statusText}`);
+      return defaultSettings;
+    }
+
+    const data: SmartLocationSettings = await response.json();
+    console.log('[LocationDetection] Smart location settings fetched successfully:', data);
+    return data;
+
   } catch (error) {
-    console.error('[LocationDetection] Failed to get smart location settings:', error);
-    return null;
+    console.error('[LocationDetection] Error fetching smart location settings:', error);
+    return defaultSettings;
   }
 }
 
@@ -126,7 +183,9 @@ export async function isUserTraveling(): Promise<boolean> {
     const settings = await getSmartLocationSettings();
     if (!settings) return false;
     
-    return settings.currentCountry !== settings.homeCountry;
+    // For now, we don't have homeCountry in the settings
+    // This would need to be implemented when the feature is fully built
+    return false;
   } catch (error) {
     console.error('[LocationDetection] Failed to check if user is traveling:', error);
     return false;
