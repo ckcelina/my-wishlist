@@ -61,6 +61,8 @@ function mapApiPathToEdgeFunction(path: string): RouteMapping {
   const edgeFunctionMappings: Record<string, string> = {
     '/api/users/location': 'users-location',
     '/api/location/search-cities': 'location-search-cities',
+    '/api/location/smart-settings': 'location-smart-settings',
+    '/api/location/detect-ip': 'location-detect-ip',
     '/api/alert-settings': 'alert-settings',
     '/api/alert-settings/items-with-targets': 'alert-items-with-targets',
     '/api/health': 'health',
