@@ -21,8 +21,8 @@ export function Logo({ size = 'medium', style }: LogoProps) {
   // My Wishlist logos - theme aware
   // Dark mode: brown background with white text/bow
   const darkModeLogo = require('@/assets/images/28c4639c-8f58-4dde-a22a-dbcf47db057e.png');
-  // Light mode: light background with brown text/bow
-  const lightModeLogo = require('@/assets/images/14005d75-8318-4ff7-a6e2-8f9610c72de8.png');
+  // Light mode: NEW purple logo with purple gift box
+  const lightModeLogo = require('@/assets/images/001bded0-c150-4cd5-a45d-0a1599c3c969.png');
   
   const logoSource = isDark ? darkModeLogo : lightModeLogo;
   
