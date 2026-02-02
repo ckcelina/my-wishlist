@@ -84,7 +84,7 @@ export default function HomeScreen() {
   const userStatus = user ? 'Authenticated' : 'Not authenticated';
   
   return (
-    <SafeAreaView style={[componentStyles.container, { paddingTop: 20 }]}>
+    <SafeAreaView style={componentStyles.container} edges={['top', 'left', 'right']}>
       <ScrollView 
         style={styles.scrollView}
         contentContainerStyle={styles.content}
@@ -271,7 +271,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 16, // Reduced from 24 to bring logo closer to top
   },
   section: {
     marginTop: 16,

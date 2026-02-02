@@ -85,18 +85,14 @@ export default function WishlistsScreen() {
     },
     header: {
       paddingHorizontal: spacing.lg,
-      paddingTop: spacing.lg,
+      paddingTop: spacing.md, // Reduced from spacing.lg to bring logo closer to top
       paddingBottom: spacing.md,
     },
     headerTop: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'center', // Center the logo
       alignItems: 'center',
       marginBottom: spacing.md,
-    },
-    logo: {
-      width: 120,
-      height: 40,
     },
     title: {
       ...typography.h1,
@@ -618,7 +614,7 @@ export default function WishlistsScreen() {
   const renderHeader = () => (
     <View style={styles.header}>
       <View style={styles.headerTop}>
-        <Logo style={styles.logo} />
+        <Logo size="medium" />
       </View>
       <Text style={styles.title}>My Wishlists</Text>
       <Text style={styles.subtitle}>

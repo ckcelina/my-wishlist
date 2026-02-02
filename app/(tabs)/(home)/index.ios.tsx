@@ -29,7 +29,7 @@ export default function HomeScreen() {
         }}
       />
       <ScrollView 
-        style={[componentStyles.container]}
+        style={componentStyles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   },
   header: {
     alignItems: 'center',
-    marginTop: 24,
+    marginTop: 16, // Reduced from 24 to bring logo closer to top
   },
   section: {
     marginTop: 16,

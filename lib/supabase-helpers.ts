@@ -67,9 +67,14 @@ export async function createWishlist(wishlist: WishlistInsert) {
   }
 
   const isFirstWishlist = !existingWishlists || existingWishlists.length === 0;
-  const shouldBeDefault = isFirstWishlist || wishlist.is_default === true;
+  
+  // CRITICAL FIX: Only set as default if:
+  // 1. It's the first wishlist (automatic), OR
+  // 2. User explicitly set is_default to true
+  // Otherwise, always set to false (don't change existing default)
+  const shouldBeDefault = isFirstWishlist ? true : (wishlist.is_default === true);
 
-  console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault);
+  console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault, 'explicit is_default:', wishlist.is_default);
 
   // If setting as default, unset all other defaults first
   if (shouldBeDefault) {
