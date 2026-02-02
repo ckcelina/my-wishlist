@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/design-system/Button';
 import { Logo } from '@/components/Logo';
@@ -53,7 +54,8 @@ export default function AuthScreen() {
     scrollContent: {
       flexGrow: 1,
       justifyContent: 'center',
-      padding: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
     },
     logoContainer: {
       alignItems: 'center',
@@ -337,7 +339,7 @@ export default function AuthScreen() {
     const backButtonText = 'Back to Sign In';
 
     return (
-      <View style={styles.scrollContent}>
+      <>
         <View style={styles.logoContainer}>
           <Logo size="large" />
         </View>
@@ -401,7 +403,7 @@ export default function AuthScreen() {
         >
           <Text style={styles.backButtonText}>{backButtonText}</Text>
         </TouchableOpacity>
-      </View>
+      </>
     );
   };
 
@@ -418,7 +420,7 @@ export default function AuthScreen() {
     const switchButtonText = isSignIn ? 'Sign Up' : 'Sign In';
 
     return (
-      <View style={styles.scrollContent}>
+      <>
         <View style={styles.logoContainer}>
           <Logo size="large" />
         </View>
@@ -565,15 +567,16 @@ export default function AuthScreen() {
             <Text style={styles.switchModeButton}>{switchButtonText}</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -583,6 +586,6 @@ export default function AuthScreen() {
           {mode === 'forgot-password' ? renderForgotPasswordScreen() : renderAuthScreen()}
         </ScrollView>
       </KeyboardAvoidingView>
-    </View>
+    </SafeAreaView>
   );
 }

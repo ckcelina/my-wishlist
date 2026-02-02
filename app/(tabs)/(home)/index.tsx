@@ -268,10 +268,11 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
+    paddingTop: 8, // Reduced padding to bring logo closer to top
   },
   header: {
     alignItems: 'center',
-    marginTop: 16, // Reduced from 24 to bring logo closer to top
+    marginBottom: 16,
   },
   section: {
     marginTop: 16,

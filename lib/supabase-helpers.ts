@@ -54,7 +54,7 @@ export async function fetchWishlistById(wishlistId: string) {
 }
 
 export async function createWishlist(wishlist: WishlistInsert) {
-  console.log('[Supabase] Creating wishlist:', wishlist.name, 'is_default:', wishlist.is_default);
+  console.log('[Supabase] Creating wishlist:', wishlist.name, 'explicit is_default:', wishlist.is_default);
   
   // Check if this is the user's first wishlist
   const { data: existingWishlists, error: checkError } = await supabase
@@ -68,13 +68,14 @@ export async function createWishlist(wishlist: WishlistInsert) {
 
   const isFirstWishlist = !existingWishlists || existingWishlists.length === 0;
   
-  // CRITICAL FIX: Only set as default if:
-  // 1. It's the first wishlist (automatic), OR
-  // 2. User explicitly set is_default to true
-  // Otherwise, always set to false (don't change existing default)
+  // CRITICAL FIX FOR PROMPT 4:
+  // Only set as default if:
+  // 1. It's the FIRST wishlist (automatic), OR
+  // 2. User EXPLICITLY set is_default to true in the UI
+  // Otherwise, ALWAYS set to false (don't change existing default)
   const shouldBeDefault = isFirstWishlist ? true : (wishlist.is_default === true);
 
-  console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault, 'explicit is_default:', wishlist.is_default);
+  console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault);
 
   // If setting as default, unset all other defaults first
   if (shouldBeDefault) {
