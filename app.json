@@ -5,11 +5,11 @@
     "slug": "My Wishlist",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/final_quest_240x240.png",
+    "icon": "./assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/final_quest_240x240.png",
+      "image": "./assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png",
       "resizeMode": "contain",
       "backgroundColor": "#EFEFFF"
     },
@@ -37,7 +37,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/final_quest_240x240.png",
+        "foregroundImage": "./assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png",
         "backgroundColor": "#EFEFFF"
       },
       "edgeToEdgeEnabled": true,
@@ -82,7 +82,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png",
       "bundler": "metro"
     },
     "plugins": [
@@ -92,7 +92,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/final_quest_240x240.png",
+          "icon": "./assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png",
           "color": "#652DF5",
           "defaultChannel": "price-drops"
         }

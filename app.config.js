@@ -1,5 +1,4 @@
 
-
 const IS_DEV = process.env.APP_VARIANT === 'development';
 const IS_PREVIEW = process.env.APP_VARIANT === 'preview';
 const IS_PROD = !IS_DEV && !IS_PREVIEW;
@@ -55,11 +54,11 @@ export default {
     slug: 'My Wishlist',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/images/final_quest_240x240.png',
+    icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     splash: {
-      image: './assets/images/final_quest_240x240.png',
+      image: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
       resizeMode: 'contain',
       backgroundColor: '#EFEFFF',
     },
@@ -87,7 +86,7 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/images/final_quest_240x240.png',
+        foregroundImage: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
         backgroundColor: '#EFEFFF',
       },
       edgeToEdgeEnabled: true,
@@ -127,7 +126,7 @@ export default {
       ],
     },
     web: {
-      favicon: './assets/images/final_quest_240x240.png',
+      favicon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
       bundler: 'metro',
     },
     plugins: [
@@ -137,7 +136,7 @@ export default {
       [
         'expo-notifications',
         {
-          icon: './assets/images/final_quest_240x240.png',
+          icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
           color: '#652DF5',
           defaultChannel: 'price-drops',
         },
@@ -198,4 +197,3 @@ export default {
   },
   scheme: 'My Wishlist',
 };
-
