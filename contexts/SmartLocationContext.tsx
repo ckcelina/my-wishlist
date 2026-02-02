@@ -1,22 +1,32 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
-import {
-  getSmartLocationSettings,
-  updateSmartLocationSettings,
-  updateCurrentCountryInBackground,
-  SmartLocationSettings,
-} from '@/utils/locationDetection';
+import { fetchUserLocation } from '@/lib/supabase-helpers';
+
+/**
+ * Smart Location Context - SETTINGS-BASED ONLY
+ * 
+ * This context provides access to the user's country setting from their Supabase profile.
+ * Country is managed EXCLUSIVELY in the Settings screen.
+ * 
+ * CHANGES:
+ * - No longer calls /api/location/* endpoints (404 errors removed)
+ * - Reads country directly from Supabase user profiles
+ * - No automatic IP-based detection
+ * - No "Select delivery address" UI
+ * - activeSearchCountry comes from Settings only
+ */
+
+export interface SmartLocationSettings {
+  activeSearchCountry: string | null;
+  currencyCode: string | null;
+}
 
 export interface SmartLocationContextType {
   settings: SmartLocationSettings | null;
   loading: boolean;
-  isTraveling: boolean;
   refreshSettings: () => Promise<void>;
   updateActiveSearchCountry: (country: string) => Promise<void>;
-  updateHomeCountry: (country: string) => Promise<void>;
-  dismissTravelBanner: () => void;
-  showTravelBanner: boolean;
 }
 
 const SmartLocationContext = createContext<SmartLocationContextType | undefined>(undefined);
@@ -25,7 +35,6 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [settings, setSettings] = useState<SmartLocationSettings | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showTravelBanner, setShowTravelBanner] = useState(false);
 
   const refreshSettings = useCallback(async () => {
     if (!user) {
@@ -34,20 +43,32 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    console.log('[SmartLocation] Refreshing settings');
+    console.log('[SmartLocation] Refreshing settings from Supabase user profile');
     try {
-      const data = await getSmartLocationSettings();
-      setSettings(data);
+      // Read country from Supabase user location
+      const locationData = await fetchUserLocation(user.id);
       
-      // Check if user is traveling
-      if (data && data.currentCountry !== data.homeCountry) {
-        console.log('[SmartLocation] User is traveling:', data.currentCountry);
-        setShowTravelBanner(true);
+      if (locationData) {
+        setSettings({
+          activeSearchCountry: locationData.countryCode || null,
+          currencyCode: null, // Currency is managed separately in user settings
+        });
+        console.log('[SmartLocation] Settings loaded:', locationData.countryCode);
       } else {
-        setShowTravelBanner(false);
+        // No location set - user needs to set it in Settings
+        setSettings({
+          activeSearchCountry: null,
+          currencyCode: null,
+        });
+        console.log('[SmartLocation] No location set - user must configure in Settings');
       }
     } catch (error) {
       console.error('[SmartLocation] Failed to refresh settings:', error);
+      // Set defaults on error
+      setSettings({
+        activeSearchCountry: 'US', // Safe fallback
+        currencyCode: null,
+      });
     } finally {
       setLoading(false);
     }
@@ -57,56 +78,31 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
     refreshSettings();
   }, [refreshSettings]);
 
-  // Background location update on app launch
-  useEffect(() => {
-    if (user) {
-      console.log('[SmartLocation] Starting background location update');
-      updateCurrentCountryInBackground().catch((error) => {
-        console.error('[SmartLocation] Background update failed:', error);
-      });
-    }
-  }, [user]);
-
   const updateActiveSearchCountry = useCallback(async (country: string) => {
     console.log('[SmartLocation] Updating active search country:', country);
     try {
-      await updateSmartLocationSettings({ activeSearchCountry: country });
-      await refreshSettings();
+      // Update Supabase user location
+      const { updateUserLocation } = await import('@/lib/supabase-helpers');
+      if (user?.id) {
+        await updateUserLocation(user.id, {
+          countryCode: country,
+          countryName: country, // You may want to map this to full country name
+        });
+        await refreshSettings();
+      }
     } catch (error) {
       console.error('[SmartLocation] Failed to update active search country:', error);
       throw error;
     }
-  }, [refreshSettings]);
-
-  const updateHomeCountry = useCallback(async (country: string) => {
-    console.log('[SmartLocation] Updating home country:', country);
-    try {
-      await updateSmartLocationSettings({ homeCountry: country });
-      await refreshSettings();
-    } catch (error) {
-      console.error('[SmartLocation] Failed to update home country:', error);
-      throw error;
-    }
-  }, [refreshSettings]);
-
-  const dismissTravelBanner = useCallback(() => {
-    console.log('[SmartLocation] Dismissing travel banner');
-    setShowTravelBanner(false);
-  }, []);
-
-  const isTraveling = settings ? settings.currentCountry !== settings.homeCountry : false;
+  }, [user, refreshSettings]);
 
   return (
     <SmartLocationContext.Provider
       value={{
         settings,
         loading,
-        isTraveling,
         refreshSettings,
         updateActiveSearchCountry,
-        updateHomeCountry,
-        dismissTravelBanner,
-        showTravelBanner,
       }}
     >
       {children}

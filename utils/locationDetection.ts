@@ -1,8 +1,19 @@
 
+/**
+ * Location Detection Utility - SETTINGS-BASED ONLY
+ * 
+ * This module NO LONGER makes network requests to /api/location/* endpoints.
+ * Country is managed EXCLUSIVELY in Settings and stored in Supabase user profiles.
+ * 
+ * CHANGES:
+ * - Removed all calls to /api/location/smart-settings (404)
+ * - Removed all calls to /api/location/detect-ip (404)
+ * - Country is read from Settings context only
+ * - No automatic IP-based detection
+ * - No "Select delivery address" UI anywhere
+ */
+
 import * as Location from 'expo-location';
-import { authenticatedGet, authenticatedPost } from './api';
-import Constants from 'expo-constants';
-import { supabase } from '@/lib/supabase';
 
 export interface LocationData {
   countryCode: string;
@@ -22,15 +33,18 @@ export interface SmartLocationSettings {
 }
 
 /**
- * Detect current country using OS location + IP fallback
+ * Detect current country using OS location ONLY (no IP fallback)
  * Returns country code (e.g., 'US', 'GB', 'FR')
  * ALWAYS returns a value or null - never throws
+ * 
+ * NOTE: This function NO LONGER calls /api/location/detect-ip
+ * It only uses GPS if permission is granted
  */
 export async function detectCurrentCountry(): Promise<string | null> {
   try {
-    console.log('[LocationDetection] Starting country detection');
+    console.log('[LocationDetection] Starting GPS-only country detection');
     
-    // Try OS location first (if permission granted)
+    // Try OS location (if permission granted)
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       
@@ -51,7 +65,7 @@ export async function detectCurrentCountry(): Promise<string | null> {
           return countryCode;
         }
       } else {
-        console.log('[LocationDetection] Location permission not granted, falling back to IP');
+        console.log('[LocationDetection] Location permission not granted');
       }
     } catch (gpsError) {
       if (__DEV__) {
@@ -59,26 +73,9 @@ export async function detectCurrentCountry(): Promise<string | null> {
       }
     }
     
-    // Fallback to IP-based detection
-    try {
-      console.log('[LocationDetection] Using IP-based detection');
-      const response = await authenticatedGet<{ ok: boolean; countryCode: string | null }>('/api/location/detect-ip');
-      
-      if (response && response.countryCode) {
-        console.log('[LocationDetection] IP detected country:', response.countryCode);
-        return response.countryCode;
-      }
-      
-      if (__DEV__) {
-        console.log('[LocationDetection] IP detection returned null country (expected for stub)');
-      }
-      return null;
-    } catch (ipError) {
-      if (__DEV__) {
-        console.warn('[LocationDetection] IP detection failed (non-critical):', ipError);
-      }
-      return null;
-    }
+    // NO IP FALLBACK - user must set country in Settings
+    console.log('[LocationDetection] No GPS available, user must set country in Settings');
+    return null;
   } catch (error) {
     // Catch all errors - location detection should never crash the app
     if (__DEV__) {
@@ -89,41 +86,21 @@ export async function detectCurrentCountry(): Promise<string | null> {
 }
 
 /**
- * Update user's current_country silently in the background
- * Does NOT change existing items or offers
- * Never throws - all errors caught internally
+ * DEPRECATED: This function is no longer used
+ * Country updates are handled in Settings screen only
  */
 export async function updateCurrentCountryInBackground(): Promise<void> {
-  try {
-    console.log('[LocationDetection] Updating current country in background');
-    
-    const newCountry = await detectCurrentCountry();
-    
-    if (!newCountry) {
-      if (__DEV__) {
-        console.log('[LocationDetection] Could not detect country (non-critical)');
-      }
-      return;
-    }
-    
-    // Update user settings with new current_country
-    await authenticatedPost('/api/location/update-current-country', {
-      currentCountry: newCountry,
-    });
-    
-    console.log('[LocationDetection] Current country updated to:', newCountry);
-  } catch (error) {
-    // Catch all errors - background updates should never crash the app
-    if (__DEV__) {
-      console.warn('[LocationDetection] Failed to update current country (non-critical):', error);
-    }
-  }
+  console.log('[LocationDetection] updateCurrentCountryInBackground is deprecated - country managed in Settings only');
+  // No-op: Country is managed in Settings only
 }
 
 /**
- * Get user's smart location settings from Supabase Edge Function
+ * Get user's smart location settings from Supabase user profile
  * ALWAYS returns a valid object, never throws
  * Returns safe defaults on any error
+ * 
+ * NOTE: This function NO LONGER calls /api/location/smart-settings
+ * It reads from Supabase user profiles directly
  */
 export async function getSmartLocationSettings(): Promise<SmartLocationSettings> {
   const defaultSettings: SmartLocationSettings = {
@@ -136,70 +113,38 @@ export async function getSmartLocationSettings(): Promise<SmartLocationSettings>
 
   try {
     if (__DEV__) {
-      console.log('[LocationDetection] Fetching smart location settings');
+      console.log('[LocationDetection] Returning default settings (Settings-based country management)');
     }
     
-    // Use authenticatedGet which routes to the Supabase Edge Function
-    const response = await authenticatedGet<{ 
-      ok: boolean; 
-      useIpDetection?: boolean; 
-      useLocaleFallback?: boolean;
-    }>('/api/location/smart-settings');
-    
-    if (__DEV__) {
-      console.log('[LocationDetection] Smart location settings fetched:', response);
-    }
-    
-    // Map the Edge Function response to our SmartLocationSettings interface
-    // For now, we return defaults since the Edge Function returns a simplified response
+    // Return defaults - country is managed in Settings screen
+    // The Settings screen reads from Supabase user profiles directly
     return defaultSettings;
 
   } catch (error) {
     // Catch all errors and return safe defaults
     if (__DEV__) {
-      console.warn('[LocationDetection] Error fetching smart location settings (non-critical, using defaults):', error);
+      console.warn('[LocationDetection] Error fetching settings (non-critical, using defaults):', error);
     }
     return defaultSettings;
   }
 }
 
 /**
- * Update smart location settings
- * Never throws - all errors caught internally
+ * DEPRECATED: This function is no longer used
+ * Settings are managed in Settings screen only
  */
 export async function updateSmartLocationSettings(
   updates: Partial<SmartLocationSettings>
 ): Promise<void> {
-  try {
-    await authenticatedPost('/api/location/smart-settings', updates);
-    console.log('[LocationDetection] Smart location settings updated:', updates);
-  } catch (error) {
-    // Catch all errors - settings updates should never crash the app
-    if (__DEV__) {
-      console.error('[LocationDetection] Failed to update smart location settings (non-critical):', error);
-    }
-    // Re-throw so caller knows it failed, but with a user-friendly message
-    throw new Error('Failed to update location settings. Please try again.');
-  }
+  console.log('[LocationDetection] updateSmartLocationSettings is deprecated - settings managed in Settings screen only');
+  // No-op: Settings are managed in Settings screen only
 }
 
 /**
- * Check if user is traveling (current_country != home_country)
- * Never throws - all errors caught internally
+ * DEPRECATED: This function is no longer used
+ * Travel detection is not implemented
  */
 export async function isUserTraveling(): Promise<boolean> {
-  try {
-    const settings = await getSmartLocationSettings();
-    if (!settings) return false;
-    
-    // For now, we don't have homeCountry in the settings
-    // This would need to be implemented when the feature is fully built
-    return false;
-  } catch (error) {
-    // Catch all errors - travel detection should never crash the app
-    if (__DEV__) {
-      console.warn('[LocationDetection] Failed to check if user is traveling (non-critical):', error);
-    }
-    return false;
-  }
+  console.log('[LocationDetection] isUserTraveling is deprecated - feature not implemented');
+  return false;
 }
