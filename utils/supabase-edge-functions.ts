@@ -1,5 +1,7 @@
 
 import Constants from 'expo-constants';
+import { Alert } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
 
 // Types for Edge Function requests and responses
@@ -181,20 +183,67 @@ if (!isEnvironmentConfigured()) {
 }
 
 /**
- * Call a Supabase Edge Function with proper error handling
+ * Get the authorization token for Edge Function calls
+ * Uses the signed-in user's access token when available, falls back to anon key
+ */
+async function getAuthToken(): Promise<string> {
+  try {
+    // Try to get the current session
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.warn('[Edge Function Auth] Error getting session:', error.message);
+      console.log('[Edge Function Auth] Falling back to anon key');
+      return SUPABASE_ANON_KEY;
+    }
+    
+    if (session?.access_token) {
+      console.log('[Edge Function Auth] Using user access token (JWT)');
+      return session.access_token;
+    }
+    
+    console.log('[Edge Function Auth] No session found, using anon key');
+    return SUPABASE_ANON_KEY;
+  } catch (error) {
+    console.error('[Edge Function Auth] Unexpected error getting auth token:', error);
+    console.log('[Edge Function Auth] Falling back to anon key');
+    return SUPABASE_ANON_KEY;
+  }
+}
+
+/**
+ * Call a Supabase Edge Function with proper authentication and error handling
  * Works identically in ALL environments (Expo Go, TestFlight, App Store)
  * 
- * PRODUCTION PARITY: Uses locked environment variables.
- * Returns safe fallback on 404 or missing function.
+ * AUTHENTICATION:
+ * - Uses signed-in user's JWT access token when available
+ * - Falls back to anon key for unauthenticated requests
+ * 
+ * ERROR HANDLING:
+ * - Shows user-friendly alerts on failure
+ * - Continues app flow without breaking UI
+ * - Returns safe fallback data
  */
 async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
-  request: TRequest
+  request: TRequest,
+  options?: { showErrorAlert?: boolean }
 ): Promise<TResponse> {
+  const showErrorAlert = options?.showErrorAlert !== false; // Default to true
+
   // Check if environment is configured
   if (!isEnvironmentConfigured()) {
     const errorMessage = getConfigurationErrorMessage();
     console.error(`[Edge Function] ${errorMessage}`);
+    
+    if (showErrorAlert) {
+      Alert.alert(
+        'Configuration Error',
+        'The app is not properly configured. Please contact support.',
+        [{ text: 'OK' }]
+      );
+    }
+    
     throw new Error(errorMessage);
   }
 
@@ -209,24 +258,62 @@ async function callEdgeFunction<TRequest, TResponse>(
   console.log(`[Edge Function] Environment: ${appConfig.environment}`);
 
   try {
+    // Get the appropriate auth token (user JWT or anon key)
+    const authToken = await getAuthToken();
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${authToken}`,
       },
       body: JSON.stringify(request),
     });
 
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      const errorText = await response.text();
+      console.error(`[Edge Function] ${functionName} unauthorized (401):`, errorText);
+      
+      if (showErrorAlert) {
+        Alert.alert(
+          'Authentication Error',
+          'Your session may have expired. Please try signing out and back in.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      throw new Error(`Unauthorized: ${errorText}`);
+    }
+
     // Handle 404 - function not deployed
     if (response.status === 404) {
       console.warn(`[Edge Function] ${functionName} not found (404) - function may not be deployed`);
+      
+      if (showErrorAlert) {
+        Alert.alert(
+          'Feature Unavailable',
+          'This feature is temporarily unavailable. Please try again later.',
+          [{ text: 'OK' }]
+        );
+      }
+      
       throw new Error(`Edge Function '${functionName}' not found (404)`);
     }
 
+    // Handle other error status codes
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[Edge Function] ${functionName} failed:`, response.status, errorText);
+      
+      if (showErrorAlert) {
+        Alert.alert(
+          'Request Failed',
+          `Unable to complete the request. Please try again. (Error ${response.status})`,
+          [{ text: 'OK' }]
+        );
+      }
+      
       throw new Error(`Edge function failed: ${response.status} ${errorText}`);
     }
 
@@ -236,6 +323,16 @@ async function callEdgeFunction<TRequest, TResponse>(
     return data as TResponse;
   } catch (error: any) {
     console.error(`[Edge Function] ${functionName} error:`, error);
+    
+    // Only show alert if we haven't already shown one
+    if (showErrorAlert && !error.message.includes('Unauthorized') && !error.message.includes('not found')) {
+      Alert.alert(
+        'Network Error',
+        'Unable to connect to the service. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
+      );
+    }
+    
     throw error;
   }
 }
@@ -253,7 +350,8 @@ export async function searchItem(
   try {
     const response = await callEdgeFunction<SearchItemRequest, SearchItemResponse>(
       'search-item',
-      { query, country, city }
+      { query, country, city },
+      { showErrorAlert: true }
     );
 
     // Log warnings for partial results
@@ -300,7 +398,8 @@ export async function extractItem(url: string, country: string): Promise<Extract
   try {
     const response = await callEdgeFunction<ExtractItemRequest, ExtractItemResponse>(
       'extract-item',
-      { url, country }
+      { url, country },
+      { showErrorAlert: true }
     );
 
     // Log warnings for partial results
@@ -357,7 +456,8 @@ export async function findAlternatives(
         originalUrl: options?.originalUrl,
         countryCode: options?.countryCode,
         city: options?.city,
-      }
+      },
+      { showErrorAlert: true }
     );
 
     // Log warnings for partial results
@@ -396,7 +496,8 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
   try {
     const response = await callEdgeFunction<ImportWishlistRequest, ImportWishlistResponse>(
       'import-wishlist',
-      { wishlistUrl }
+      { wishlistUrl },
+      { showErrorAlert: true }
     );
 
     // Log warnings for partial results
@@ -439,7 +540,8 @@ export async function identifyFromImage(
   try {
     const response = await callEdgeFunction<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
-      { imageUrl, imageBase64 }
+      { imageUrl, imageBase64 },
+      { showErrorAlert: true }
     );
 
     // Log warnings for partial results
@@ -497,7 +599,8 @@ export async function searchByName(
         city: options?.city,
         currency: options?.currency,
         limit: options?.limit,
-      }
+      },
+      { showErrorAlert: true }
     );
 
     // Log warnings for errors
