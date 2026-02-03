@@ -1,4 +1,11 @@
 
+// Guard against circular imports
+if (typeof global.__ADD_SCREEN_LOADED !== 'undefined') {
+  console.error('[CRITICAL] Circular import detected in add.shared.tsx! This file is being loaded multiple times.');
+  throw new Error('Circular import detected in AddItemScreen');
+}
+global.__ADD_SCREEN_LOADED = true;
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
@@ -35,6 +42,8 @@ import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import * as FileSystem from 'expo-file-system/legacy';
 import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
+
+console.log('[AddItemScreen] Module loaded successfully');
 
 type ModeType = 'share' | 'url' | 'camera' | 'upload' | 'search' | 'manual';
 
@@ -77,6 +86,8 @@ function extractUrlFromText(text: string): string | null {
 }
 
 export default function AddItemScreen() {
+  console.log('[AddItemScreen] Component rendering');
+  
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const { theme } = useAppTheme();
