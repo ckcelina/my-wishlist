@@ -32,20 +32,35 @@ function RootLayoutNav() {
     }
 
     const inAuthGroup = segments[0] === '(tabs)';
+    
+    // Allowlist for Add Item flow routes - these should NOT be redirected
+    const allowedRoutes = [
+      'import-preview',
+      'permissions',
+      'import-wishlist',
+      'smart-search',
+      'wishlist',
+      'item',
+      'shared',
+      'auth-callback',
+    ];
+    
+    const isAllowedRoute = allowedRoutes.some(route => segments[0] === route);
 
     console.log('[RootLayout] Navigation guard:', {
       user: user?.id || 'none',
       loading,
       inAuthGroup,
       segments,
+      isAllowedRoute,
     });
 
     if (!user && inAuthGroup) {
       // User is not signed in and trying to access protected routes
       console.log('[RootLayout] Redirecting to /auth');
       router.replace('/auth');
-    } else if (user && !inAuthGroup && segments[0] !== 'wishlist' && segments[0] !== 'item' && segments[0] !== 'shared' && segments[0] !== 'auth-callback') {
-      // User is signed in but not in protected routes (and not in specific screens)
+    } else if (user && !inAuthGroup && !isAllowedRoute) {
+      // User is signed in but not in protected routes (and not in allowed routes)
       console.log('[RootLayout] Redirecting to /(tabs)/wishlists');
       router.replace('/(tabs)/wishlists');
     }

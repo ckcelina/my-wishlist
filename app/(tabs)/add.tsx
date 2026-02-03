@@ -153,8 +153,6 @@ export default function AddItemScreen() {
     }
   }, [user, fetchUserWishlists]);
 
-  // Country is now managed in Settings - no local state needed
-
   useEffect(() => {
     // Handle shared URL from other apps
     if (sharedUrl) {
@@ -170,21 +168,22 @@ export default function AddItemScreen() {
     if (!user) return;
 
     try {
-      console.log('[AddItem] Fetching wishlists');
+      console.log('[AddItem] Fetching wishlists for user:', user.id);
       const data = await fetchWishlists(user.id);
+      console.log('[AddItem] Fetched wishlists:', data.length);
       setWishlists(data);
 
       // Set default wishlist
       const defaultWishlist = data.find(w => w.isDefault) || data[0];
       if (defaultWishlist) {
         setSelectedWishlistId(defaultWishlist.id);
+        console.log('[AddItem] Selected default wishlist:', defaultWishlist.name);
       }
     } catch (error) {
       console.error('[AddItem] Error fetching wishlists:', error);
+      Alert.alert('Error', 'Failed to load wishlists. Please try again.');
     }
   }, [user]);
-
-  // Country selection removed - managed in Settings only
 
   const handleRetryConfiguration = () => {
     console.log('[AddItem] User tapped Retry Configuration');
@@ -199,37 +198,45 @@ export default function AddItemScreen() {
 
   // Mode 2: Extract from URL
   const handleExtractUrl = async () => {
-    if (!urlInput.trim()) {
-      Alert.alert('Missing URL', 'Please enter a product URL');
-      return;
-    }
-
-    if (!isValidUrl(urlInput.trim())) {
-      Alert.alert('Invalid URL', 'Please enter a valid URL starting with http:// or https://');
-      return;
-    }
-
-    // Get country from Settings
-    const searchCountry = settings?.activeSearchCountry || 'US';
-    if (!searchCountry) {
-      Alert.alert('Country Required', 'Please set your country in Settings first');
-      return;
-    }
-
-    // Check configuration before making API call
-    if (!isEnvironmentConfigured()) {
-      Alert.alert('Configuration Error', getConfigurationErrorMessage());
-      return;
-    }
-
-    console.log('[AddItem] Extracting item from URL:', urlInput);
-    setExtracting(true);
-
+    console.log('[AddItem] handleExtractUrl called');
+    
     try {
+      if (!urlInput.trim()) {
+        console.log('[AddItem] URL input is empty');
+        Alert.alert('Missing URL', 'Please enter a product URL');
+        return;
+      }
+
+      if (!isValidUrl(urlInput.trim())) {
+        console.log('[AddItem] Invalid URL format:', urlInput);
+        Alert.alert('Invalid URL', 'Please enter a valid URL starting with http:// or https://');
+        return;
+      }
+
+      // Get country from Settings
+      const searchCountry = settings?.activeSearchCountry || 'US';
+      console.log('[AddItem] Using search country:', searchCountry);
+      
+      if (!searchCountry) {
+        console.log('[AddItem] No country set');
+        Alert.alert('Country Required', 'Please set your country in Settings first');
+        return;
+      }
+
+      // Check configuration before making API call
+      if (!isEnvironmentConfigured()) {
+        console.error('[AddItem] Environment not configured');
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        return;
+      }
+
+      console.log('[AddItem] Extracting item from URL:', urlInput);
+      setExtracting(true);
+
       const result = await extractItem(urlInput.trim(), searchCountry);
       console.log('[AddItem] Extraction result:', result);
 
-      // Navigate to import preview with extracted data
+      // Navigate to import preview with extracted data (even if partial)
       const productData = {
         itemName: result.title || '',
         imageUrl: result.images?.[0] || '',
@@ -243,6 +250,7 @@ export default function AddItemScreen() {
         inputType: 'url',
       };
 
+      console.log('[AddItem] Navigating to import-preview with data');
       router.push({
         pathname: '/import-preview',
         params: {
@@ -250,8 +258,42 @@ export default function AddItemScreen() {
         },
       });
     } catch (error: any) {
-      console.error('[AddItem] Error extracting item:', error);
-      Alert.alert('Extraction Failed', error.message || 'Failed to extract product information. You can still add it manually.');
+      console.error('[AddItem] Error in handleExtractUrl:', error);
+      
+      // Fallback: Allow manual entry with URL attached
+      Alert.alert(
+        'Extraction Failed',
+        'Could not extract product details automatically. You can still add it manually.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after extraction failure');
+              // Navigate to import-preview with minimal data
+              const fallbackData = {
+                itemName: '',
+                imageUrl: '',
+                extractedImages: [],
+                storeName: '',
+                storeDomain: '',
+                price: null,
+                currency: 'USD',
+                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                sourceUrl: urlInput.trim(),
+                inputType: 'url',
+              };
+              
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  data: JSON.stringify(fallbackData),
+                },
+              });
+            },
+          },
+        ]
+      );
     } finally {
       setExtracting(false);
     }
@@ -259,75 +301,94 @@ export default function AddItemScreen() {
 
   // Mode 3: Camera
   const handleTakePhoto = async () => {
-    console.log('[AddItem] User tapped Take Photo');
+    console.log('[AddItem] handleTakePhoto called');
 
-    // Check permission status first
-    const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+    try {
+      // Check permission status first
+      const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
+      console.log('[AddItem] Camera permission status:', currentStatus);
 
-    if (currentStatus === 'undetermined') {
-      // Show pre-permission screen
-      router.push('/permissions/camera');
-      return;
-    }
+      if (currentStatus === 'undetermined') {
+        // Show pre-permission screen
+        console.log('[AddItem] Navigating to camera permission screen');
+        router.push('/permissions/camera');
+        return;
+      }
 
-    if (currentStatus !== 'granted') {
-      // Permission was denied, show settings prompt
-      Alert.alert(
-        'Camera Permission Required',
-        'Camera access is required to take photos of products. Please enable it in Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ]
-      );
-      return;
-    }
+      if (currentStatus !== 'granted') {
+        // Permission was denied, show settings prompt
+        console.log('[AddItem] Camera permission denied');
+        Alert.alert(
+          'Camera Permission Required',
+          'Camera access is required to take photos of products. Please enable it in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true,
-    });
+      console.log('[AddItem] Launching camera');
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setCameraImage(result.assets[0].uri);
-      console.log('[AddItem] Photo taken:', result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setCameraImage(result.assets[0].uri);
+        console.log('[AddItem] Photo taken successfully:', result.assets[0].uri);
+      } else {
+        console.log('[AddItem] Camera cancelled by user');
+      }
+    } catch (error) {
+      console.error('[AddItem] Error in handleTakePhoto:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
     }
   };
 
   const handleIdentifyFromCamera = async () => {
-    if (!cameraImage) {
-      Alert.alert('No Photo', 'Please take a photo first');
-      return;
-    }
-
-    // Get country from Settings
-    const searchCountry = settings?.activeSearchCountry || 'US';
-    if (!searchCountry) {
-      Alert.alert('Country Required', 'Please set your country in Settings first');
-      return;
-    }
-
-    // Check configuration before making API call
-    if (!isEnvironmentConfigured()) {
-      Alert.alert('Configuration Error', getConfigurationErrorMessage());
-      return;
-    }
-
-    console.log('[AddItem] Identifying product from camera image');
-    setIdentifyingCamera(true);
-
+    console.log('[AddItem] handleIdentifyFromCamera called');
+    
     try {
+      if (!cameraImage) {
+        console.log('[AddItem] No camera image available');
+        Alert.alert('No Photo', 'Please take a photo first');
+        return;
+      }
+
+      // Get country from Settings
+      const searchCountry = settings?.activeSearchCountry || 'US';
+      console.log('[AddItem] Using search country:', searchCountry);
+      
+      if (!searchCountry) {
+        console.log('[AddItem] No country set');
+        Alert.alert('Country Required', 'Please set your country in Settings first');
+        return;
+      }
+
+      // Check configuration before making API call
+      if (!isEnvironmentConfigured()) {
+        console.error('[AddItem] Environment not configured');
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        return;
+      }
+
+      console.log('[AddItem] Identifying product from camera image');
+      setIdentifyingCamera(true);
+
       // Convert image to base64
       const base64 = await FileSystem.readAsStringAsync(cameraImage, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      console.log('[AddItem] Image converted to base64, length:', base64.length);
 
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Navigate to confirm/preview screen
+      // Navigate to import-preview with identified data (even if partial)
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: cameraImage,
@@ -341,6 +402,7 @@ export default function AddItemScreen() {
         inputType: 'camera',
       };
 
+      console.log('[AddItem] Navigating to import-preview with camera data');
       router.push({
         pathname: '/import-preview',
         params: {
@@ -348,8 +410,42 @@ export default function AddItemScreen() {
         },
       });
     } catch (error: any) {
-      console.error('[AddItem] Error identifying product:', error);
-      Alert.alert('Identification Failed', error.message || 'Failed to identify product. You can still add it manually.');
+      console.error('[AddItem] Error in handleIdentifyFromCamera:', error);
+      
+      // Fallback: Allow manual entry with photo attached
+      Alert.alert(
+        'Identification Failed',
+        'Could not identify the product automatically. You can still add it manually with the photo.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after identification failure');
+              // Navigate to import-preview with photo but no identification
+              const fallbackData = {
+                itemName: '',
+                imageUrl: cameraImage,
+                extractedImages: [cameraImage],
+                storeName: '',
+                storeDomain: '',
+                price: null,
+                currency: 'USD',
+                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                sourceUrl: '',
+                inputType: 'camera',
+              };
+              
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  data: JSON.stringify(fallbackData),
+                },
+              });
+            },
+          },
+        ]
+      );
     } finally {
       setIdentifyingCamera(false);
     }
@@ -357,75 +453,94 @@ export default function AddItemScreen() {
 
   // Mode 4: Upload
   const handleUploadImage = async () => {
-    console.log('[AddItem] User tapped Upload Image');
+    console.log('[AddItem] handleUploadImage called');
 
-    // Check permission status first
-    const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+    try {
+      // Check permission status first
+      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
+      console.log('[AddItem] Photo library permission status:', currentStatus);
 
-    if (currentStatus === 'undetermined') {
-      // Show pre-permission screen
-      router.push('/permissions/photos');
-      return;
-    }
+      if (currentStatus === 'undetermined') {
+        // Show pre-permission screen
+        console.log('[AddItem] Navigating to photos permission screen');
+        router.push('/permissions/photos');
+        return;
+      }
 
-    if (currentStatus !== 'granted') {
-      // Permission was denied, show settings prompt
-      Alert.alert(
-        'Photo Library Permission Required',
-        'Photo library access is required to select images. Please enable it in Settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ]
-      );
-      return;
-    }
+      if (currentStatus !== 'granted') {
+        // Permission was denied, show settings prompt
+        console.log('[AddItem] Photo library permission denied');
+        Alert.alert(
+          'Photo Library Permission Required',
+          'Photo library access is required to select images. Please enable it in Settings.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true,
-    });
+      console.log('[AddItem] Launching image picker');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+        base64: true,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setUploadImage(result.assets[0].uri);
-      console.log('[AddItem] Image uploaded:', result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setUploadImage(result.assets[0].uri);
+        console.log('[AddItem] Image uploaded successfully:', result.assets[0].uri);
+      } else {
+        console.log('[AddItem] Image picker cancelled by user');
+      }
+    } catch (error) {
+      console.error('[AddItem] Error in handleUploadImage:', error);
+      Alert.alert('Error', 'Failed to open photo library. Please try again.');
     }
   };
 
   const handleIdentifyFromUpload = async () => {
-    if (!uploadImage) {
-      Alert.alert('No Image', 'Please upload an image first');
-      return;
-    }
-
-    // Get country from Settings
-    const searchCountry = settings?.activeSearchCountry || 'US';
-    if (!searchCountry) {
-      Alert.alert('Country Required', 'Please set your country in Settings first');
-      return;
-    }
-
-    // Check configuration before making API call
-    if (!isEnvironmentConfigured()) {
-      Alert.alert('Configuration Error', getConfigurationErrorMessage());
-      return;
-    }
-
-    console.log('[AddItem] Identifying product from uploaded image');
-    setIdentifyingUpload(true);
-
+    console.log('[AddItem] handleIdentifyFromUpload called');
+    
     try {
+      if (!uploadImage) {
+        console.log('[AddItem] No upload image available');
+        Alert.alert('No Image', 'Please upload an image first');
+        return;
+      }
+
+      // Get country from Settings
+      const searchCountry = settings?.activeSearchCountry || 'US';
+      console.log('[AddItem] Using search country:', searchCountry);
+      
+      if (!searchCountry) {
+        console.log('[AddItem] No country set');
+        Alert.alert('Country Required', 'Please set your country in Settings first');
+        return;
+      }
+
+      // Check configuration before making API call
+      if (!isEnvironmentConfigured()) {
+        console.error('[AddItem] Environment not configured');
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        return;
+      }
+
+      console.log('[AddItem] Identifying product from uploaded image');
+      setIdentifyingUpload(true);
+
       // Convert image to base64
       const base64 = await FileSystem.readAsStringAsync(uploadImage, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      console.log('[AddItem] Image converted to base64, length:', base64.length);
 
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Navigate to confirm/preview screen
+      // Navigate to import-preview with identified data (even if partial)
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: uploadImage,
@@ -439,6 +554,7 @@ export default function AddItemScreen() {
         inputType: 'image',
       };
 
+      console.log('[AddItem] Navigating to import-preview with upload data');
       router.push({
         pathname: '/import-preview',
         params: {
@@ -446,8 +562,42 @@ export default function AddItemScreen() {
         },
       });
     } catch (error: any) {
-      console.error('[AddItem] Error identifying product:', error);
-      Alert.alert('Identification Failed', error.message || 'Failed to identify product. You can still add it manually.');
+      console.error('[AddItem] Error in handleIdentifyFromUpload:', error);
+      
+      // Fallback: Allow manual entry with photo attached
+      Alert.alert(
+        'Identification Failed',
+        'Could not identify the product automatically. You can still add it manually with the photo.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after identification failure');
+              // Navigate to import-preview with photo but no identification
+              const fallbackData = {
+                itemName: '',
+                imageUrl: uploadImage,
+                extractedImages: [uploadImage],
+                storeName: '',
+                storeDomain: '',
+                price: null,
+                currency: 'USD',
+                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                sourceUrl: '',
+                inputType: 'image',
+              };
+              
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  data: JSON.stringify(fallbackData),
+                },
+              });
+            },
+          },
+        ]
+      );
     } finally {
       setIdentifyingUpload(false);
     }
@@ -455,42 +605,67 @@ export default function AddItemScreen() {
 
   // Mode 5: Search by Name
   const handleSearchByName = async () => {
-    if (!searchQuery.trim()) {
-      Alert.alert('Missing Query', 'Please enter a product name');
-      return;
-    }
-
-    // Get country from Settings
-    const searchCountry = settings?.activeSearchCountry || 'US';
-    if (!searchCountry) {
-      Alert.alert('Country Required', 'Please set your country in Settings first');
-      return;
-    }
-
-    // Check configuration before making API call
-    if (!isEnvironmentConfigured()) {
-      Alert.alert('Configuration Error', getConfigurationErrorMessage());
-      return;
-    }
-
-    console.log('[AddItem] Searching for:', searchQuery);
-    setSearching(true);
-
+    console.log('[AddItem] handleSearchByName called');
+    
     try {
+      if (!searchQuery.trim()) {
+        console.log('[AddItem] Search query is empty');
+        Alert.alert('Missing Query', 'Please enter a product name');
+        return;
+      }
+
+      // Get country from Settings
+      const searchCountry = settings?.activeSearchCountry || 'US';
+      console.log('[AddItem] Using search country:', searchCountry);
+      
+      if (!searchCountry) {
+        console.log('[AddItem] No country set');
+        Alert.alert('Country Required', 'Please set your country in Settings first');
+        return;
+      }
+
+      // Check configuration before making API call
+      if (!isEnvironmentConfigured()) {
+        console.error('[AddItem] Environment not configured');
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        return;
+      }
+
+      console.log('[AddItem] Searching for:', searchQuery);
+      setSearching(true);
+
       const result = await searchByName(searchQuery.trim(), {
         countryCode: searchCountry,
       });
       console.log('[AddItem] Search results:', result);
 
       if (result.results && result.results.length > 0) {
+        console.log('[AddItem] Found', result.results.length, 'results');
         setSearchResults(result.results);
         setShowSearchResults(true);
       } else {
+        console.log('[AddItem] No search results found');
         Alert.alert('No Results', 'No products found. Try a different search or add manually.');
       }
     } catch (error: any) {
-      console.error('[AddItem] Error searching:', error);
-      Alert.alert('Search Failed', error.message || 'Failed to search for products. You can still add it manually.');
+      console.error('[AddItem] Error in handleSearchByName:', error);
+      
+      // Fallback: Allow manual entry
+      Alert.alert(
+        'Search Failed',
+        'Could not search for products. You can still add the item manually.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after search failure');
+              setSelectedMode('manual');
+              setManualName(searchQuery.trim());
+            },
+          },
+        ]
+      );
     } finally {
       setSearching(false);
     }
@@ -498,70 +673,90 @@ export default function AddItemScreen() {
 
   const handleSelectSearchResult = (result: SearchResult) => {
     console.log('[AddItem] User selected search result:', result.title);
-    setShowSearchResults(false);
+    
+    try {
+      setShowSearchResults(false);
 
-    // Navigate to confirm/preview screen
-    const productData = {
-      itemName: result.title,
-      imageUrl: result.imageUrl || '',
-      extractedImages: result.imageUrl ? [result.imageUrl] : [],
-      storeName: '',
-      storeDomain: result.storeDomain,
-      price: result.price,
-      currency: result.currency || 'USD',
-      countryAvailability: [searchCountry],
-      sourceUrl: result.productUrl,
-      inputType: 'name',
-    };
+      // Navigate to import-preview with search result data
+      const productData = {
+        itemName: result.title,
+        imageUrl: result.imageUrl || '',
+        extractedImages: result.imageUrl ? [result.imageUrl] : [],
+        storeName: '',
+        storeDomain: result.storeDomain,
+        price: result.price,
+        currency: result.currency || 'USD',
+        countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+        sourceUrl: result.productUrl,
+        inputType: 'name',
+      };
 
-    router.push({
-      pathname: '/import-preview',
-      params: {
-        data: JSON.stringify(productData),
-      },
-    });
+      console.log('[AddItem] Navigating to import-preview with search result data');
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          data: JSON.stringify(productData),
+        },
+      });
+    } catch (error) {
+      console.error('[AddItem] Error in handleSelectSearchResult:', error);
+      Alert.alert('Error', 'Failed to process search result. Please try again.');
+    }
   };
 
   // Mode 6: Manual Entry
   const handleManualImagePick = async () => {
-    console.log('[AddItem] User tapped Pick Image for Manual Entry');
+    console.log('[AddItem] handleManualImagePick called');
 
-    const { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      const { status: newStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (newStatus !== 'granted') {
-        Alert.alert('Permission Required', 'Photo library access is required to select images');
-        return;
+    try {
+      const { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        const { status: newStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (newStatus !== 'granted') {
+          console.log('[AddItem] Photo library permission denied for manual entry');
+          Alert.alert('Permission Required', 'Photo library access is required to select images');
+          return;
+        }
       }
-    }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-    });
+      console.log('[AddItem] Launching image picker for manual entry');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setManualImage(result.assets[0].uri);
-      console.log('[AddItem] Manual image selected:', result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setManualImage(result.assets[0].uri);
+        console.log('[AddItem] Manual image selected:', result.assets[0].uri);
+      } else {
+        console.log('[AddItem] Image picker cancelled by user');
+      }
+    } catch (error) {
+      console.error('[AddItem] Error in handleManualImagePick:', error);
+      Alert.alert('Error', 'Failed to select image. Please try again.');
     }
   };
 
   const handleSaveManual = async () => {
-    if (!manualName.trim()) {
-      Alert.alert('Missing Name', 'Please enter an item name');
-      return;
-    }
-
-    if (!selectedWishlistId) {
-      Alert.alert('No Wishlist Selected', 'Please select a wishlist');
-      return;
-    }
-
-    console.log('[AddItem] Saving manual entry');
-    setSavingManual(true);
-
+    console.log('[AddItem] handleSaveManual called');
+    
     try {
+      if (!manualName.trim()) {
+        console.log('[AddItem] Manual name is empty');
+        Alert.alert('Missing Name', 'Please enter an item name');
+        return;
+      }
+
+      if (!selectedWishlistId) {
+        console.log('[AddItem] No wishlist selected');
+        Alert.alert('No Wishlist Selected', 'Please select a wishlist');
+        return;
+      }
+
+      console.log('[AddItem] Saving manual entry');
+      setSavingManual(true);
+
       // Navigate to import preview with manual data
       const productData = {
         itemName: manualName.trim(),
@@ -577,6 +772,7 @@ export default function AddItemScreen() {
         inputType: 'manual',
       };
 
+      console.log('[AddItem] Navigating to import-preview with manual data');
       router.push({
         pathname: '/import-preview',
         params: {
@@ -584,7 +780,7 @@ export default function AddItemScreen() {
         },
       });
     } catch (error: any) {
-      console.error('[AddItem] Error saving manual entry:', error);
+      console.error('[AddItem] Error in handleSaveManual:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
     } finally {
       setSavingManual(false);
@@ -920,7 +1116,7 @@ export default function AddItemScreen() {
               color={colors.accent}
             />
             <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              Search respects your "Deliver to" country. Select a result to review before saving.
+              Search respects your country setting. Select a result to review before saving.
             </Text>
           </View>
         </View>
