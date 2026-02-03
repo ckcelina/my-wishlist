@@ -31,7 +31,7 @@ import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
 import { ProductMatchCard, ProductMatch } from '@/components/ProductMatchCard';
 import { supabase } from '@/lib/supabase';
-import { authenticatedPost } from '@/utils/api';
+import { authenticatedPost, authenticatedPut } from '@/utils/api';
 import { identifyProductFromImage, getProductPrices } from '@/utils/supabase-edge-functions';
 
 // Placeholder image URL for fallback
@@ -150,6 +150,11 @@ export default function ImportPreviewScreen() {
   // Offers state (NEW)
   const [offers, setOffers] = useState<AlternativeStore[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
+  
+  // Price tracking state (NEW)
+  const [trackPriceDrops, setTrackPriceDrops] = useState(false);
+  const [desiredPrice, setDesiredPrice] = useState('');
+  const [showPriceTrackingModal, setShowPriceTrackingModal] = useState(false);
   
   // Data
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -863,9 +868,35 @@ export default function ImportPreviewScreen() {
         }
       }
       
+      // If price tracking is enabled, set up the alert
+      if (trackPriceDrops && selectedProductId) {
+        console.log('[ImportPreview] Setting up price tracking for item:', newItem.id);
+        try {
+          const targetPrice = desiredPrice ? parseFloat(desiredPrice) : null;
+          const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode || 'US';
+          const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency || 'USD';
+          
+          await authenticatedPost(`/api/price-alerts`, {
+            itemId: newItem.id,
+            productId: selectedProductId,
+            countryCode: effectiveCountryCode,
+            currencyCode: effectiveCurrencyCode,
+            enabled: true,
+            desiredPrice: targetPrice,
+            thresholdPercent: 10, // Default 10% threshold
+          });
+          console.log('[ImportPreview] Price tracking enabled with target:', targetPrice);
+        } catch (alertError) {
+          console.error('[ImportPreview] Error setting up price tracking:', alertError);
+          // Don't fail the whole operation if alert setup fails
+        }
+      }
+      
       Alert.alert(
         'Success',
-        'Item added to your wishlist!',
+        trackPriceDrops 
+          ? 'Item added to your wishlist with price tracking enabled!'
+          : 'Item added to your wishlist!',
         [
           {
             text: 'View Wishlist',
@@ -881,7 +912,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setSaving(false);
     }
-  }, [selectedWishlistId, itemName, selectedImage, price, currency, productData, storeDomain, notes, countryCode, cityId, currencyCode, alternativeStores, userLocation, uploadImageToSupabase, router]);
+  }, [selectedWishlistId, itemName, selectedImage, price, currency, productData, storeDomain, notes, countryCode, cityId, currencyCode, alternativeStores, userLocation, trackPriceDrops, desiredPrice, selectedProductId, smartLocationSettings, uploadImageToSupabase, router]);
 
   const handleDuplicateAddAnyway = useCallback(async () => {
     console.log('[ImportPreview] User chose to add anyway despite duplicates');
@@ -1009,7 +1040,7 @@ export default function ImportPreviewScreen() {
   const isPlaceholderImage = !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL;
 
   return (
-    <>
+    <React.Fragment>
       <Stack.Screen
         options={{
           title: 'Confirm Product',
@@ -1381,6 +1412,43 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
+            {/* Price Tracking Toggle (NEW) */}
+            {isCorrectProduct && (
+              <View style={[styles.priceTrackingSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.priceTrackingHeader}>
+                  <View style={styles.priceTrackingLeft}>
+                    <IconSymbol
+                      ios_icon_name="bell.fill"
+                      android_material_icon_name="notifications"
+                      size={20}
+                      color={trackPriceDrops ? colors.accent : colors.textTertiary}
+                    />
+                    <Text style={[styles.priceTrackingTitle, { color: colors.textPrimary }]}>
+                      Track price drops for this item?
+                    </Text>
+                  </View>
+                  <Switch
+                    value={trackPriceDrops}
+                    onValueChange={(value) => {
+                      setTrackPriceDrops(value);
+                      if (value) {
+                        setShowPriceTrackingModal(true);
+                      }
+                    }}
+                    trackColor={{ false: colors.border, true: colors.accent }}
+                    thumbColor={colors.surface}
+                  />
+                </View>
+                {trackPriceDrops && (
+                  <Text style={[styles.priceTrackingHint, { color: colors.textSecondary }]}>
+                    {desiredPrice 
+                      ? `You'll be notified when the price drops below ${currency} ${parseFloat(desiredPrice).toFixed(2)}`
+                      : 'You\'ll be notified of any price drops (10% threshold)'}
+                  </Text>
+                )}
+              </View>
+            )}
+
             {/* Spacer for footer */}
             <View style={{ height: 180 }} />
           </ScrollView>
@@ -1523,6 +1591,65 @@ export default function ImportPreviewScreen() {
           </Pressable>
         </Modal>
 
+        {/* Price Tracking Modal (NEW) */}
+        <Modal
+          visible={showPriceTrackingModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowPriceTrackingModal(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setShowPriceTrackingModal(false)}>
+            <Pressable style={[styles.priceTrackingModalContent, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Set Target Price</Text>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                Get notified when the price drops below your target (optional)
+              </Text>
+              
+              <View style={styles.targetPriceInputContainer}>
+                <Text style={[styles.targetPriceLabel, { color: colors.textSecondary }]}>
+                  Target Price (optional)
+                </Text>
+                <View style={styles.targetPriceInputRow}>
+                  <TextInput
+                    style={[styles.targetPriceInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                    value={desiredPrice}
+                    onChangeText={setDesiredPrice}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={[styles.targetPriceCurrency, { color: colors.textPrimary }]}>{currency}</Text>
+                </View>
+                <Text style={[styles.targetPriceHint, { color: colors.textTertiary }]}>
+                  Leave empty to be notified of any price drop (10% threshold)
+                </Text>
+              </View>
+              
+              <View style={styles.priceTrackingModalActions}>
+                <TouchableOpacity
+                  style={[styles.priceTrackingModalButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  onPress={() => {
+                    setDesiredPrice('');
+                    setShowPriceTrackingModal(false);
+                  }}
+                >
+                  <Text style={[styles.priceTrackingModalButtonText, { color: colors.textPrimary }]}>
+                    Skip
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.priceTrackingModalButton, styles.priceTrackingModalButtonPrimary, { backgroundColor: colors.accent }]}
+                  onPress={() => setShowPriceTrackingModal(false)}
+                >
+                  <Text style={[styles.priceTrackingModalButtonText, { color: colors.textInverse }]}>
+                    Done
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         {/* Image Picker Modal - Shows top 5 suggestions + upload/camera options */}
         <Modal
           visible={showImagePicker}
@@ -1656,7 +1783,7 @@ export default function ImportPreviewScreen() {
           </Pressable>
         </Modal>
       </SafeAreaView>
-    </>
+    </React.Fragment>
   );
 }
 
@@ -1981,7 +2108,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
   },
   confirmationLeft: {
     flexDirection: 'row',
@@ -1992,6 +2119,32 @@ const styles = StyleSheet.create({
   confirmationText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  priceTrackingSection: {
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+  },
+  priceTrackingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  priceTrackingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flex: 1,
+  },
+  priceTrackingTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  priceTrackingHint: {
+    fontSize: 12,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
   footer: {
     padding: spacing.md,
@@ -2048,6 +2201,13 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     maxHeight: '90%',
   },
+  priceTrackingModalContent: {
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    maxWidth: 400,
+    alignSelf: 'center',
+  },
   modalHandle: {
     width: 40,
     height: 4,
@@ -2092,6 +2252,54 @@ const styles = StyleSheet.create({
   noneOfTheseText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  targetPriceInputContainer: {
+    marginVertical: spacing.md,
+  },
+  targetPriceLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: spacing.xs,
+  },
+  targetPriceInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  targetPriceInput: {
+    flex: 1,
+    borderRadius: 8,
+    padding: spacing.sm,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  targetPriceCurrency: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  targetPriceHint: {
+    fontSize: 12,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  priceTrackingModalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  priceTrackingModalButton: {
+    flex: 1,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  priceTrackingModalButtonPrimary: {
+    borderWidth: 0,
+  },
+  priceTrackingModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   imageGrid: {
     marginBottom: spacing.md,
