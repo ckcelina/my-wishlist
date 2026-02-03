@@ -382,6 +382,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#856404',
   },
+  noMatchesContainer: {
+    backgroundColor: '#f5f5f5',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  noMatchesTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  noMatchesText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -618,6 +637,7 @@ export default function ConfirmProductScreen() {
     setIdentifying(true);
     setAnalysisError(null);
     setDetectedText(null); // Reset detected text for retry
+    setResult(null); // CRITICAL: Reset result to clear any stale suggestions
 
     try {
       // Get location settings from SmartLocationContext (Settings only)
@@ -743,13 +763,13 @@ export default function ConfirmProductScreen() {
           }
         }
         
-        // Create a minimal result for UI consistency
+        // CRITICAL: Create result with EMPTY suggestedProducts array
         setResult({
           bestGuessTitle: localOcrText,
           bestGuessCategory: null,
           keywords: cleanedText.split(' '),
           confidence: 0.5, // Low confidence for local fallback
-          suggestedProducts: [],
+          suggestedProducts: [], // EMPTY - no matches
         });
       } else {
         // Step 5: Truly no readable text detected
@@ -757,12 +777,13 @@ export default function ConfirmProductScreen() {
         setDetectedText('No readable text detected');
         setTitle('Product - Please specify');
         
+        // CRITICAL: Create result with EMPTY suggestedProducts array
         setResult({
           bestGuessTitle: null,
           bestGuessCategory: null,
           keywords: [],
           confidence: 0,
-          suggestedProducts: [],
+          suggestedProducts: [], // EMPTY - no matches
         });
       }
     } catch (fallbackError: any) {
@@ -770,6 +791,15 @@ export default function ConfirmProductScreen() {
       // Even if fallback fails, set a generic title
       setTitle('Product - Please specify');
       setDetectedText('Error detecting text');
+      
+      // CRITICAL: Create result with EMPTY suggestedProducts array
+      setResult({
+        bestGuessTitle: null,
+        bestGuessCategory: null,
+        keywords: [],
+        confidence: 0,
+        suggestedProducts: [], // EMPTY - no matches
+      });
     }
   };
 
@@ -1070,6 +1100,9 @@ export default function ConfirmProductScreen() {
     });
   };
 
+  // CRITICAL: Calculate suggestion count from actual array length
+  const suggestionCount = result?.suggestedProducts?.length || 0;
+  const hasSuggestions = suggestionCount > 0;
   const confidencePercentage = result ? Math.round(result.confidence * 100) : 0;
   const hasIncompleteInfo = !title || !imageUri || !price;
 
@@ -1170,14 +1203,12 @@ export default function ConfirmProductScreen() {
           </View>
         )}
 
-        {/* Incomplete Information Warning */}
-        {hasIncompleteInfo && !analysisError && (
+        {/* CRITICAL FIX: Only show suggestion count when suggestions.length > 0 */}
+        {hasIncompleteInfo && !analysisError && hasSuggestions && (
           <View style={styles.incompleteWarning}>
             <Text style={styles.incompleteTitle}>Incomplete Information</Text>
             <Text style={styles.incompleteText}>
-              {result && result.suggestedProducts.length > 0
-                ? `${result.suggestedProducts.length} suggestion${result.suggestedProducts.length === 1 ? '' : 's'} available below`
-                : 'No matches found. You can enter details manually.'}
+              {suggestionCount} suggestion{suggestionCount === 1 ? '' : 's'} available below
             </Text>
           </View>
         )}
@@ -1189,7 +1220,8 @@ export default function ConfirmProductScreen() {
               <Text style={styles.confidenceValue}>{confidencePercentage}%</Text>
             </View>
 
-            {result.suggestedProducts.length > 0 ? (
+            {/* CRITICAL FIX: Only show matches section when suggestions.length > 0 */}
+            {hasSuggestions ? (
               <>
                 <Text style={styles.sectionTitle}>We found these matches</Text>
 
@@ -1230,15 +1262,19 @@ export default function ConfirmProductScreen() {
                 </TouchableOpacity>
               </>
             ) : (
-              <View style={styles.editSection}>
-                <Text style={styles.sectionTitle}>No matches found</Text>
-                <Text style={[styles.confidenceText, { marginBottom: 16 }]}>
-                  Enter product details manually below
+              /* CRITICAL FIX: Show "No matches found" with Retry button when suggestions.length === 0 */
+              <View style={styles.noMatchesContainer}>
+                <Text style={styles.noMatchesTitle}>No matches found</Text>
+                <Text style={styles.noMatchesText}>
+                  We couldn't find any matching products. You can enter details manually below or try analyzing again.
                 </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
+                  <Text style={styles.retryButtonText}>Retry Analysis</Text>
+                </TouchableOpacity>
               </View>
             )}
 
-            {(selectedProductIndex !== null || result.suggestedProducts.length === 0) && (
+            {(selectedProductIndex !== null || !hasSuggestions) && (
               <View style={styles.editSection}>
                 <Text style={styles.sectionTitle}>Edit Details</Text>
 
