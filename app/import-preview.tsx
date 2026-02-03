@@ -46,7 +46,7 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 interface ExtractedProductData {
   itemName: string;
   imageUrl: string;
-  extractedImages: string[]; // Top 5 suggested images
+  extractedImages: string[];
   storeName: string;
   storeDomain: string;
   price: number | null;
@@ -104,20 +104,28 @@ export default function ImportPreviewScreen() {
   const initializationDone = useRef(false);
   const wishlistsFetched = useRef(false);
   
-  // CRITICAL FIX: Properly memoize dataParam with stable reference
-  const dataParam = useMemo(() => {
+  // CRITICAL FIX: Parse dataParam ONCE and store in ref to prevent re-parsing
+  const dataParamRef = useRef<ExtractedProductData | null>(null);
+  
+  // Parse extracted data from params ONCE
+  useEffect(() => {
+    if (dataParamRef.current) return; // Already parsed
+    
     const rawData = params.data;
-    if (!rawData || typeof rawData !== 'string') return null;
+    if (!rawData || typeof rawData !== 'string') {
+      dataParamRef.current = null;
+      return;
+    }
     
     try {
-      return JSON.parse(decodeURIComponent(rawData));
+      dataParamRef.current = JSON.parse(decodeURIComponent(rawData as string));
+      console.log('[ImportPreview] Parsed data param:', dataParamRef.current);
     } catch (e) {
       console.error('[ImportPreview] Error parsing data param:', e);
-      return null;
+      dataParamRef.current = null;
     }
-  }, [params.data]); // Only re-parse when params.data actually changes
+  }, [params.data]);
   
-  // Parse extracted data from params
   const [productData, setProductData] = useState<ExtractedProductData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -127,7 +135,7 @@ export default function ImportPreviewScreen() {
   const [itemName, setItemName] = useState('');
   const [brand, setBrand] = useState('');
   const [selectedImage, setSelectedImage] = useState('');
-  const [suggestedImages, setSuggestedImages] = useState<string[]>([]); // Top 5 images
+  const [suggestedImages, setSuggestedImages] = useState<string[]>([]);
   const [storeName, setStoreName] = useState('');
   const [storeDomain, setStoreDomain] = useState('');
   const [price, setPrice] = useState('');
@@ -147,18 +155,19 @@ export default function ImportPreviewScreen() {
   const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
-  // Product matching state (NEW)
+  // Product matching state
   const [showProductMatches, setShowProductMatches] = useState(false);
   const [productMatches, setProductMatches] = useState<ProductMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<ProductMatch | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   
-  // Offers state (NEW)
+  // Offers state
   const [offers, setOffers] = useState<AlternativeStore[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
+  const [offersError, setOffersError] = useState<string | null>(null);
   
-  // Price tracking state (NEW)
+  // Price tracking state
   const [trackPriceDrops, setTrackPriceDrops] = useState(false);
   const [desiredPrice, setDesiredPrice] = useState('');
   const [showPriceTrackingModal, setShowPriceTrackingModal] = useState(false);
@@ -168,6 +177,7 @@ export default function ImportPreviewScreen() {
   const [alternativeStores, setAlternativeStores] = useState<AlternativeStore[]>([]);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
   const [searchStage, setSearchStage] = useState<SearchStage>('idle');
+  const [error, setError] = useState<string | null>(null);
   
   // Warnings
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -185,11 +195,11 @@ export default function ImportPreviewScreen() {
   useEffect(() => {
     // Guard: Only run once
     if (initializationDone.current) {
-      console.log('[ImportPreview] Initialization already done, skipping');
       return;
     }
 
     // Guard: Only run if dataParam exists
+    const dataParam = dataParamRef.current;
     if (!dataParam) {
       console.log('[ImportPreview] No data param, skipping initialization');
       setLoading(false);
@@ -200,8 +210,6 @@ export default function ImportPreviewScreen() {
     initializationDone.current = true; // Mark as done IMMEDIATELY to prevent re-runs
 
     try {
-      console.log('[ImportPreview] Parsed product data:', dataParam);
-      
       setProductData(dataParam);
       setItemName(dataParam.itemName || '');
       setBrand(dataParam.brand || '');
@@ -209,9 +217,8 @@ export default function ImportPreviewScreen() {
       // Set suggested images (top 5)
       const images = dataParam.extractedImages || [];
       setSuggestedImages(images.slice(0, 5));
-      console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
       
-      // CRITICAL FIX: Auto-select image based on input type - use local variable to avoid dependency
+      // CRITICAL FIX: Auto-select image based on input type
       const inputType = dataParam.inputType || 'manual';
       let autoSelectedImage = PLACEHOLDER_IMAGE_URL;
       
@@ -232,8 +239,6 @@ export default function ImportPreviewScreen() {
       }
       
       setSelectedImage(autoSelectedImage);
-      console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
-      
       setStoreName(dataParam.storeName || '');
       setStoreDomain(dataParam.storeDomain || '');
       setPrice(dataParam.price?.toString() || '');
@@ -262,12 +267,11 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dataParam, router, currentCurrency]); // Stable dependencies only
+  }, []); // Empty deps - only run once on mount
 
   const fetchUserWishlists = useCallback(async () => {
     // Guard: Only run if user exists and not already fetched
     if (!user || wishlistsFetched.current) {
-      console.log('[ImportPreview] Skipping wishlist fetch (already done or no user)');
       return;
     }
     
@@ -297,7 +301,6 @@ export default function ImportPreviewScreen() {
 
   const checkForDuplicates = useCallback(async () => {
     if (!selectedWishlistId || !itemName.trim()) {
-      console.log('[ImportPreview] Skipping duplicate check - missing data');
       return;
     }
 
@@ -305,12 +308,9 @@ export default function ImportPreviewScreen() {
     setCheckingDuplicates(true);
 
     try {
-      // Fetch existing items in the selected wishlist
       const existingItems = await fetchWishlistItems(selectedWishlistId);
-      console.log('[ImportPreview] Found existing items:', existingItems.length);
 
       if (existingItems.length === 0) {
-        console.log('[ImportPreview] No existing items, skipping duplicate check');
         setCheckingDuplicates(false);
         return;
       }
@@ -354,17 +354,13 @@ export default function ImportPreviewScreen() {
         }
       }
 
-      console.log('[ImportPreview] Found potential duplicates:', potentialDuplicates.length);
-
       if (potentialDuplicates.length > 0) {
-        // Sort by similarity (highest first)
         potentialDuplicates.sort((a, b) => b.similarity - a.similarity);
         setDuplicates(potentialDuplicates);
         setShowDuplicateModal(true);
       }
     } catch (error) {
       console.error('[ImportPreview] Error checking duplicates:', error);
-      // Continue without duplicate check
     } finally {
       setCheckingDuplicates(false);
     }
@@ -522,6 +518,7 @@ export default function ImportPreviewScreen() {
 
     setLoadingMatches(true);
     setShowProductMatches(true);
+    setError(null);
 
     try {
       // CRITICAL FIX: If image is a local file URI, upload it first
@@ -584,7 +581,7 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Country:', effectiveCountryCode, 'Currency:', effectiveCurrencyCode);
       console.log('[ImportPreview] Image URL:', imageToIdentify);
       
-      // Call the new Supabase Edge Function
+      // Call the Supabase Edge Function with error handling
       const response = await identifyProductFromImage(
         undefined, // imageBase64 - not using base64 for now
         imageToIdentify, // imageUrl (now guaranteed to be a public URL)
@@ -594,12 +591,30 @@ export default function ImportPreviewScreen() {
       );
 
       console.log('[ImportPreview] Edge Function response:', response);
-      console.log('[ImportPreview] Detected text:', response.query.detectedText);
-      console.log('[ImportPreview] Detected brand:', response.query.detectedBrand);
-      console.log('[ImportPreview] Found', response.matches.length, 'matches');
+
+      // CRITICAL FIX: Handle error response from edge function
+      if (response.error) {
+        console.error('[ImportPreview] Edge function returned error:', response.error);
+        setError(response.error);
+        Alert.alert(
+          'Search Failed',
+          response.error || 'Could not identify the product. Please try another photo or add manually.',
+          [
+            { text: 'Try Another Photo', onPress: handleChangeImage },
+            { text: 'Add Manually', onPress: () => setShowProductMatches(false) },
+          ]
+        );
+        setShowProductMatches(false);
+        setLoadingMatches(false);
+        return;
+      }
+
+      console.log('[ImportPreview] Detected text:', response.query?.detectedText);
+      console.log('[ImportPreview] Detected brand:', response.query?.detectedBrand);
+      console.log('[ImportPreview] Found', response.matches?.length || 0, 'matches');
 
       // Convert ProductMatchResult to ProductMatch format
-      const convertedMatches: ProductMatch[] = response.matches.map((match: any) => ({
+      const convertedMatches: ProductMatch[] = (response.matches || []).map((match: any) => ({
         id: match.id,
         name: match.name,
         brand: match.brand || null,
@@ -616,7 +631,7 @@ export default function ImportPreviewScreen() {
         },
         priceRange: null,
         storeSuggestions: [],
-        confidenceScore: match.confidence,
+        confidenceScore: match.confidence || 0,
       }));
 
       setProductMatches(convertedMatches);
@@ -625,41 +640,41 @@ export default function ImportPreviewScreen() {
         // Show fallback options
         Alert.alert(
           'No Matches Found',
-          response.error || 'We couldn\'t find any similar products.',
+          'We couldn\'t find any similar products. Try another photo or add manually.',
           [
             { text: 'Try Another Photo', onPress: handleChangeImage },
-            { text: 'Manual Entry', onPress: handleManualEntry },
+            { text: 'Add Manually', onPress: () => setShowProductMatches(false) },
           ]
         );
         setShowProductMatches(false);
       }
     } catch (error: any) {
       console.error('[ImportPreview] Error finding similar products:', error);
+      setError(error.message || 'Failed to find similar products');
       Alert.alert(
         'Search Failed',
-        error.message || 'Failed to find similar products.',
+        'Failed to find similar products. Please try again or add manually.',
         [
           { text: 'Try Another Photo', onPress: handleChangeImage },
-          { text: 'Manual Entry', onPress: handleManualEntry },
+          { text: 'Add Manually', onPress: () => setShowProductMatches(false) },
         ]
       );
       setShowProductMatches(false);
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, currentCountry, currentCurrency, router, user, handleChangeImage, handleManualEntry]);
+  }, [selectedImage, currentCountry, currentCurrency, router, user, handleChangeImage]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback(async (match: ProductMatch) => {
     console.log('[ImportPreview] User selected product match:', match.name);
     setSelectedMatch(match);
-    setSelectedProductId(match.id); // Save productId to local state
+    setSelectedProductId(match.id);
     
     // Auto-fill form with match data
     setItemName(match.name);
     setBrand(match.brand || '');
     if (match.category) {
-      // Store category if needed (you may want to add a category field)
       console.log('[ImportPreview] Product category:', match.category);
     }
     setSelectedImage(match.imageUrl);
@@ -669,6 +684,7 @@ export default function ImportPreviewScreen() {
     
     // IMMEDIATELY call product-prices Edge Function
     setOffersLoading(true);
+    setOffersError(null);
     try {
       console.log('[ImportPreview] Fetching real-time prices for product:', match.id);
       
@@ -678,18 +694,17 @@ export default function ImportPreviewScreen() {
       
       console.log('[ImportPreview] Fetching prices for country:', effectiveCountryCode, 'currency:', effectiveCurrencyCode);
       
-      const { getProductPrices } = await import('@/utils/supabase-edge-functions');
       const pricesResponse = await getProductPrices(
         match.id,
         effectiveCountryCode,
         effectiveCurrencyCode
       );
       
-      console.log('[ImportPreview] Got prices:', pricesResponse.offers.length, 'offers');
-      console.log('[ImportPreview] Best price:', pricesResponse.summary.bestOffer?.price, effectiveCurrencyCode);
+      console.log('[ImportPreview] Got prices:', pricesResponse.offers?.length || 0, 'offers');
+      console.log('[ImportPreview] Best price:', pricesResponse.summary?.bestOffer?.price, effectiveCurrencyCode);
       
       // Convert offers to AlternativeStore format and set offers state
-      if (pricesResponse.offers.length > 0) {
+      if (pricesResponse.offers && pricesResponse.offers.length > 0) {
         const alternatives: AlternativeStore[] = pricesResponse.offers.map(offer => ({
           storeName: offer.storeName,
           storeDomain: new URL(offer.storeUrl).hostname.replace('www.', ''),
@@ -703,10 +718,10 @@ export default function ImportPreviewScreen() {
         alternatives.sort((a, b) => a.price - b.price);
         
         setOffers(alternatives);
-        setAlternativeStores(alternatives); // Also set alternativeStores for compatibility
+        setAlternativeStores(alternatives);
         
         // Update price with best offer (cheapest)
-        if (pricesResponse.summary.bestOffer) {
+        if (pricesResponse.summary?.bestOffer) {
           setPrice(pricesResponse.summary.bestOffer.price.toString());
           setCurrency(pricesResponse.summary.bestOffer.currencyCode);
           setStoreName(pricesResponse.summary.bestOffer.storeName);
@@ -717,14 +732,15 @@ export default function ImportPreviewScreen() {
         console.log('[ImportPreview] No offers found for this product');
         setOffers([]);
         setAlternativeStores([]);
+        setOffersError('No offers found for this product.');
         
         // Set placeholder price
         setPrice('0');
         setCurrency(effectiveCurrencyCode);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ImportPreview] Error fetching prices:', error);
-      // Continue with match data even if price fetch fails
+      setOffersError(error.message || 'Failed to fetch prices');
       setOffers([]);
       
       // Fallback: Set alternative stores from match data if available
@@ -776,7 +792,6 @@ export default function ImportPreviewScreen() {
         {
           text: 'Retry',
           onPress: () => {
-            // Navigate back to add screen to retry
             router.back();
           },
         },
@@ -786,7 +801,6 @@ export default function ImportPreviewScreen() {
 
   const handleManualEntry = useCallback(() => {
     console.log('[ImportPreview] User tapped Manual Entry');
-    // Navigate back to add screen with manual mode selected
     router.back();
   }, [router]);
 
@@ -870,7 +884,7 @@ export default function ImportPreviewScreen() {
         source_domain: storeDomain || null,
         notes: notes.trim() || null,
         country_code: currentCountry || null,
-        city_id: null, // City is no longer used
+        city_id: null,
         currency_code: currentCurrency || currency,
       });
       
@@ -894,13 +908,12 @@ export default function ImportPreviewScreen() {
               availability: store.availability || 'in_stock',
               confidenceScore: store.confidenceScore || null,
               countryCode: currentCountry || null,
-              city: null, // City is no longer used
+              city: null,
             })),
           });
           console.log('[ImportPreview] Offers saved successfully');
         } catch (offerError) {
           console.error('[ImportPreview] Error saving offers:', offerError);
-          // Don't fail the whole operation if offers fail to save
         }
       }
       
@@ -919,12 +932,11 @@ export default function ImportPreviewScreen() {
             currencyCode: effectiveCurrencyCode,
             enabled: true,
             desiredPrice: targetPrice,
-            thresholdPercent: 10, // Default 10% threshold
+            thresholdPercent: 10,
           });
           console.log('[ImportPreview] Price tracking enabled with target:', targetPrice);
         } catch (alertError) {
           console.error('[ImportPreview] Error setting up price tracking:', alertError);
-          // Don't fail the whole operation if alert setup fails
         }
       }
       
@@ -1017,7 +1029,7 @@ export default function ImportPreviewScreen() {
         imageUrl: selectedImage || null,
         originalUrl: productData?.sourceUrl || null,
         countryCode: currentCountry,
-        city: null, // City is no longer used
+        city: null,
       });
       
       setSearchStage('complete');
@@ -1289,12 +1301,24 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
-            {/* Prices near you Section (NEW) */}
+            {/* Prices near you Section */}
             {offersLoading ? (
               <View style={styles.offersLoadingSection}>
                 <ActivityIndicator size="large" color={colors.accent} />
                 <Text style={[styles.offersLoadingText, { color: colors.textSecondary }]}>
                   Finding best prices...
+                </Text>
+              </View>
+            ) : offersError ? (
+              <View style={[styles.errorCard, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
+                <IconSymbol
+                  ios_icon_name="exclamationmark.triangle"
+                  android_material_icon_name="warning"
+                  size={20}
+                  color={colors.error}
+                />
+                <Text style={[styles.errorText, { color: colors.error }]}>
+                  {offersError}
                 </Text>
               </View>
             ) : offers.length > 0 ? (
@@ -1473,7 +1497,7 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
-            {/* Price Tracking Toggle (NEW) */}
+            {/* Price Tracking Toggle */}
             {isCorrectProduct && (
               <View style={[styles.priceTrackingSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.priceTrackingHeader}>
@@ -1598,7 +1622,7 @@ export default function ImportPreviewScreen() {
           onCancel={handleDuplicateCancel}
         />
 
-        {/* Product Matches Modal (NEW) */}
+        {/* Product Matches Modal */}
         <Modal
           visible={showProductMatches}
           transparent
@@ -1652,7 +1676,7 @@ export default function ImportPreviewScreen() {
           </Pressable>
         </Modal>
 
-        {/* Price Tracking Modal (NEW) */}
+        {/* Price Tracking Modal */}
         <Modal
           visible={showPriceTrackingModal}
           transparent
@@ -2014,6 +2038,19 @@ const styles = StyleSheet.create({
   offersLoadingText: {
     fontSize: 14,
     marginTop: spacing.md,
+  },
+  errorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+  },
+  errorText: {
+    fontSize: 14,
+    flex: 1,
   },
   offersSection: {
     marginBottom: spacing.xl,
