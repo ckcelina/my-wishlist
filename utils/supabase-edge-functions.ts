@@ -174,6 +174,7 @@ const EXPECTED_EDGE_FUNCTIONS = [
   'import-wishlist',
   'search-by-name',
   'price-check',
+  'product-prices',
 ];
 
 // Log configuration status on module load
@@ -714,6 +715,98 @@ export async function identifyProductFromImage(
         guessedCategory: '',
       },
       error: error.message || 'Failed to identify product from image',
+    };
+  }
+}
+
+/**
+ * NEW: Get product prices from multiple stores with caching
+ * Fetches offers for a specific product across stores
+ * Returns normalized prices in requested currency
+ * Caches results for 24 hours
+ * Works identically in all environments
+ */
+export interface ProductPricesRequest {
+  productId: string;
+  countryCode: string;
+  currencyCode: string;
+}
+
+export interface ProductOffer {
+  storeName: string;
+  storeUrl: string;
+  price: number;
+  currencyCode: string;
+  availability: 'in_stock' | 'out_of_stock' | 'unknown';
+  updatedAt: string;
+}
+
+export interface ProductInfo {
+  id: string;
+  name: string;
+  brand: string;
+  imageUrl: string;
+}
+
+export interface ProductSummary {
+  minPrice: number;
+  maxPrice: number;
+  medianPrice: number;
+  bestOffer: ProductOffer | null;
+}
+
+export interface ProductPricesResponse {
+  product: ProductInfo;
+  offers: ProductOffer[];
+  summary: ProductSummary;
+}
+
+export async function getProductPrices(
+  productId: string,
+  countryCode: string,
+  currencyCode: string
+): Promise<ProductPricesResponse> {
+  try {
+    console.log('[getProductPrices] Fetching prices for product:', productId);
+    console.log('[getProductPrices] Country:', countryCode, 'Currency:', currencyCode);
+    
+    const response = await callEdgeFunction<ProductPricesRequest, ProductPricesResponse>(
+      'product-prices',
+      {
+        productId,
+        countryCode,
+        currencyCode,
+      },
+      { showErrorAlert: true }
+    );
+
+    console.log('[getProductPrices] Found', response.offers.length, 'offers');
+    console.log('[getProductPrices] Price range:', response.summary.minPrice, '-', response.summary.maxPrice, currencyCode);
+    
+    return response;
+  } catch (error: any) {
+    console.error('[getProductPrices] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[getProductPrices] Edge Function not deployed - returning safe fallback');
+    }
+    
+    // Return safe fallback - must never crash
+    return {
+      product: {
+        id: productId,
+        name: 'Unknown Product',
+        brand: '',
+        imageUrl: '',
+      },
+      offers: [],
+      summary: {
+        minPrice: 0,
+        maxPrice: 0,
+        medianPrice: 0,
+        bestOffer: null,
+      },
     };
   }
 }

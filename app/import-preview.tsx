@@ -589,7 +589,7 @@ export default function ImportPreviewScreen() {
   }, [selectedImage, itemName, countryCode, currencyCode, currency, userLocation, router]);
 
   // NEW: Handle Product Match Selection
-  const handleSelectMatch = useCallback((match: ProductMatch) => {
+  const handleSelectMatch = useCallback(async (match: ProductMatch) => {
     console.log('[ImportPreview] User selected product match:', match.name);
     setSelectedMatch(match);
     
@@ -602,17 +602,58 @@ export default function ImportPreviewScreen() {
     setStoreName(match.store.name);
     setStoreDomain(match.store.domain);
     
-    // Set alternative stores
-    if (match.storeSuggestions && match.storeSuggestions.length > 0) {
-      const alternatives: AlternativeStore[] = match.storeSuggestions.map(store => ({
-        storeName: store.storeName,
-        storeDomain: store.storeDomain,
-        price: store.price,
-        currency: store.currency,
-        url: store.url,
-        availability: 'in_stock',
-      }));
-      setAlternativeStores(alternatives);
+    // TODO: Fetch real-time prices using the new product-prices Edge Function
+    // This will get current prices from multiple stores with caching
+    try {
+      console.log('[ImportPreview] Fetching real-time prices for product:', match.id);
+      const { getProductPrices } = await import('@/utils/supabase-edge-functions');
+      
+      const effectiveCountryCode = countryCode || userLocation?.countryCode || 'US';
+      const effectiveCurrencyCode = currencyCode || currency || 'USD';
+      
+      const pricesResponse = await getProductPrices(
+        match.id,
+        effectiveCountryCode,
+        effectiveCurrencyCode
+      );
+      
+      console.log('[ImportPreview] Got prices:', pricesResponse.offers.length, 'offers');
+      console.log('[ImportPreview] Best price:', pricesResponse.summary.bestOffer?.price, effectiveCurrencyCode);
+      
+      // Convert offers to AlternativeStore format
+      if (pricesResponse.offers.length > 0) {
+        const alternatives: AlternativeStore[] = pricesResponse.offers.map(offer => ({
+          storeName: offer.storeName,
+          storeDomain: new URL(offer.storeUrl).hostname.replace('www.', ''),
+          price: offer.price,
+          currency: offer.currencyCode,
+          url: offer.storeUrl,
+          availability: offer.availability,
+        }));
+        setAlternativeStores(alternatives);
+        
+        // Update price with best offer
+        if (pricesResponse.summary.bestOffer) {
+          setPrice(pricesResponse.summary.bestOffer.price.toString());
+          setCurrency(pricesResponse.summary.bestOffer.currencyCode);
+        }
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error fetching prices:', error);
+      // Continue with match data even if price fetch fails
+      
+      // Fallback: Set alternative stores from match data
+      if (match.storeSuggestions && match.storeSuggestions.length > 0) {
+        const alternatives: AlternativeStore[] = match.storeSuggestions.map(store => ({
+          storeName: store.storeName,
+          storeDomain: store.storeDomain,
+          price: store.price,
+          currency: store.currency,
+          url: store.url,
+          availability: 'in_stock',
+        }));
+        setAlternativeStores(alternatives);
+      }
     }
     
     // Remove warnings since we now have complete data
@@ -623,7 +664,7 @@ export default function ImportPreviewScreen() {
     
     // Auto-confirm as correct product
     setIsCorrectProduct(true);
-  }, []);
+  }, [countryCode, currencyCode, currency, userLocation]);
 
   // NEW: Handle "None of these" selection
   const handleNoneOfThese = useCallback(() => {

@@ -193,7 +193,128 @@ if (result.meta.partial) {
 
 ---
 
-### 4. identify-from-image
+### 4. product-prices
+
+Fetches product prices from multiple stores with 24-hour caching.
+
+**Endpoint:** `POST /functions/v1/product-prices`
+
+**Authentication:** Requires JWT token (Bearer authentication)
+
+**Request:**
+```typescript
+{
+  productId: string,      // Provider product ID
+  countryCode: string,    // Country code (e.g., "JO", "US")
+  currencyCode: string    // Currency code (e.g., "JOD", "USD")
+}
+```
+
+**Response:**
+```typescript
+{
+  product: {
+    id: string,           // Product ID
+    name: string,         // Product name
+    brand: string,        // Brand name
+    imageUrl: string      // Product image URL
+  },
+  offers: [
+    {
+      storeName: string,        // Store name
+      storeUrl: string,         // Product URL at store
+      price: number,            // Normalized price in requested currency
+      currencyCode: string,     // Currency code (matches request)
+      availability: 'in_stock' | 'out_of_stock' | 'unknown',
+      updatedAt: string         // ISO 8601 timestamp
+    }
+  ],
+  summary: {
+    minPrice: number,           // Lowest price
+    maxPrice: number,           // Highest price
+    medianPrice: number,        // Median price
+    bestOffer: {                // Cheapest offer (same structure as offers)
+      storeName: string,
+      storeUrl: string,
+      price: number,
+      currencyCode: string,
+      availability: string,
+      updatedAt: string
+    } | null
+  }
+}
+```
+
+**Caching:**
+- Results are cached for 24 hours per product + country combination
+- Cache key: `(product_id, country_code)`
+- Cached data includes: product info, offers, and summary
+- Cache is automatically refreshed after 24 hours
+
+**Currency Normalization:**
+- All prices are converted to the requested currency
+- Uses exchange rates (currently mock rates, integrate real API in production)
+- Prices are rounded to 2 decimal places
+
+**Sorting:**
+- Offers are always sorted by price (cheapest first)
+- Best offer is always the first item in the offers array
+
+**Example:**
+```typescript
+import { getProductPrices } from '@/utils/supabase-edge-functions';
+
+const result = await getProductPrices(
+  'product_123',
+  'JO',
+  'JOD'
+);
+
+console.log('Product:', result.product.name);
+console.log('Brand:', result.product.brand);
+console.log('Found', result.offers.length, 'offers');
+console.log('Best price:', result.summary.minPrice, result.summary.bestOffer?.currencyCode);
+console.log('Price range:', result.summary.minPrice, '-', result.summary.maxPrice);
+
+result.offers.forEach(offer => {
+  console.log(`${offer.storeName}: ${offer.price} ${offer.currencyCode} (${offer.availability})`);
+});
+```
+
+**Error Handling:**
+- Returns 401 for missing or invalid JWT
+- Returns 400 for invalid JSON or missing required fields
+- Returns 200 with empty offers array if no data available
+- Never crashes - always returns safe fallback data
+
+**Database Schema:**
+```sql
+CREATE TABLE product_offers_cache (
+  product_id TEXT NOT NULL,
+  country_code TEXT NOT NULL,
+  offers_json JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (product_id, country_code)
+);
+
+CREATE INDEX idx_product_offers_cache_lookup 
+ON product_offers_cache(product_id, country_code);
+
+CREATE INDEX idx_product_offers_cache_updated_at 
+ON product_offers_cache(updated_at);
+```
+
+**Production Integration:**
+In production, replace the mock data with real API calls to:
+- Amazon Product Advertising API
+- Google Shopping API
+- Other price comparison services
+
+The caching layer will significantly reduce API costs and improve response times.
+
+---
+
+### 5. identify-from-image
 
 Identifies a product from an image using AI vision.
 
@@ -274,6 +395,7 @@ import {
   findAlternatives,
   importWishlist,
   identifyFromImage,
+  getProductPrices,
 } from '@/utils/supabase-edge-functions';
 ```
 
@@ -306,6 +428,7 @@ supabase functions deploy extract-item
 supabase functions deploy find-alternatives
 supabase functions deploy import-wishlist
 supabase functions deploy identify-from-image
+supabase functions deploy product-prices
 
 # Or deploy all at once
 supabase functions deploy
@@ -341,6 +464,12 @@ curl -X POST https://your-project.supabase.co/functions/v1/identify-from-image \
   -H "Authorization: Bearer YOUR_ANON_KEY" \
   -H "Content-Type: application/json" \
   -d '{"imageUrl":"https://example.com/image.jpg"}'
+
+# Test product-prices (requires JWT token)
+curl -X POST https://your-project.supabase.co/functions/v1/product-prices \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productId":"product_123","countryCode":"JO","currencyCode":"JOD"}'
 ```
 
 ---
