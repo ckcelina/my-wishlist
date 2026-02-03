@@ -186,45 +186,41 @@ if (!isEnvironmentConfigured()) {
 
 /**
  * Get the authorization token for Edge Function calls
- * Uses the signed-in user's access token when available, falls back to anon key
+ * Returns the user's access_token if logged in, null otherwise
  */
-async function getAuthToken(): Promise<string> {
+async function getAuthToken(): Promise<string | null> {
   try {
     // Try to get the current session
     const { data: { session }, error } = await supabase.auth.getSession();
     
     if (error) {
       console.warn('[Edge Function Auth] Error getting session:', error.message);
-      console.log('[Edge Function Auth] Falling back to anon key');
-      return SUPABASE_ANON_KEY;
+      console.log('[Edge Function Auth] No session available');
+      return null;
     }
     
     if (session?.access_token) {
-      console.log('[Edge Function Auth] Using user access token (JWT)');
+      console.log('[Edge Function Auth] ✅ User session found - using access_token');
       return session.access_token;
     }
     
-    console.log('[Edge Function Auth] No session found, using anon key');
-    return SUPABASE_ANON_KEY;
+    console.log('[Edge Function Auth] No session found - user not logged in');
+    return null;
   } catch (error) {
     console.error('[Edge Function Auth] Unexpected error getting auth token:', error);
-    console.log('[Edge Function Auth] Falling back to anon key');
-    return SUPABASE_ANON_KEY;
+    return null;
   }
 }
 
 /**
  * Call a Supabase Edge Function with proper authentication and error handling
+ * 
+ * CRITICAL AUTH RULES:
+ * - ALWAYS send apikey header with SUPABASE_ANON_KEY
+ * - If user is logged in, ALSO send Authorization header with Bearer <access_token>
+ * - NEVER put anon key in Authorization header
+ * 
  * Works identically in ALL environments (Expo Go, TestFlight, App Store)
- * 
- * AUTHENTICATION:
- * - Uses signed-in user's JWT access token when available
- * - Falls back to anon key for unauthenticated requests
- * 
- * ERROR HANDLING:
- * - Shows user-friendly alerts on failure
- * - Continues app flow without breaking UI
- * - Returns safe fallback data
  */
 async function callEdgeFunction<TRequest, TResponse>(
   functionName: string,
@@ -260,15 +256,33 @@ async function callEdgeFunction<TRequest, TResponse>(
   console.log(`[Edge Function] Environment: ${appConfig.environment}`);
 
   try {
-    // Get the appropriate auth token (user JWT or anon key)
-    const authToken = await getAuthToken();
+    // Get the user's access token (null if not logged in)
+    const accessToken = await getAuthToken();
+    
+    // Build headers - CRITICAL: apikey is ALWAYS required
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY, // ✅ ALWAYS send anon key as apikey header
+    };
+
+    // If user is logged in, ALSO send Authorization header with access_token
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`; // ✅ Send user JWT for protected functions
+      console.log('[Edge Function Auth] ✅ Sending authenticated request (session exists)');
+    } else {
+      console.log('[Edge Function Auth] ⚠️ Sending unauthenticated request (no session)');
+    }
+
+    // Log headers for debugging (but never log token values)
+    console.log('[Edge Function Auth] Headers:', {
+      'Content-Type': 'application/json',
+      'apikey': '[ANON_KEY_EXISTS]',
+      'Authorization': accessToken ? 'Bearer [ACCESS_TOKEN_EXISTS]' : '[NO_TOKEN]',
+    });
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
+      headers,
       body: JSON.stringify(request),
     });
 
@@ -276,6 +290,7 @@ async function callEdgeFunction<TRequest, TResponse>(
     if (response.status === 401) {
       const errorText = await response.text();
       console.error(`[Edge Function] ${functionName} unauthorized (401):`, errorText);
+      console.error('[Edge Function Auth] ❌ Invalid JWT - user session may be expired');
       
       if (showErrorAlert) {
         Alert.alert(
