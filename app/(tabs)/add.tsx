@@ -84,7 +84,7 @@ export default function AddItemScreen() {
   const typography = createTypography(theme);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settings, updateActiveSearchCountry } = useSmartLocation();
+  const { settings: smartLocationSettings } = useSmartLocation();
 
   // Check environment configuration
   const [configError, setConfigError] = useState<string | null>(null);
@@ -214,7 +214,7 @@ export default function AddItemScreen() {
       }
 
       // Get country from Settings - NEVER reset or remove it
-      const searchCountry = settings?.activeSearchCountry || 'US';
+      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -282,7 +282,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
                 sourceUrl: urlInput.trim(),
                 inputType: 'url',
               };
@@ -363,7 +363,7 @@ export default function AddItemScreen() {
       }
 
       // Get country from Settings - NEVER reset or remove it
-      const searchCountry = settings?.activeSearchCountry || 'US';
+      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -438,7 +438,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
                 sourceUrl: '',
                 inputType: 'camera',
               };
@@ -519,7 +519,7 @@ export default function AddItemScreen() {
       }
 
       // Get country from Settings - NEVER reset or remove it
-      const searchCountry = settings?.activeSearchCountry || 'US';
+      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -594,7 +594,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
                 sourceUrl: '',
                 inputType: 'image',
               };
@@ -626,7 +626,7 @@ export default function AddItemScreen() {
       }
 
       // Get country from Settings - NEVER reset or remove it
-      const searchCountry = settings?.activeSearchCountry || 'US';
+      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -700,7 +700,7 @@ export default function AddItemScreen() {
         storeDomain: result.storeDomain,
         price: result.price,
         currency: result.currency || 'USD',
-        countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+        countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
         sourceUrl: result.productUrl,
         inputType: 'name',
       };
@@ -780,7 +780,7 @@ export default function AddItemScreen() {
         storeDomain: '',
         price: manualPrice ? parseFloat(manualPrice) : null,
         currency: manualCurrency,
-        countryAvailability: settings?.activeSearchCountry ? [settings.activeSearchCountry] : [],
+        countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
         sourceUrl: manualStoreLink.trim() || '',
         notes: manualNotes.trim() || '',
         inputType: 'manual',
@@ -1289,6 +1289,10 @@ export default function AddItemScreen() {
   const selectedWishlistName = selectedWishlist?.name || 'Select wishlist';
   const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
 
+  // Get current country from Settings for display
+  const currentCountry = smartLocationSettings?.activeSearchCountry;
+  const showCountryWarning = !currentCountry;
+
   return (
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
@@ -1316,11 +1320,31 @@ export default function AddItemScreen() {
           </View>
 
           {/* Country is set ONLY in Settings - show current country for reference */}
-          {settings?.activeSearchCountry && (
+          {showCountryWarning ? (
+            <View style={[styles.warningBanner, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
+              <IconSymbol
+                ios_icon_name="exclamationmark.triangle"
+                android_material_icon_name="warning"
+                size={16}
+                color={colors.error}
+              />
+              <Text style={[styles.warningText, { color: colors.error }]}>
+                Country not set
+              </Text>
+              <TouchableOpacity
+                style={[styles.settingsLink, { backgroundColor: colors.error }]}
+                onPress={() => router.push('/location')}
+              >
+                <Text style={[styles.settingsLinkText, { color: colors.textInverse }]}>
+                  Set in Settings
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <View style={styles.headerRow}>
               <View style={[styles.headerItem, { flex: 1 }]}>
                 <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
-                  Country: {settings.activeSearchCountry}
+                  Country: {currentCountry}
                 </Text>
                 <TouchableOpacity
                   style={[styles.settingsLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -1616,6 +1640,21 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
       fontSize: 14,
       flex: 1,
       marginRight: spacing.xs,
+    },
+    warningBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginBottom: spacing.sm,
+    },
+    warningText: {
+      fontSize: 13,
+      fontWeight: '500',
+      flex: 1,
     },
     settingsLink: {
       flexDirection: 'row',
