@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -131,9 +131,13 @@ export default function AddItemScreen() {
   const [savingManual, setSavingManual] = useState(false);
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
+  // Guard to prevent infinite redirect loop
+  const redirectedToAuth = useRef(false);
+  
   useEffect(() => {
-    if (!user) {
+    if (!user && !redirectedToAuth.current) {
       console.log('[AddItem] No user, redirecting to auth');
+      redirectedToAuth.current = true;
       router.replace('/auth');
     }
   }, [user, router]);

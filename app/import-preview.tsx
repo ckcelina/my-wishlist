@@ -248,8 +248,26 @@ export default function ImportPreviewScreen() {
       setSuggestedImages(images.slice(0, 5));
       console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
       
-      // Auto-select image based on input type
-      const autoSelectedImage = autoSelectImage(parsed);
+      // Auto-select image based on input type - use local variable to avoid dependency
+      const inputType = parsed.inputType || 'manual';
+      let autoSelectedImage = PLACEHOLDER_IMAGE_URL;
+      
+      if (inputType === 'url') {
+        if (parsed.extractedImages && parsed.extractedImages.length > 0) {
+          autoSelectedImage = parsed.extractedImages[0];
+        } else if (parsed.imageUrl) {
+          autoSelectedImage = parsed.imageUrl;
+        }
+      } else if (inputType === 'camera' || inputType === 'image') {
+        if (parsed.imageUrl) {
+          autoSelectedImage = parsed.imageUrl;
+        }
+      } else if (inputType === 'name') {
+        if (parsed.imageUrl) {
+          autoSelectedImage = parsed.imageUrl;
+        }
+      }
+      
       setSelectedImage(autoSelectedImage);
       console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
       
@@ -281,15 +299,20 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dataParam]); // ONLY depend on dataParam (stable)
+  }, [dataParam, router]); // Stable dependencies only
+
+  // Guards to prevent multiple fetches
+  const wishlistsFetched = useRef(false);
+  const locationFetched = useRef(false);
 
   const fetchUserWishlists = useCallback(async () => {
-    // Guard: Only run if user exists
-    if (!user) {
-      console.log('[ImportPreview] No user, skipping wishlist fetch');
+    // Guard: Only run if user exists and not already fetched
+    if (!user || wishlistsFetched.current) {
+      console.log('[ImportPreview] Skipping wishlist fetch (already done or no user)');
       return;
     }
     
+    wishlistsFetched.current = true;
     try {
       console.log('[ImportPreview] Fetching wishlists');
       const data = await fetchWishlists(user.id);
@@ -302,16 +325,18 @@ export default function ImportPreviewScreen() {
       }
     } catch (error) {
       console.error('[ImportPreview] Error fetching wishlists:', error);
+      wishlistsFetched.current = false; // Allow retry on error
     }
   }, [user]);
 
   const fetchUserLocationData = useCallback(async () => {
-    // Guard: Only run if user exists
-    if (!user) {
-      console.log('[ImportPreview] No user, skipping location fetch');
+    // Guard: Only run if user exists and not already fetched
+    if (!user || locationFetched.current) {
+      console.log('[ImportPreview] Skipping location fetch (already done or no user)');
       return;
     }
     
+    locationFetched.current = true;
     try {
       console.log('[ImportPreview] Fetching user location');
       const locationData = await fetchUserLocation(user.id);
@@ -325,6 +350,7 @@ export default function ImportPreviewScreen() {
       }
     } catch (error) {
       console.error('[ImportPreview] Error fetching location:', error);
+      locationFetched.current = false; // Allow retry on error
       // Location is optional, continue without it
     }
   }, [user]);

@@ -626,6 +626,12 @@ export default function ConfirmProductScreen() {
    * This is the main fix for the bug
    */
   const identifyProduct = useCallback(async () => {
+    // CRITICAL GUARD: Prevent multiple simultaneous calls
+    if (analysisStarted.current) {
+      console.log('[ConfirmProduct] Analysis already in progress, skipping');
+      return;
+    }
+
     if (!imageUrl || typeof imageUrl !== 'string') {
       console.log('[ConfirmProduct] No image URL provided, skipping analysis');
       setLoading(false);
@@ -633,6 +639,7 @@ export default function ConfirmProductScreen() {
     }
 
     console.log('[ConfirmProduct] 🔍 Starting automatic image analysis for:', imageUrl);
+    analysisStarted.current = true; // Mark as started IMMEDIATELY
     setLoading(true);
     setIdentifying(true);
     setAnalysisError(null);
@@ -864,13 +871,13 @@ export default function ConfirmProductScreen() {
     // CRITICAL: Auto-run analysis if we have a photo and haven't started yet
     if (imageUrl && !analysisStarted.current) {
       console.log('[ConfirmProduct] 🚀 Triggering automatic analysis...');
-      analysisStarted.current = true;
       identifyProduct();
     } else if (!imageUrl) {
       console.log('[ConfirmProduct] No image URL, skipping analysis');
       setLoading(false);
     }
-  }, [imageUrl, identificationResult, paramTitle, identifyProduct]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // CRITICAL: Empty deps - run ONLY on mount
 
   const handleSelectProduct = (index: number) => {
     console.log('[ConfirmProduct] User selected product at index:', index);
@@ -1071,7 +1078,7 @@ export default function ConfirmProductScreen() {
     }
   };
 
-  const handleTryAgain = () => {
+  const handleTryAgain = useCallback(() => {
     console.log('[ConfirmProduct] User tapped Try Again - restarting analysis');
     analysisStarted.current = false; // Reset the flag
     setAnalysisError(null);
@@ -1080,7 +1087,7 @@ export default function ConfirmProductScreen() {
     setDetectedText(null);
     setTitle(''); // Clear title for fresh analysis
     identifyProduct();
-  };
+  }, [identifyProduct]);
 
   const handleSkipAnalysis = () => {
     console.log('[ConfirmProduct] User chose to skip analysis');
