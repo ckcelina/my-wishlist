@@ -168,6 +168,7 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 const EXPECTED_EDGE_FUNCTIONS = [
   'search-item',
   'identify-from-image',
+  'identify-product-from-image',
   'extract-item',
   'find-alternatives',
   'import-wishlist',
@@ -624,6 +625,95 @@ export async function searchByName(
         requestId: 'error',
       },
       error: error.message || 'Failed to search for products',
+    };
+  }
+}
+
+/**
+ * NEW: Identify product from image using multi-step AI approach
+ * Performs OCR, brand detection, query normalization, product search, and visual fallback
+ * Returns product matches with confidence scores
+ * Works identically in all environments
+ */
+export interface IdentifyProductFromImageRequest {
+  imageBase64?: string;
+  imageUrl?: string;
+  countryCode: string;
+  currencyCode: string;
+  languageCode: string;
+}
+
+export interface ProductMatchResult {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  imageUrl: string;
+  confidence: number;
+  signals: {
+    logo?: string;
+    text?: string;
+    visual?: string;
+  };
+}
+
+export interface IdentifyProductFromImageResponse {
+  matches: ProductMatchResult[];
+  query: {
+    detectedText: string;
+    detectedBrand: string;
+    guessedCategory: string;
+  };
+  error?: string;
+}
+
+export async function identifyProductFromImage(
+  imageBase64: string | undefined,
+  imageUrl: string | undefined,
+  countryCode: string,
+  currencyCode: string,
+  languageCode: string
+): Promise<IdentifyProductFromImageResponse> {
+  try {
+    console.log('[identifyProductFromImage] Starting multi-step product identification...');
+    console.log('[identifyProductFromImage] Country:', countryCode, 'Currency:', currencyCode);
+    
+    const response = await callEdgeFunction<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
+      'identify-product-from-image',
+      {
+        imageBase64,
+        imageUrl,
+        countryCode,
+        currencyCode,
+        languageCode,
+      },
+      { showErrorAlert: true }
+    );
+
+    // Log warnings for errors
+    if (response.error) {
+      console.warn('[identifyProductFromImage] Error returned:', response.error);
+    }
+
+    console.log('[identifyProductFromImage] Found', response.matches.length, 'matches');
+    return response;
+  } catch (error: any) {
+    console.error('[identifyProductFromImage] Failed:', error);
+    
+    // Check if function is missing (404)
+    if (error.message.includes('not found') || error.message.includes('404')) {
+      console.warn('[identifyProductFromImage] Edge Function not deployed - returning safe fallback');
+    }
+    
+    // Return safe fallback - must never crash
+    return {
+      matches: [],
+      query: {
+        detectedText: '',
+        detectedBrand: '',
+        guessedCategory: '',
+      },
+      error: error.message || 'Failed to identify product from image',
     };
   }
 }

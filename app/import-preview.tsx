@@ -31,6 +31,7 @@ import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
 import { ProductMatchCard, ProductMatch } from '@/components/ProductMatchCard';
 import { supabase } from '@/lib/supabase';
 import { authenticatedPost } from '@/utils/api';
+import { identifyProductFromImage, ProductMatchResult } from '@/utils/supabase-edge-functions';
 
 // Placeholder image URL for fallback
 const PLACEHOLDER_IMAGE_URL = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80';
@@ -508,11 +509,15 @@ export default function ImportPreviewScreen() {
     }
   }, [user, suggestedImages]);
 
-  // NEW: Find Similar Products
+  // NEW: Find Similar Products using Supabase Edge Function
   const handleFindMatches = useCallback(async () => {
     console.log('[ImportPreview] User tapped Find Matches');
     
-    if (!userLocation || !userLocation.countryCode) {
+    // Get location from context or user location state
+    const effectiveCountryCode = countryCode || userLocation?.countryCode;
+    const effectiveCurrencyCode = currencyCode || currency;
+    
+    if (!effectiveCountryCode) {
       Alert.alert(
         'Location Required',
         'Please set your country in Settings to find similar products.',
@@ -528,38 +533,60 @@ export default function ImportPreviewScreen() {
     setShowProductMatches(true);
 
     try {
-      console.log('[ImportPreview] Searching for similar products');
+      console.log('[ImportPreview] Calling identify-product-from-image Edge Function');
+      console.log('[ImportPreview] Country:', effectiveCountryCode, 'Currency:', effectiveCurrencyCode);
       
-      // TODO: Backend Integration - POST /api/items/find-similar-products
-      // Request: { imageUrl?, imageBase64?, productName?, countryCode }
-      // Response: { similarProducts: ProductMatch[], searchMetadata }
-      const response = await authenticatedPost<{
-        similarProducts: ProductMatch[];
-        searchMetadata: {
-          totalFound: number;
-          searchTimeMs: number;
-          confidenceThreshold: number;
-        };
-      }>('/api/items/find-similar-products', {
-        imageUrl: selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined,
-        productName: itemName || undefined,
-        countryCode: userLocation.countryCode,
-      });
+      // Call the new Supabase Edge Function
+      const response = await identifyProductFromImage(
+        undefined, // imageBase64 - not using base64 for now
+        selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined, // imageUrl
+        effectiveCountryCode,
+        effectiveCurrencyCode,
+        'en' // languageCode - default to English for now
+      );
 
-      console.log('[ImportPreview] Found', response.similarProducts.length, 'similar products');
-      setProductMatches(response.similarProducts);
+      console.log('[ImportPreview] Edge Function response:', response);
+      console.log('[ImportPreview] Detected text:', response.query.detectedText);
+      console.log('[ImportPreview] Detected brand:', response.query.detectedBrand);
+      console.log('[ImportPreview] Found', response.matches.length, 'matches');
 
-      if (response.similarProducts.length === 0) {
-        Alert.alert('No Matches Found', 'We couldn\'t find any similar products. Try manual entry instead.');
+      // Convert ProductMatchResult to ProductMatch format
+      const convertedMatches: ProductMatch[] = response.matches.map((match: ProductMatchResult) => ({
+        id: match.id,
+        name: match.name,
+        brand: match.brand || null,
+        category: match.category || null,
+        imageUrl: match.imageUrl,
+        topPrice: {
+          amount: 0, // Placeholder - will be filled by product search
+          currency: effectiveCurrencyCode,
+        },
+        store: {
+          name: 'Unknown Store',
+          domain: '',
+          logoUrl: null,
+        },
+        priceRange: null,
+        storeSuggestions: [],
+        confidenceScore: match.confidence,
+      }));
+
+      setProductMatches(convertedMatches);
+
+      if (convertedMatches.length === 0) {
+        Alert.alert(
+          'No Matches Found',
+          response.error || 'We couldn\'t find any similar products. Try manual entry instead.'
+        );
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[ImportPreview] Error finding similar products:', error);
-      Alert.alert('Search Failed', 'Failed to find similar products. Please try again.');
+      Alert.alert('Search Failed', error.message || 'Failed to find similar products. Please try again.');
       setShowProductMatches(false);
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, userLocation, router]);
+  }, [selectedImage, itemName, countryCode, currencyCode, currency, userLocation, router]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback((match: ProductMatch) => {
