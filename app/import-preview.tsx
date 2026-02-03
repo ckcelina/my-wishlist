@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -106,6 +106,9 @@ export default function ImportPreviewScreen() {
   const typography = createTypography(theme);
   
   const params = useLocalSearchParams();
+  
+  // CRITICAL FIX: Use ref to track if initialization has run
+  const initializationDone = useRef(false);
   
   // Parse extracted data from params - STABLE reference
   const dataParam = useMemo(() => params.data, [params.data]);
@@ -214,15 +217,25 @@ export default function ImportPreviewScreen() {
     return PLACEHOLDER_IMAGE_URL;
   }, []);
 
-  const initializeScreen = useCallback(async () => {
-    try {
-      // Guard: Only run if dataParam exists
-      if (!dataParam || typeof dataParam !== 'string') {
-        console.log('[ImportPreview] No data param, skipping initialization');
-        setLoading(false);
-        return;
-      }
+  // CRITICAL FIX: Initialize screen ONCE with stable dependencies
+  useEffect(() => {
+    // Guard: Only run once
+    if (initializationDone.current) {
+      console.log('[ImportPreview] Initialization already done, skipping');
+      return;
+    }
 
+    // Guard: Only run if dataParam exists
+    if (!dataParam || typeof dataParam !== 'string') {
+      console.log('[ImportPreview] No data param, skipping initialization');
+      setLoading(false);
+      return;
+    }
+
+    console.log('[ImportPreview] Initializing with params (ONCE)');
+    initializationDone.current = true; // Mark as done IMMEDIATELY to prevent re-runs
+
+    try {
       const parsed = JSON.parse(dataParam);
       console.log('[ImportPreview] Parsed product data:', parsed);
       
@@ -268,7 +281,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dataParam, autoSelectImage, router]);
+  }, [dataParam]); // ONLY depend on dataParam (stable)
 
   const fetchUserWishlists = useCallback(async () => {
     // Guard: Only run if user exists
@@ -315,12 +328,6 @@ export default function ImportPreviewScreen() {
       // Location is optional, continue without it
     }
   }, [user]);
-
-  // Initialize screen ONCE when dataParam changes
-  useEffect(() => {
-    console.log('[ImportPreview] Initializing with params:', params);
-    initializeScreen();
-  }, [initializeScreen]);
 
   // Fetch wishlists and location ONCE when user changes
   useEffect(() => {
