@@ -28,7 +28,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
+import { ProductMatchCard, ProductMatch } from '@/components/ProductMatchCard';
 import { supabase } from '@/lib/supabase';
+import { authenticatedPost } from '@/utils/api';
 
 // Placeholder image URL for fallback
 const PLACEHOLDER_IMAGE_URL = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80';
@@ -135,6 +137,12 @@ export default function ImportPreviewScreen() {
   const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
+  // Product matching state (NEW)
+  const [showProductMatches, setShowProductMatches] = useState(false);
+  const [productMatches, setProductMatches] = useState<ProductMatch[]>([]);
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [selectedMatch, setSelectedMatch] = useState<ProductMatch | null>(null);
+  
   // Data
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
@@ -144,6 +152,11 @@ export default function ImportPreviewScreen() {
   
   // Warnings
   const [warnings, setWarnings] = useState<string[]>([]);
+
+  // Check if information is incomplete (show Find Matches button)
+  const isIncomplete = useMemo(() => {
+    return !itemName || !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL || !price;
+  }, [itemName, selectedImage, price]);
 
   /**
    * Auto-select the best image based on input type
@@ -495,6 +508,111 @@ export default function ImportPreviewScreen() {
     }
   }, [user, suggestedImages]);
 
+  // NEW: Find Similar Products
+  const handleFindMatches = useCallback(async () => {
+    console.log('[ImportPreview] User tapped Find Matches');
+    
+    if (!userLocation || !userLocation.countryCode) {
+      Alert.alert(
+        'Location Required',
+        'Please set your country in Settings to find similar products.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/location') },
+        ]
+      );
+      return;
+    }
+
+    setLoadingMatches(true);
+    setShowProductMatches(true);
+
+    try {
+      console.log('[ImportPreview] Searching for similar products');
+      
+      // TODO: Backend Integration - POST /api/items/find-similar-products
+      // Request: { imageUrl?, imageBase64?, productName?, countryCode }
+      // Response: { similarProducts: ProductMatch[], searchMetadata }
+      const response = await authenticatedPost<{
+        similarProducts: ProductMatch[];
+        searchMetadata: {
+          totalFound: number;
+          searchTimeMs: number;
+          confidenceThreshold: number;
+        };
+      }>('/api/items/find-similar-products', {
+        imageUrl: selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined,
+        productName: itemName || undefined,
+        countryCode: userLocation.countryCode,
+      });
+
+      console.log('[ImportPreview] Found', response.similarProducts.length, 'similar products');
+      setProductMatches(response.similarProducts);
+
+      if (response.similarProducts.length === 0) {
+        Alert.alert('No Matches Found', 'We couldn\'t find any similar products. Try manual entry instead.');
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error finding similar products:', error);
+      Alert.alert('Search Failed', 'Failed to find similar products. Please try again.');
+      setShowProductMatches(false);
+    } finally {
+      setLoadingMatches(false);
+    }
+  }, [selectedImage, itemName, userLocation, router]);
+
+  // NEW: Handle Product Match Selection
+  const handleSelectMatch = useCallback((match: ProductMatch) => {
+    console.log('[ImportPreview] User selected product match:', match.name);
+    setSelectedMatch(match);
+    
+    // Auto-fill form with match data
+    setItemName(match.name);
+    setBrand(match.brand || '');
+    setSelectedImage(match.imageUrl);
+    setPrice(match.topPrice.amount.toString());
+    setCurrency(match.topPrice.currency);
+    setStoreName(match.store.name);
+    setStoreDomain(match.store.domain);
+    
+    // Set alternative stores
+    if (match.storeSuggestions && match.storeSuggestions.length > 0) {
+      const alternatives: AlternativeStore[] = match.storeSuggestions.map(store => ({
+        storeName: store.storeName,
+        storeDomain: store.storeDomain,
+        price: store.price,
+        currency: store.currency,
+        url: store.url,
+        availability: 'in_stock',
+      }));
+      setAlternativeStores(alternatives);
+    }
+    
+    // Remove warnings since we now have complete data
+    setWarnings([]);
+    
+    // Close the matches modal
+    setShowProductMatches(false);
+    
+    // Auto-confirm as correct product
+    setIsCorrectProduct(true);
+  }, []);
+
+  // NEW: Handle "None of these" selection
+  const handleNoneOfThese = useCallback(() => {
+    console.log('[ImportPreview] User selected None of these');
+    setShowProductMatches(false);
+    setProductMatches([]);
+    setSelectedMatch(null);
+    
+    // User will continue with manual entry
+    Alert.alert(
+      'Manual Entry',
+      'You can continue filling in the details manually.',
+      [{ text: 'OK' }]
+    );
+  }, []);
+
   const handleRetryExtraction = useCallback(() => {
     console.log('[ImportPreview] User tapped Retry');
     Alert.alert(
@@ -609,7 +727,6 @@ export default function ImportPreviewScreen() {
       if (alternativeStores.length > 0) {
         console.log('[ImportPreview] Saving', alternativeStores.length, 'offers to database');
         try {
-          const { authenticatedPost } = await import('@/utils/api');
           await authenticatedPost(`/api/items/${newItem.id}/save-offers`, {
             offers: alternativeStores.map(store => ({
               storeName: store.storeName,
@@ -713,7 +830,6 @@ export default function ImportPreviewScreen() {
       setTimeout(() => setSearchStage('choosing_photo'), 3000);
       
       // Call backend AI Price Search endpoint
-      const { authenticatedPost } = await import('@/utils/api');
       const response = await authenticatedPost<{
         offers: AlternativeStore[];
         message?: string;
@@ -821,6 +937,31 @@ export default function ImportPreviewScreen() {
               </View>
             )}
 
+            {/* Find Matches Button - Show when info is incomplete OR always available */}
+            {(isIncomplete || true) && (
+              <TouchableOpacity
+                style={[styles.findMatchesButton, { backgroundColor: colors.accent }]}
+                onPress={handleFindMatches}
+                disabled={loadingMatches}
+              >
+                {loadingMatches ? (
+                  <ActivityIndicator size="small" color={colors.textInverse} />
+                ) : (
+                  <View style={styles.buttonContent}>
+                    <IconSymbol
+                      ios_icon_name="sparkles"
+                      android_material_icon_name="auto-fix-high"
+                      size={20}
+                      color={colors.textInverse}
+                    />
+                    <Text style={[styles.findMatchesText, { color: colors.textInverse }]}>
+                      {isIncomplete ? 'Find Matches' : 'Find Better Matches'}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
+
             {/* Product Image + Change Photo */}
             <View style={styles.imageSection}>
               {selectedImage && !isPlaceholderImage ? (
@@ -849,7 +990,7 @@ export default function ImportPreviewScreen() {
                 {uploadingImage ? (
                   <ActivityIndicator size="small" color={colors.accent} />
                 ) : (
-                  <>
+                  <View style={styles.buttonContent}>
                     <IconSymbol
                       ios_icon_name="photo"
                       android_material_icon_name="image"
@@ -857,7 +998,7 @@ export default function ImportPreviewScreen() {
                       color={colors.accent}
                     />
                     <Text style={[styles.changeImageText, { color: colors.accent }]}>Change Photo</Text>
-                  </>
+                  </View>
                 )}
               </TouchableOpacity>
               
@@ -1021,7 +1162,7 @@ export default function ImportPreviewScreen() {
                       </Text>
                     </View>
                   ) : (
-                    <>
+                    <View style={styles.buttonContent}>
                       <IconSymbol
                         ios_icon_name="magnifyingglass"
                         android_material_icon_name="search"
@@ -1029,7 +1170,7 @@ export default function ImportPreviewScreen() {
                         color={colors.textInverse}
                       />
                       <Text style={[styles.loadAlternativesText, { color: colors.textInverse }]}>Find Prices Online</Text>
-                    </>
+                    </View>
                   )}
                 </TouchableOpacity>
                 <Text style={[styles.findPricesHint, { color: colors.textTertiary }]}>
@@ -1077,7 +1218,7 @@ export default function ImportPreviewScreen() {
               {saving || checkingDuplicates ? (
                 <ActivityIndicator size="small" color={colors.textInverse} />
               ) : (
-                <>
+                <View style={styles.buttonContent}>
                   <IconSymbol
                     ios_icon_name="checkmark"
                     android_material_icon_name="check"
@@ -1085,7 +1226,7 @@ export default function ImportPreviewScreen() {
                     color={colors.textInverse}
                   />
                   <Text style={[styles.primaryButtonText, { color: colors.textInverse }]}>Confirm & Add</Text>
-                </>
+                </View>
               )}
             </TouchableOpacity>
 
@@ -1147,6 +1288,60 @@ export default function ImportPreviewScreen() {
           onCancel={handleDuplicateCancel}
         />
 
+        {/* Product Matches Modal (NEW) */}
+        <Modal
+          visible={showProductMatches}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowProductMatches(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setShowProductMatches(false)}>
+            <Pressable style={[styles.matchesModalContent, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHandle} />
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Which one is it?</Text>
+              <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
+                Select the product that matches what you're looking for
+              </Text>
+              
+              {loadingMatches ? (
+                <View style={styles.loadingMatchesContainer}>
+                  <ActivityIndicator size="large" color={colors.accent} />
+                  <Text style={[styles.loadingMatchesText, { color: colors.textSecondary }]}>
+                    Finding similar products...
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView style={styles.matchesList} showsVerticalScrollIndicator={false}>
+                  {productMatches.map((match) => (
+                    <ProductMatchCard
+                      key={match.id}
+                      product={match}
+                      onSelect={handleSelectMatch}
+                      selected={selectedMatch?.id === match.id}
+                    />
+                  ))}
+                  
+                  {/* None of these button */}
+                  <TouchableOpacity
+                    style={[styles.noneOfTheseButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                    onPress={handleNoneOfThese}
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle"
+                      android_material_icon_name="cancel"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                    <Text style={[styles.noneOfTheseText, { color: colors.textPrimary }]}>
+                      None of these
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         {/* Image Picker Modal - Shows top 5 suggestions + upload/camera options */}
         <Modal
           visible={showImagePicker}
@@ -1161,7 +1356,7 @@ export default function ImportPreviewScreen() {
               
               {/* Show suggested images (top 5) */}
               {suggestedImages.length > 0 && (
-                <>
+                <View>
                   <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
                     Suggested Images ({suggestedImages.length})
                   </Text>
@@ -1198,7 +1393,7 @@ export default function ImportPreviewScreen() {
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
-                </>
+                </View>
               )}
 
               {/* Upload and Camera Options */}
@@ -1211,7 +1406,7 @@ export default function ImportPreviewScreen() {
                   {uploadingImage ? (
                     <ActivityIndicator size="small" color={colors.textInverse} />
                   ) : (
-                    <>
+                    <View style={styles.buttonContent}>
                       <IconSymbol
                         ios_icon_name="photo"
                         android_material_icon_name="image"
@@ -1219,7 +1414,7 @@ export default function ImportPreviewScreen() {
                         color={colors.textInverse}
                       />
                       <Text style={[styles.imageActionText, { color: colors.textInverse }]}>Upload from Gallery</Text>
-                    </>
+                    </View>
                   )}
                 </TouchableOpacity>
 
@@ -1321,6 +1516,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: spacing.xs,
     fontStyle: 'italic',
+  },
+  findMatchesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.lg,
+  },
+  findMatchesText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   imageSection: {
     alignItems: 'center',
@@ -1570,6 +1783,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     maxHeight: '80%',
   },
+  matchesModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.lg,
+    maxHeight: '90%',
+  },
   modalHandle: {
     width: 40,
     height: 4,
@@ -1581,12 +1800,39 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '600',
-    marginBottom: spacing.md,
+    marginBottom: spacing.xs,
   },
   modalSubtitle: {
     fontSize: 14,
+    marginBottom: spacing.md,
+  },
+  loadingMatchesContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  loadingMatchesText: {
+    marginTop: spacing.md,
+    fontSize: 16,
+  },
+  matchesList: {
+    flex: 1,
+  },
+  noneOfTheseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  noneOfTheseText: {
+    fontSize: 16,
     fontWeight: '500',
-    marginBottom: spacing.sm,
   },
   imageGrid: {
     marginBottom: spacing.md,
