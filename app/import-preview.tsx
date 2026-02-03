@@ -510,7 +510,7 @@ export default function ImportPreviewScreen() {
     }
 
     // Validate image exists
-    const imageToIdentify = selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined;
+    let imageToIdentify = selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined;
     if (!imageToIdentify) {
       Alert.alert(
         'Image Required',
@@ -524,6 +524,62 @@ export default function ImportPreviewScreen() {
     setShowProductMatches(true);
 
     try {
+      // CRITICAL FIX: If image is a local file URI, upload it first
+      if (imageToIdentify.startsWith('file://')) {
+        console.log('[ImportPreview] Image is local file URI, uploading to Supabase Storage first...');
+        
+        if (!user) {
+          Alert.alert('Error', 'You must be logged in to upload images');
+          setLoadingMatches(false);
+          setShowProductMatches(false);
+          return;
+        }
+
+        // Generate unique filename
+        const fileExt = imageToIdentify.split('.').pop() || 'jpg';
+        const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+        
+        // Fetch the image as a blob
+        const response = await fetch(imageToIdentify);
+        const blob = await response.blob();
+        
+        // Upload to Supabase Storage (item-images bucket)
+        const { data, error } = await supabase.storage
+          .from('item-images')
+          .upload(fileName, blob, {
+            contentType: `image/${fileExt}`,
+            upsert: false,
+          });
+
+        if (error) {
+          console.error('[ImportPreview] Error uploading image:', error);
+          Alert.alert('Upload Failed', 'Failed to upload image for identification. Please try again.');
+          setLoadingMatches(false);
+          setShowProductMatches(false);
+          return;
+        }
+
+        // Get public URL
+        const { data: urlData } = supabase.storage
+          .from('item-images')
+          .getPublicUrl(fileName);
+
+        const publicUrl = urlData.publicUrl;
+        console.log('[ImportPreview] Image uploaded successfully:', publicUrl);
+
+        // Update selectedImage with public URL
+        setSelectedImage(publicUrl);
+        imageToIdentify = publicUrl;
+        
+        // Add to suggested images if not already there
+        setSuggestedImages(prev => {
+          if (!prev.includes(publicUrl)) {
+            return [publicUrl, ...prev].slice(0, 5);
+          }
+          return prev;
+        });
+      }
+
       console.log('[ImportPreview] Calling identify-product-from-image Edge Function');
       console.log('[ImportPreview] Country:', effectiveCountryCode, 'Currency:', effectiveCurrencyCode);
       console.log('[ImportPreview] Image URL:', imageToIdentify);
@@ -531,7 +587,7 @@ export default function ImportPreviewScreen() {
       // Call the new Supabase Edge Function
       const response = await identifyProductFromImage(
         undefined, // imageBase64 - not using base64 for now
-        imageToIdentify, // imageUrl
+        imageToIdentify, // imageUrl (now guaranteed to be a public URL)
         effectiveCountryCode,
         effectiveCurrencyCode,
         'en' // languageCode - default to English for now
@@ -579,7 +635,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, currentCountry, currentCurrency, router]);
+  }, [selectedImage, itemName, currentCountry, currentCurrency, router, user]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback(async (match: ProductMatch) => {
