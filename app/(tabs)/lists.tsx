@@ -17,6 +17,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/design-system/Card';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { dedupeById } from '@/utils/deduplication';
+import { updateWishlist } from '@/lib/supabase-helpers';
 import {
   View,
   Text,
@@ -128,7 +129,7 @@ export default function ListsScreen() {
     listCard: {
       marginBottom: spacing.md,
     },
-    listContent: {
+    listContentRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
@@ -354,11 +355,10 @@ export default function ListsScreen() {
     isFetchingRef.current = true;
 
     try {
+      console.log('[ListsScreen] Fetching lists for user:', user.id);
       setLoading(true);
       setError(null);
 
-      // TODO: Backend Integration - GET /api/lists to fetch all lists
-      // For now, fetch from Supabase directly
       const { data, error: fetchError } = await supabase
         .from('wishlists')
         .select('*')
@@ -367,13 +367,15 @@ export default function ListsScreen() {
 
       if (fetchError) throw fetchError;
 
+      console.log('[ListsScreen] Fetched wishlists:', data?.length);
+
       const formattedLists: List[] = (data || []).map((list: any) => ({
         id: list.id,
         name: list.name,
         listType: list.list_type || 'WISHLIST',
         isDefault: list.is_default || false,
-        itemCount: 0, // TODO: Get from backend
-        completedCount: 0, // TODO: Get from backend
+        itemCount: 0,
+        completedCount: 0,
         smartPlanEnabled: list.smart_plan_enabled || false,
         smartPlanTemplate: list.smart_plan_template,
         createdAt: list.created_at,
@@ -381,6 +383,7 @@ export default function ListsScreen() {
       }));
 
       const deduplicatedLists = dedupeById(formattedLists, 'id');
+      console.log('[ListsScreen] Deduplicated lists:', deduplicatedLists.length);
       setLists(deduplicatedLists);
       await setCachedData('lists', deduplicatedLists);
     } catch (err) {
@@ -434,10 +437,8 @@ export default function ListsScreen() {
     }
 
     try {
-      console.log('[ListsScreen] Creating new list:', trimmedName, 'type:', createListType);
+      console.log('[ListsScreen] Creating new list:', trimmedName, 'type:', createListType, 'isDefault:', setAsDefault);
       
-      // TODO: Backend Integration - POST /api/lists
-      // Body: { name, listType, isDefault?, smartPlanEnabled?, smartPlanTemplate? }
       const { data, error } = await supabase
         .from('wishlists')
         .insert({
@@ -452,6 +453,8 @@ export default function ListsScreen() {
         .single();
 
       if (error) throw error;
+
+      console.log('[ListsScreen] Created list:', data.id, 'is_default:', data.is_default);
 
       setCreateModalVisible(false);
       setNewListName('');
@@ -475,7 +478,8 @@ export default function ListsScreen() {
     }
 
     try {
-      // TODO: Backend Integration - PUT /api/lists/:id
+      console.log('[ListsScreen] Renaming list:', selectedList.id, 'to:', trimmedName);
+
       const { error } = await supabase
         .from('wishlists')
         .update({ name: trimmedName })
@@ -494,11 +498,31 @@ export default function ListsScreen() {
     }
   };
 
+  const handleMakeDefault = async () => {
+    if (!selectedList) return;
+
+    try {
+      console.log('[ListsScreen] Making list default:', selectedList.id);
+
+      // Use the updateWishlist helper which handles the transactional logic
+      await updateWishlist(selectedList.id, { is_default: true });
+
+      setMenuVisible(false);
+      setSelectedList(null);
+      handleRefresh();
+      Alert.alert('Success', `"${selectedList.name}" is now your default wishlist`);
+    } catch (err) {
+      console.error('[ListsScreen] Error making list default:', err);
+      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to set default list');
+    }
+  };
+
   const handleDeleteList = async () => {
     if (!selectedList) return;
 
     try {
-      // TODO: Backend Integration - DELETE /api/lists/:id
+      console.log('[ListsScreen] Deleting list:', selectedList.id);
+
       const { error } = await supabase
         .from('wishlists')
         .delete()
@@ -517,7 +541,7 @@ export default function ListsScreen() {
   };
 
   const handleListPress = (list: List) => {
-    router.push(`/list/${list.id}`);
+    router.push(`/wishlist/${list.id}`);
   };
 
   const openCreateModal = (listType: 'WISHLIST' | 'TODO') => {
@@ -542,7 +566,7 @@ export default function ListsScreen() {
         activeOpacity={0.7}
       >
         <Card style={styles.listCard}>
-          <View style={styles.listContent}>
+          <View style={styles.listContentRow}>
             <View style={styles.listLeft}>
               <Text style={styles.listName}>{item.name}</Text>
               <View style={styles.listMeta}>
@@ -557,20 +581,20 @@ export default function ListsScreen() {
                     {item.listType === 'WISHLIST' ? 'Wishlist' : 'To-Do'}
                   </Text>
                 </View>
+                {item.isDefault && (
+                  <View style={styles.defaultBadge}>
+                    <Text style={styles.defaultBadgeText}>Default</Text>
+                  </View>
+                )}
+                {item.smartPlanEnabled && (
+                  <View style={styles.smartPlanBadge}>
+                    <Text style={styles.smartPlanBadgeText}>Smart Plan</Text>
+                  </View>
+                )}
                 <Text style={styles.listMetaText}>{completedText}</Text>
               </View>
             </View>
             <View style={styles.listRight}>
-              {item.isDefault && (
-                <View style={styles.defaultBadge}>
-                  <Text style={styles.defaultBadgeText}>Default</Text>
-                </View>
-              )}
-              {item.smartPlanEnabled && (
-                <View style={styles.smartPlanBadge}>
-                  <Text style={styles.smartPlanBadgeText}>Smart Plan</Text>
-                </View>
-              )}
               <TouchableOpacity
                 style={styles.moreButton}
                 onPress={(e) => {
@@ -818,6 +842,23 @@ export default function ListsScreen() {
         >
           <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
             <View style={[styles.menuContent, { top: menuPosition.top, right: menuPosition.right }]}>
+              {!selectedList?.isDefault && (
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => {
+                    setMenuVisible(false);
+                    handleMakeDefault();
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="star"
+                    android_material_icon_name="star"
+                    size={20}
+                    color={colors.icon}
+                  />
+                  <Text style={styles.menuItemText}>Make Default</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
