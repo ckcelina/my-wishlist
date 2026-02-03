@@ -421,6 +421,7 @@ export default function AuthScreen() {
 
     return (
       <>
+        {/* Logo only - no widget above it */}
         <View style={styles.logoContainer}>
           <Logo size="large" />
         </View>

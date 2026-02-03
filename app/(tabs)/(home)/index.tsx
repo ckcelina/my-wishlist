@@ -90,6 +90,7 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        {/* Logo is the top-most element */}
         <View style={styles.header}>
           <Logo size="large" />
           <Text style={[typography.pageTitle, { marginTop: theme.spacing.md }]}>
@@ -268,7 +269,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingTop: 8, // Reduced padding to bring logo closer to top
+    paddingTop: 4, // Minimal padding - logo is the top element
   },
   header: {
     alignItems: 'center',

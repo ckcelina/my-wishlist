@@ -213,13 +213,16 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings
+      // Get country from Settings - NEVER reset or remove it
       const searchCountry = settings?.activeSearchCountry || 'US';
-      console.log('[AddItem] Using search country:', searchCountry);
+      console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
-        console.log('[AddItem] No country set');
-        Alert.alert('Country Required', 'Please set your country in Settings first');
+        console.log('[AddItem] No country set in Settings');
+        Alert.alert('Country Required', 'Please set your country in Settings first', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/location') },
+        ]);
         return;
       }
 
@@ -359,13 +362,16 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings
+      // Get country from Settings - NEVER reset or remove it
       const searchCountry = settings?.activeSearchCountry || 'US';
-      console.log('[AddItem] Using search country:', searchCountry);
+      console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
-        console.log('[AddItem] No country set');
-        Alert.alert('Country Required', 'Please set your country in Settings first');
+        console.log('[AddItem] No country set in Settings');
+        Alert.alert('Country Required', 'Please set your country in Settings first', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/location') },
+        ]);
         return;
       }
 
@@ -389,6 +395,7 @@ export default function AddItemScreen() {
       console.log('[AddItem] Identification result:', result);
 
       // Navigate to import-preview with identified data (even if partial)
+      // Country persists from Settings - scanning NEVER resets it
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: cameraImage,
@@ -511,13 +518,16 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings
+      // Get country from Settings - NEVER reset or remove it
       const searchCountry = settings?.activeSearchCountry || 'US';
-      console.log('[AddItem] Using search country:', searchCountry);
+      console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
-        console.log('[AddItem] No country set');
-        Alert.alert('Country Required', 'Please set your country in Settings first');
+        console.log('[AddItem] No country set in Settings');
+        Alert.alert('Country Required', 'Please set your country in Settings first', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/location') },
+        ]);
         return;
       }
 
@@ -541,6 +551,7 @@ export default function AddItemScreen() {
       console.log('[AddItem] Identification result:', result);
 
       // Navigate to import-preview with identified data (even if partial)
+      // Country persists from Settings - scanning NEVER resets it
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: uploadImage,
@@ -614,13 +625,16 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings
+      // Get country from Settings - NEVER reset or remove it
       const searchCountry = settings?.activeSearchCountry || 'US';
-      console.log('[AddItem] Using search country:', searchCountry);
+      console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
-        console.log('[AddItem] No country set');
-        Alert.alert('Country Required', 'Please set your country in Settings first');
+        console.log('[AddItem] No country set in Settings');
+        Alert.alert('Country Required', 'Please set your country in Settings first', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => router.push('/location') },
+        ]);
         return;
       }
 
@@ -1279,7 +1293,7 @@ export default function AddItemScreen() {
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        {/* Always-visible header with Wishlist */}
+        {/* Always-visible header with Wishlist - NO delivery address UI */}
         <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
           <View style={styles.headerRow}>
             <View style={styles.headerItem}>
@@ -1301,12 +1315,12 @@ export default function AddItemScreen() {
             </View>
           </View>
 
-          {/* Country is managed in Settings - show current country for reference */}
+          {/* Country is set ONLY in Settings - show current country for reference */}
           {settings?.activeSearchCountry && (
             <View style={styles.headerRow}>
               <View style={[styles.headerItem, { flex: 1 }]}>
                 <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
-                  Searching in: {settings.activeSearchCountry}
+                  Country: {settings.activeSearchCountry}
                 </Text>
                 <TouchableOpacity
                   style={[styles.settingsLink, { backgroundColor: colors.surface, borderColor: colors.border }]}

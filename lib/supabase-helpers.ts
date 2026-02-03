@@ -68,11 +68,12 @@ export async function createWishlist(wishlist: WishlistInsert) {
 
   const isFirstWishlist = !existingWishlists || existingWishlists.length === 0;
   
-  // CRITICAL FIX FOR PROMPT 4:
-  // Only set as default if:
-  // 1. It's the FIRST wishlist (automatic), OR
-  // 2. User EXPLICITLY set is_default to true in the UI
-  // Otherwise, ALWAYS set to false (don't change existing default)
+  // CRITICAL FIX: Wishlist Default Logic
+  // A) Creating a new wishlist MUST NOT set it as Default (unless it's the first one)
+  // B) Default wishlist changes ONLY when user explicitly selects "Set as default"
+  // Rules:
+  // 1. First wishlist → ALWAYS default (automatic)
+  // 2. Subsequent wishlists → NEVER default (unless user explicitly sets is_default: true)
   const shouldBeDefault = isFirstWishlist ? true : (wishlist.is_default === true);
 
   console.log('[Supabase] isFirstWishlist:', isFirstWishlist, 'shouldBeDefault:', shouldBeDefault);

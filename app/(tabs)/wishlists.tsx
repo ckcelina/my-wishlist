@@ -85,7 +85,7 @@ export default function WishlistsScreen() {
     },
     header: {
       paddingHorizontal: spacing.lg,
-      paddingTop: spacing.md, // Reduced from spacing.lg to bring logo closer to top
+      paddingTop: spacing.xs, // Minimal padding - logo is the top element
       paddingBottom: spacing.md,
     },
     headerTop: {
@@ -613,6 +613,7 @@ export default function WishlistsScreen() {
 
   const renderHeader = () => (
     <View style={styles.header}>
+      {/* Logo is the top-most element - no widget above it */}
       <View style={styles.headerTop}>
         <Logo size="medium" />
       </View>
