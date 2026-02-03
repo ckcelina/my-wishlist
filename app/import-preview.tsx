@@ -22,11 +22,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useLocation } from '@/contexts/LocationContext';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
-import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
+import { fetchWishlists, fetchWishlistItems } from '@/lib/supabase-helpers';
 import { createWishlistItem } from '@/lib/supabase-helpers';
 import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
 import { ProductMatchCard, ProductMatch } from '@/components/ProductMatchCard';
@@ -79,11 +78,6 @@ interface Wishlist {
   isDefault?: boolean;
 }
 
-interface UserLocation {
-  countryCode: string;
-  city: string | null;
-}
-
 interface DuplicateItem {
   id: string;
   title: string;
@@ -100,7 +94,6 @@ export default function ImportPreviewScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { theme } = useAppTheme();
-  const { countryCode, cityId, currencyCode } = useLocation();
   const { settings: smartLocationSettings } = useSmartLocation();
   const colors = createColors(theme);
   const typography = createTypography(theme);
@@ -110,7 +103,6 @@ export default function ImportPreviewScreen() {
   // CRITICAL FIX: Use ref to track if initialization has run
   const initializationDone = useRef(false);
   const wishlistsFetched = useRef(false);
-  const locationFetched = useRef(false);
   
   // CRITICAL FIX: Properly memoize dataParam with stable reference
   const dataParam = useMemo(() => {
@@ -173,7 +165,6 @@ export default function ImportPreviewScreen() {
   
   // Data
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [alternativeStores, setAlternativeStores] = useState<AlternativeStore[]>([]);
   const [loadingAlternatives, setLoadingAlternatives] = useState(false);
   const [searchStage, setSearchStage] = useState<SearchStage>('idle');
@@ -185,6 +176,10 @@ export default function ImportPreviewScreen() {
   const isIncomplete = useMemo(() => {
     return !itemName || !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL || !price;
   }, [itemName, selectedImage, price]);
+
+  // Get country from Settings - NEVER reset or remove it
+  const currentCountry = smartLocationSettings?.activeSearchCountry;
+  const currentCurrency = smartLocationSettings?.currencyCode || currency;
 
   // CRITICAL FIX: Initialize screen ONCE with stable dependencies
   useEffect(() => {
@@ -242,7 +237,7 @@ export default function ImportPreviewScreen() {
       setStoreName(dataParam.storeName || '');
       setStoreDomain(dataParam.storeDomain || '');
       setPrice(dataParam.price?.toString() || '');
-      setCurrency(dataParam.currency || 'USD');
+      setCurrency(dataParam.currency || currentCurrency || 'USD');
       setNotes(dataParam.notes || '');
       
       // Check for warnings
@@ -267,7 +262,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dataParam, router]); // Stable dependencies only
+  }, [dataParam, router, currentCurrency]); // Stable dependencies only
 
   const fetchUserWishlists = useCallback(async () => {
     // Guard: Only run if user exists and not already fetched
@@ -293,39 +288,12 @@ export default function ImportPreviewScreen() {
     }
   }, [user]);
 
-  const fetchUserLocationData = useCallback(async () => {
-    // Guard: Only run if user exists and not already fetched
-    if (!user || locationFetched.current) {
-      console.log('[ImportPreview] Skipping location fetch (already done or no user)');
-      return;
-    }
-    
-    locationFetched.current = true;
-    try {
-      console.log('[ImportPreview] Fetching user location');
-      const locationData = await fetchUserLocation(user.id);
-      
-      if (locationData) {
-        setUserLocation({
-          countryCode: locationData.countryCode,
-          city: locationData.city,
-        });
-        console.log('[ImportPreview] User location:', locationData);
-      }
-    } catch (error) {
-      console.error('[ImportPreview] Error fetching location:', error);
-      locationFetched.current = false; // Allow retry on error
-      // Location is optional, continue without it
-    }
-  }, [user]);
-
-  // Fetch wishlists and location ONCE when user changes
+  // Fetch wishlists ONCE when user changes
   useEffect(() => {
     if (user) {
       fetchUserWishlists();
-      fetchUserLocationData();
     }
-  }, [user, fetchUserWishlists, fetchUserLocationData]);
+  }, [user, fetchUserWishlists]);
 
   const checkForDuplicates = useCallback(async () => {
     if (!selectedWishlistId || !itemName.trim()) {
@@ -526,12 +494,12 @@ export default function ImportPreviewScreen() {
     console.log('[ImportPreview] User tapped Find Matches');
     
     // CRITICAL: Get location from SmartLocationContext (Settings only)
-    const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode;
-    const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency;
+    const effectiveCountryCode = currentCountry;
+    const effectiveCurrencyCode = currentCurrency;
     
     if (!effectiveCountryCode) {
       Alert.alert(
-        'Location Required',
+        'Country Required',
         'Please set your country in Settings to find similar products.',
         [
           { text: 'Cancel', style: 'cancel' },
@@ -611,7 +579,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, countryCode, currencyCode, currency, userLocation, smartLocationSettings, router]);
+  }, [selectedImage, itemName, currentCountry, currentCurrency, router]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback(async (match: ProductMatch) => {
@@ -637,8 +605,8 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Fetching real-time prices for product:', match.id);
       
       // CRITICAL: Get location from SmartLocationContext (Settings only)
-      const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode || 'US';
-      const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency || 'USD';
+      const effectiveCountryCode = currentCountry || 'US';
+      const effectiveCurrencyCode = currentCurrency || 'USD';
       
       console.log('[ImportPreview] Fetching prices for country:', effectiveCountryCode, 'currency:', effectiveCurrencyCode);
       
@@ -713,7 +681,7 @@ export default function ImportPreviewScreen() {
     
     // Auto-confirm as correct product
     setIsCorrectProduct(true);
-  }, [countryCode, currencyCode, currency, userLocation, smartLocationSettings]);
+  }, [currentCountry, currentCurrency]);
 
   // NEW: Handle "None of these" selection
   const handleNoneOfThese = useCallback(() => {
@@ -823,7 +791,7 @@ export default function ImportPreviewScreen() {
         console.log('[ImportPreview] No image provided, using placeholder');
       }
       
-      // Create the wishlist item with location data
+      // Create the wishlist item with location data from Settings
       const newItem = await createWishlistItem({
         wishlist_id: selectedWishlistId,
         title: itemName.trim(),
@@ -833,9 +801,9 @@ export default function ImportPreviewScreen() {
         original_url: productData?.sourceUrl || null,
         source_domain: storeDomain || null,
         notes: notes.trim() || null,
-        country_code: countryCode || null,
-        city_id: cityId || null,
-        currency_code: currencyCode || currency,
+        country_code: currentCountry || null,
+        city_id: null, // City is no longer used
+        currency_code: currentCurrency || currency,
       });
       
       console.log('[ImportPreview] Item saved successfully:', newItem.id);
@@ -857,8 +825,8 @@ export default function ImportPreviewScreen() {
               deliveryTime: store.deliveryTime || null,
               availability: store.availability || 'in_stock',
               confidenceScore: store.confidenceScore || null,
-              countryCode: userLocation?.countryCode || null,
-              city: userLocation?.city || null,
+              countryCode: currentCountry || null,
+              city: null, // City is no longer used
             })),
           });
           console.log('[ImportPreview] Offers saved successfully');
@@ -873,8 +841,8 @@ export default function ImportPreviewScreen() {
         console.log('[ImportPreview] Setting up price tracking for item:', newItem.id);
         try {
           const targetPrice = desiredPrice ? parseFloat(desiredPrice) : null;
-          const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode || 'US';
-          const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency || 'USD';
+          const effectiveCountryCode = currentCountry || 'US';
+          const effectiveCurrencyCode = currentCurrency || currency || 'USD';
           
           await authenticatedPost(`/api/price-alerts`, {
             itemId: newItem.id,
@@ -912,7 +880,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setSaving(false);
     }
-  }, [selectedWishlistId, itemName, selectedImage, price, currency, productData, storeDomain, notes, countryCode, cityId, currencyCode, alternativeStores, userLocation, trackPriceDrops, desiredPrice, selectedProductId, smartLocationSettings, uploadImageToSupabase, router]);
+  }, [selectedWishlistId, itemName, selectedImage, price, currency, productData, storeDomain, notes, currentCountry, currentCurrency, alternativeStores, trackPriceDrops, desiredPrice, selectedProductId, uploadImageToSupabase, router]);
 
   const handleDuplicateAddAnyway = useCallback(async () => {
     console.log('[ImportPreview] User chose to add anyway despite duplicates');
@@ -943,16 +911,16 @@ export default function ImportPreviewScreen() {
       return;
     }
     
-    // Check if user has set their shipping location
-    if (!userLocation || !userLocation.countryCode) {
-      console.log('[ImportPreview] User location not set, showing location modal');
+    // Check if user has set their country in Settings
+    if (!currentCountry) {
+      console.log('[ImportPreview] Country not set in Settings');
       Alert.alert(
-        'Shipping Location Required',
-        'To find prices online, we need to know where you want items shipped. Please set your shipping location first.',
+        'Country Required',
+        'To find prices online, please set your country in Settings first.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Set Location',
+            text: 'Go to Settings',
             onPress: () => {
               router.push('/location');
             },
@@ -962,7 +930,7 @@ export default function ImportPreviewScreen() {
       return;
     }
     
-    console.log('[ImportPreview] Loading AI Price Search results for location:', userLocation.countryCode, userLocation.city);
+    console.log('[ImportPreview] Loading AI Price Search results for country:', currentCountry);
     setLoadingAlternatives(true);
     setSearchStage('finding_stores');
     
@@ -980,8 +948,8 @@ export default function ImportPreviewScreen() {
         productName: itemName,
         imageUrl: selectedImage || null,
         originalUrl: productData?.sourceUrl || null,
-        countryCode: userLocation.countryCode,
-        city: userLocation.city || null,
+        countryCode: currentCountry,
+        city: null, // City is no longer used
       });
       
       setSearchStage('complete');
@@ -1001,7 +969,7 @@ export default function ImportPreviewScreen() {
       setLoadingAlternatives(false);
       setSearchStage('idle');
     }
-  }, [itemName, userLocation, selectedImage, productData, router]);
+  }, [itemName, currentCountry, selectedImage, productData, router]);
 
   const getStageLabel = useCallback((stage: SearchStage): string => {
     switch (stage) {
@@ -1031,7 +999,6 @@ export default function ImportPreviewScreen() {
   const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
   const selectedWishlistName = selectedWishlist?.name || 'Select wishlist';
   
-  const availableInUserCountry = userLocation && productData?.countryAvailability?.includes(userLocation.countryCode);
   const priceDisplay = price ? `${currency} ${parseFloat(price).toFixed(2)}` : 'Price not available';
 
   const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
@@ -1057,6 +1024,32 @@ export default function ImportPreviewScreen() {
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
+            {/* Country Warning - Show if not set in Settings */}
+            {!currentCountry && (
+              <View style={[styles.warningCard, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
+                <View style={styles.warningHeader}>
+                  <IconSymbol
+                    ios_icon_name="exclamationmark.triangle"
+                    android_material_icon_name="warning"
+                    size={20}
+                    color={colors.error}
+                  />
+                  <Text style={[styles.warningTitle, { color: colors.error }]}>Country Not Set</Text>
+                </View>
+                <Text style={[styles.warningText, { color: colors.error }]}>
+                  Please set your country in Settings to enable product search and price tracking.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.settingsButton, { backgroundColor: colors.error }]}
+                  onPress={() => router.push('/location')}
+                >
+                  <Text style={[styles.settingsButtonText, { color: colors.textInverse }]}>
+                    Go to Settings
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {/* Warnings Section */}
             {warnings.length > 0 && (
               <View style={[styles.warningCard, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
@@ -1081,7 +1074,7 @@ export default function ImportPreviewScreen() {
             )}
 
             {/* Find Matches Button - Show when info is incomplete OR always available */}
-            {(isIncomplete || true) && (
+            {(isIncomplete || true) && currentCountry && (
               <TouchableOpacity
                 style={[styles.findMatchesButton, { backgroundColor: colors.accent }]}
                 onPress={handleFindMatches}
@@ -1359,7 +1352,7 @@ export default function ImportPreviewScreen() {
                   </Text>
                 )}
               </View>
-            ) : (
+            ) : currentCountry ? (
               <View style={styles.findPricesSection}>
                 <TouchableOpacity
                   style={[styles.loadAlternativesButton, { backgroundColor: colors.accent }]}
@@ -1389,7 +1382,7 @@ export default function ImportPreviewScreen() {
                   Search 10+ stores for the best price
                 </Text>
               </View>
-            )}
+            ) : null}
 
             {/* "This is the correct product" Confirmation */}
             <View style={[styles.confirmationSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1824,6 +1817,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: spacing.xs,
     fontStyle: 'italic',
+  },
+  settingsButton: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginTop: spacing.sm,
+  },
+  settingsButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   findMatchesButton: {
     flexDirection: 'row',

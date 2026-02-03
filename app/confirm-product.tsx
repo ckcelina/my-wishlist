@@ -23,7 +23,6 @@ import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { identifyProductFromImage } from '@/utils/supabase-edge-functions';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
-import { useLocation } from '@/contexts/LocationContext';
 
 interface SuggestedProduct {
   title: string;
@@ -479,6 +478,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 8,
   },
+  countryWarning: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  countryWarningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#856404',
+    marginBottom: 8,
+  },
+  countryWarningText: {
+    fontSize: 14,
+    color: '#856404',
+    marginBottom: 12,
+  },
+  settingsButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  settingsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -600,7 +630,6 @@ export default function ConfirmProductScreen() {
   } = useLocalSearchParams();
   const { user } = useAuth();
   const { settings: smartLocationSettings } = useSmartLocation();
-  const { countryCode, currencyCode } = useLocation();
 
   const [loading, setLoading] = useState(true);
   const [identifying, setIdentifying] = useState(false);
@@ -621,6 +650,10 @@ export default function ConfirmProductScreen() {
   // Ref to prevent multiple analysis calls
   const analysisStarted = useRef(false);
 
+  // Get country from Settings - NEVER reset or remove it
+  const currentCountry = smartLocationSettings?.activeSearchCountry;
+  const currentCurrency = smartLocationSettings?.currencyCode || currency;
+
   /**
    * CRITICAL: Auto-run image analysis when screen loads with a photo
    * This is the main fix for the bug
@@ -638,6 +671,14 @@ export default function ConfirmProductScreen() {
       return;
     }
 
+    // Check if country is set in Settings
+    if (!currentCountry) {
+      console.log('[ConfirmProduct] Country not set in Settings, skipping analysis');
+      setLoading(false);
+      setAnalysisError('Please set your country in Settings to enable product identification.');
+      return;
+    }
+
     console.log('[ConfirmProduct] 🔍 Starting automatic image analysis for:', imageUrl);
     analysisStarted.current = true; // Mark as started IMMEDIATELY
     setLoading(true);
@@ -648,8 +689,8 @@ export default function ConfirmProductScreen() {
 
     try {
       // Get location settings from SmartLocationContext (Settings only)
-      const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || countryCode || 'US';
-      const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || 'USD';
+      const effectiveCountryCode = currentCountry;
+      const effectiveCurrencyCode = currentCurrency;
       
       console.log('[ConfirmProduct] Using location:', effectiveCountryCode, 'currency:', effectiveCurrencyCode);
       console.log('[ConfirmProduct] Calling identify-product-from-image Edge Function...');
@@ -725,7 +766,7 @@ export default function ConfirmProductScreen() {
       setIdentifying(false);
       analysisStarted.current = false; // Allow retry
     }
-  }, [imageUrl, smartLocationSettings, countryCode, currencyCode]);
+  }, [imageUrl, currentCountry, currentCurrency]);
 
   /**
    * LOCAL FALLBACK: Extract text locally and generate item name
@@ -819,6 +860,7 @@ export default function ConfirmProductScreen() {
       hasImageUrl: !!imageUrl,
       hasIdentificationResult: !!identificationResult,
       hasParamTitle: !!paramTitle,
+      hasCountry: !!currentCountry,
     });
     
     // Check if we have direct params from search (not image identification)
@@ -1054,6 +1096,7 @@ export default function ConfirmProductScreen() {
           currency: currency,
           notes: notes.trim() || null,
           userId: user?.id,
+          countryCode: currentCountry || null,
         }),
       });
 
@@ -1191,6 +1234,22 @@ export default function ConfirmProductScreen() {
           resizeMode="cover"
         />
 
+        {/* Country Warning - Show if not set in Settings */}
+        {!currentCountry && (
+          <View style={styles.countryWarning}>
+            <Text style={styles.countryWarningTitle}>Country Not Set</Text>
+            <Text style={styles.countryWarningText}>
+              Please set your country in Settings to enable product identification and price tracking.
+            </Text>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => router.push('/location')}
+            >
+              <Text style={styles.settingsButtonText}>Go to Settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Detected Text Display */}
         {detectedText && detectedText !== 'No readable text detected' && (
           <View style={styles.detectedTextContainer}>
@@ -1204,9 +1263,18 @@ export default function ConfirmProductScreen() {
           <View style={styles.errorContainer}>
             <Text style={styles.errorTitle}>Analysis Issue</Text>
             <Text style={styles.errorText}>{analysisError}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
-              <Text style={styles.retryButtonText}>Retry Analysis</Text>
-            </TouchableOpacity>
+            {currentCountry ? (
+              <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
+                <Text style={styles.retryButtonText}>Retry Analysis</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.settingsButton}
+                onPress={() => router.push('/location')}
+              >
+                <Text style={styles.settingsButtonText}>Go to Settings</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -1275,9 +1343,11 @@ export default function ConfirmProductScreen() {
                 <Text style={styles.noMatchesText}>
                   We couldn't find any matching products. You can enter details manually below or try analyzing again.
                 </Text>
-                <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
-                  <Text style={styles.retryButtonText}>Retry Analysis</Text>
-                </TouchableOpacity>
+                {currentCountry && (
+                  <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
+                    <Text style={styles.retryButtonText}>Retry Analysis</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -1355,9 +1425,11 @@ export default function ConfirmProductScreen() {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity style={styles.secondaryButton} onPress={handleTryAgain}>
-                  <Text style={styles.secondaryButtonText}>Try Again</Text>
-                </TouchableOpacity>
+                {currentCountry && (
+                  <TouchableOpacity style={styles.secondaryButton} onPress={handleTryAgain}>
+                    <Text style={styles.secondaryButtonText}>Try Again</Text>
+                  </TouchableOpacity>
+                )}
 
                 <TouchableOpacity style={styles.linkButton} onPress={handleReportIssue}>
                   <Text style={styles.linkButtonText}>Report an issue with results</Text>
