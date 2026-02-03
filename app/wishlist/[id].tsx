@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -1471,7 +1471,7 @@ export default function WishlistDetailScreen() {
             )
           ) : (
             Object.entries(filteredAndSortedGroups).map(([groupName, groupItems]) => (
-              <Fragment key={groupName}>
+              <View key={groupName}>
                 {groupByOption !== 'None' && (
                   <View style={styles.groupHeader}>
                     <Text style={styles.groupTitle}>{groupName}</Text>
@@ -1532,7 +1532,7 @@ export default function WishlistDetailScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </Fragment>
+              </View>
             ))
           )}
         </ScrollView>

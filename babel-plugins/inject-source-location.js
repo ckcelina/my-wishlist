@@ -68,11 +68,14 @@ function findMapContext(path, t) {
 
 /**
  * Check if a JSX element is a Fragment (React.Fragment or <>)
+ * CRITICAL: Fragments can ONLY have 'key' and 'children' props
+ * Any other props will cause runtime errors
  */
 function isFragment(path, t) {
   const openingName = path.node.name;
   
   // Check for fragment shorthand (<>)
+  // Note: Fragment shorthand is represented as JSXFragment, not JSXElement
   if (t.isJSXFragment(path.parent)) {
     return true;
   }
@@ -99,9 +102,46 @@ function isFragment(path, t) {
   return false;
 }
 
+/**
+ * Additional check: Is this path inside a Fragment?
+ */
+function isInsideFragment(path, t) {
+  let current = path.parentPath;
+  while (current) {
+    if (current.isJSXElement()) {
+      const openingName = current.node.openingElement.name;
+      if (t.isJSXIdentifier(openingName) && openingName.name === 'Fragment') {
+        return true;
+      }
+      if (t.isJSXMemberExpression(openingName)) {
+        if (
+          t.isJSXIdentifier(openingName.object) &&
+          openingName.object.name === 'React' &&
+          t.isJSXIdentifier(openingName.property) &&
+          openingName.property.name === 'Fragment'
+        ) {
+          return true;
+        }
+      }
+    }
+    if (current.isJSXFragment()) {
+      return true;
+    }
+    current = current.parentPath;
+  }
+  return false;
+}
+
 module.exports = function ({ types: t }) {
   return {
     visitor: {
+      // 🚨 CRITICAL: Explicitly skip JSXFragment nodes (fragment shorthand <>)
+      // Fragments cannot receive any props except 'key'
+      JSXFragment(path, state) {
+        // Do nothing - never inject props into fragments
+        return;
+      },
+      
       JSXOpeningElement(path, state) {
         const openingName = path.node.name;
         const filename = state.file.opts.filename || "unknown";
@@ -110,7 +150,14 @@ module.exports = function ({ types: t }) {
         if (!_isEditableFile(filename)) return;
 
         // 🚨 CRITICAL FIX: Skip Fragment nodes - they cannot receive custom props
+        // Fragments can ONLY have 'key' and 'children' props
         if (isFragment(path, t)) {
+          return;
+        }
+        
+        // 🚨 ADDITIONAL CHECK: Skip if this element is inside a Fragment
+        // This prevents any nested elements from accidentally receiving props that bubble up
+        if (isInsideFragment(path, t)) {
           return;
         }
 
