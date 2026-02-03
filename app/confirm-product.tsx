@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   ImageSourcePropType,
   ActivityIndicator,
   TextInput,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +21,9 @@ import { colors } from '@/styles/commonStyles';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
+import { identifyProductFromImage } from '@/utils/supabase-edge-functions';
+import { useSmartLocation } from '@/contexts/SmartLocationContext';
+import { useLocation } from '@/contexts/LocationContext';
 
 interface SuggestedProduct {
   title: string;
@@ -214,6 +219,107 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  errorContainer: {
+    backgroundColor: colors.errorLight || '#ffebee',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.error,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    color: colors.error,
+    marginBottom: 12,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  incompleteWarning: {
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  incompleteTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#856404',
+    marginBottom: 8,
+  },
+  incompleteText: {
+    fontSize: 14,
+    color: '#856404',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: 24,
+    width: '80%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  modalText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  modalButtonSecondary: {
+    backgroundColor: colors.cardBackground,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalButtonTextPrimary: {
+    color: '#FFFFFF',
+  },
+  modalButtonTextSecondary: {
+    color: colors.text,
+  },
 });
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -236,11 +342,15 @@ export default function ConfirmProductScreen() {
     confidence: paramConfidence,
   } = useLocalSearchParams();
   const { user } = useAuth();
+  const { settings: smartLocationSettings } = useSmartLocation();
+  const { countryCode, currencyCode } = useLocation();
 
   const [loading, setLoading] = useState(true);
   const [identifying, setIdentifying] = useState(false);
   const [result, setResult] = useState<IdentificationResult | null>(null);
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [showSkipModal, setShowSkipModal] = useState(false);
   
   // Editable fields
   const [title, setTitle] = useState('');
@@ -250,12 +360,110 @@ export default function ConfirmProductScreen() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Ref to prevent multiple analysis calls
+  const analysisStarted = useRef(false);
+
+  /**
+   * CRITICAL: Auto-run image analysis when screen loads with a photo
+   * This is the main fix for the bug
+   */
+  const identifyProduct = useCallback(async () => {
+    if (!imageUrl || typeof imageUrl !== 'string') {
+      console.log('[ConfirmProduct] No image URL provided, skipping analysis');
+      setLoading(false);
+      return;
+    }
+
+    console.log('[ConfirmProduct] 🔍 Starting automatic image analysis for:', imageUrl);
+    setLoading(true);
+    setIdentifying(true);
+    setAnalysisError(null);
+
+    try {
+      // Get location settings from SmartLocationContext (Settings only)
+      const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || countryCode || 'US';
+      const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || 'USD';
+      
+      console.log('[ConfirmProduct] Using location:', effectiveCountryCode, 'currency:', effectiveCurrencyCode);
+      console.log('[ConfirmProduct] Calling identify-product-from-image Edge Function...');
+
+      // Call the Supabase Edge Function
+      const response = await identifyProductFromImage(
+        undefined, // imageBase64 - not using base64 for now
+        imageUrl, // imageUrl
+        effectiveCountryCode,
+        effectiveCurrencyCode,
+        'en' // languageCode - default to English for now
+      );
+
+      console.log('[ConfirmProduct] ✅ Analysis complete!');
+      console.log('[ConfirmProduct] Detected text:', response.query.detectedText);
+      console.log('[ConfirmProduct] Detected brand:', response.query.detectedBrand);
+      console.log('[ConfirmProduct] Found', response.matches.length, 'matches');
+
+      // Convert response to IdentificationResult format
+      const identResult: IdentificationResult = {
+        bestGuessTitle: response.query.detectedText || response.query.detectedBrand || null,
+        bestGuessCategory: response.query.guessedCategory || null,
+        keywords: response.query.detectedText ? response.query.detectedText.split(' ') : [],
+        confidence: response.matches.length > 0 ? response.matches[0].confidence : 0,
+        suggestedProducts: response.matches.map(match => ({
+          title: match.name,
+          imageUrl: match.imageUrl,
+          likelyUrl: null, // We don't have URLs in the new format
+        })),
+      };
+
+      setResult(identResult);
+
+      // Auto-fill Item Name if detected
+      if (identResult.bestGuessTitle) {
+        console.log('[ConfirmProduct] Auto-filling item name:', identResult.bestGuessTitle);
+        setTitle(identResult.bestGuessTitle);
+      }
+
+      // If we have matches, auto-select the first one
+      if (identResult.suggestedProducts.length > 0) {
+        console.log('[ConfirmProduct] Auto-selecting first match');
+        setSelectedProductIndex(0);
+        const firstMatch = identResult.suggestedProducts[0];
+        setTitle(firstMatch.title);
+        if (firstMatch.imageUrl) {
+          setImageUri(firstMatch.imageUrl);
+        }
+      }
+
+      // Clear error if successful
+      setAnalysisError(null);
+    } catch (error: any) {
+      console.error('[ConfirmProduct] ❌ Analysis failed:', error.message);
+      console.error('[ConfirmProduct] Stack trace:', error.stack);
+      
+      // Set user-friendly error message
+      setAnalysisError("Couldn't analyze photo. Try again or enter details manually.");
+      
+      // Don't show Alert here - we'll show it in the UI
+    } finally {
+      setLoading(false);
+      setIdentifying(false);
+      analysisStarted.current = false; // Allow retry
+    }
+  }, [imageUrl, smartLocationSettings, countryCode, currencyCode]);
+
+  /**
+   * CRITICAL: Run analysis automatically on mount if we have a photo
+   * This useEffect ensures analysis ALWAYS runs when entering the screen with a photo
+   */
   useEffect(() => {
-    console.log('ConfirmProductScreen mounted with imageUrl:', imageUrl);
+    console.log('[ConfirmProduct] Component mounted with params:', {
+      hasImageUrl: !!imageUrl,
+      hasIdentificationResult: !!identificationResult,
+      hasParamTitle: !!paramTitle,
+    });
     
     // Check if we have direct params from search (not image identification)
     if (paramTitle && typeof paramTitle === 'string') {
-      console.log('[ConfirmProductScreen] Using search result params');
+      console.log('[ConfirmProduct] Using search result params (skipping analysis)');
       setTitle(paramTitle);
       if (paramPrice && typeof paramPrice === 'string') {
         setPrice(paramPrice);
@@ -289,78 +497,30 @@ export default function ConfirmProductScreen() {
     if (identificationResult && typeof identificationResult === 'string') {
       try {
         const parsedResult = JSON.parse(identificationResult);
-        console.log('[ConfirmProductScreen] Using pre-identified result:', parsedResult);
+        console.log('[ConfirmProduct] Using pre-identified result:', parsedResult);
         setResult(parsedResult);
         setTitle(parsedResult.bestGuessTitle || '');
         setLoading(false);
+        return;
       } catch (error) {
-        console.error('[ConfirmProductScreen] Failed to parse identification result:', error);
-        identifyProduct();
+        console.error('[ConfirmProduct] Failed to parse identification result:', error);
+        // Fall through to auto-analysis
       }
-    } else {
+    }
+
+    // CRITICAL: Auto-run analysis if we have a photo and haven't started yet
+    if (imageUrl && !analysisStarted.current) {
+      console.log('[ConfirmProduct] 🚀 Triggering automatic analysis...');
+      analysisStarted.current = true;
       identifyProduct();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageUrl, identificationResult, paramTitle]);
-
-  const identifyProduct = async () => {
-    console.log('[ConfirmProductScreen] Calling identify-from-image API');
-    setLoading(true);
-    setIdentifying(true);
-
-    try {
-      const backendUrl = Constants.expoConfig?.extra?.backendUrl;
-      
-      // Prepare request body
-      const requestBody: { imageUrl?: string; imageBase64?: string } = {};
-      
-      if (typeof imageUrl === 'string') {
-        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          requestBody.imageUrl = imageUrl;
-        } else if (imageUrl.startsWith('file://')) {
-          // Upload local file first
-          const uploadedUrl = await uploadImage(imageUrl);
-          if (uploadedUrl) {
-            requestBody.imageUrl = uploadedUrl;
-          } else {
-            throw new Error('Failed to upload image');
-          }
-        } else {
-          requestBody.imageBase64 = imageUrl;
-        }
-      }
-
-      console.log('[ConfirmProductScreen] Sending identification request');
-      const response = await fetch(`${backendUrl}/api/items/identify-from-image`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[ConfirmProductScreen] Image identification failed:', errorText);
-        throw new Error('Failed to identify product');
-      }
-
-      const data = await response.json();
-      console.log('[ConfirmProductScreen] Image identification result:', data);
-
-      setResult(data);
-      setTitle(data.bestGuessTitle || '');
-    } catch (error: any) {
-      console.error('[ConfirmProductScreen] Failed to identify product:', error);
-      Alert.alert('Error', 'Failed to identify product. Please try again.');
-    } finally {
+    } else if (!imageUrl) {
+      console.log('[ConfirmProduct] No image URL, skipping analysis');
       setLoading(false);
-      setIdentifying(false);
     }
-  };
+  }, [imageUrl, identificationResult, paramTitle, identifyProduct]);
 
   const handleSelectProduct = (index: number) => {
-    console.log('User selected product at index:', index);
+    console.log('[ConfirmProduct] User selected product at index:', index);
     setSelectedProductIndex(index);
     
     const selectedProduct = result?.suggestedProducts[index];
@@ -373,7 +533,7 @@ export default function ConfirmProductScreen() {
   };
 
   const handleNoneOfThese = () => {
-    console.log('User selected None of these');
+    console.log('[ConfirmProduct] User selected None of these');
     router.replace({
       pathname: '/(tabs)/add',
       params: {
@@ -384,7 +544,7 @@ export default function ConfirmProductScreen() {
   };
 
   const handlePickImage = async () => {
-    console.log('Opening image picker');
+    console.log('[ConfirmProduct] Opening image picker');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
@@ -394,12 +554,12 @@ export default function ConfirmProductScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
-      console.log('Image selected:', result.assets[0].uri);
+      console.log('[ConfirmProduct] Image selected:', result.assets[0].uri);
     }
   };
 
   const uploadImage = async (imageUri: string): Promise<string | null> => {
-    console.log('Uploading image to backend:', imageUri);
+    console.log('[ConfirmProduct] Uploading image to backend:', imageUri);
     try {
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       
@@ -427,10 +587,10 @@ export default function ConfirmProductScreen() {
       }
 
       const data = await response.json();
-      console.log('Image uploaded successfully:', data.url);
+      console.log('[ConfirmProduct] Image uploaded successfully:', data.url);
       return data.url;
     } catch (error) {
-      console.error('Error uploading image:', error);
+      console.error('[ConfirmProduct] Error uploading image:', error);
       return null;
     }
   };
@@ -446,12 +606,12 @@ export default function ConfirmProductScreen() {
       return;
     }
 
-    console.log('[ConfirmProductScreen] Saving confirmed product to wishlist:', wishlistId);
+    console.log('[ConfirmProduct] Saving confirmed product to wishlist:', wishlistId);
     setSaving(true);
 
     try {
       // Check for duplicates before saving
-      console.log('[ConfirmProductScreen] Checking for duplicates');
+      console.log('[ConfirmProduct] Checking for duplicates');
       const backendUrl = Constants.expoConfig?.extra?.backendUrl;
       const duplicateCheckResponse = await fetch(`${backendUrl}/api/items/check-duplicates`, {
         method: 'POST',
@@ -466,13 +626,13 @@ export default function ConfirmProductScreen() {
       });
 
       if (!duplicateCheckResponse.ok) {
-        console.error('[ConfirmProductScreen] Duplicate check failed, proceeding anyway');
+        console.error('[ConfirmProduct] Duplicate check failed, proceeding anyway');
       } else {
         const duplicateData = await duplicateCheckResponse.json();
-        console.log('[ConfirmProductScreen] Duplicate check result:', duplicateData);
+        console.log('[ConfirmProduct] Duplicate check result:', duplicateData);
 
         if (duplicateData.duplicates && duplicateData.duplicates.length > 0) {
-          console.log('[ConfirmProductScreen] Found duplicates:', duplicateData.duplicates.length);
+          console.log('[ConfirmProduct] Found duplicates:', duplicateData.duplicates.length);
           
           const duplicateTitles = duplicateData.duplicates.map((d: any) => d.title).join('\n');
           Alert.alert(
@@ -501,7 +661,7 @@ export default function ConfirmProductScreen() {
       // No duplicates found, proceed with saving
       await saveConfirmedItemToBackend();
     } catch (error: any) {
-      console.error('[ConfirmProductScreen] Failed to save item:', error);
+      console.error('[ConfirmProduct] Failed to save item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
       setSaving(false);
     }
@@ -511,7 +671,7 @@ export default function ConfirmProductScreen() {
     try {
       let finalImageUrl = imageUri;
       if (imageUri && imageUri.startsWith('file://')) {
-        console.log('[ConfirmProductScreen] Uploading local image to backend');
+        console.log('[ConfirmProduct] Uploading local image to backend');
         const uploadedUrl = await uploadImage(imageUri);
         if (uploadedUrl) {
           finalImageUrl = uploadedUrl;
@@ -542,7 +702,7 @@ export default function ConfirmProductScreen() {
       }
 
       const savedItem = await response.json();
-      console.log('[ConfirmProductScreen] Item saved successfully:', savedItem);
+      console.log('[ConfirmProduct] Item saved successfully:', savedItem);
 
       Alert.alert('Success', 'Item added to wishlist!', [
         {
@@ -551,7 +711,7 @@ export default function ConfirmProductScreen() {
         },
       ]);
     } catch (error: any) {
-      console.error('[ConfirmProductScreen] Failed to save item:', error);
+      console.error('[ConfirmProduct] Failed to save item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
     } finally {
       setSaving(false);
@@ -559,12 +719,24 @@ export default function ConfirmProductScreen() {
   };
 
   const handleTryAgain = () => {
-    console.log('User tapped Try Again');
+    console.log('[ConfirmProduct] User tapped Try Again - restarting analysis');
+    analysisStarted.current = false; // Reset the flag
+    setAnalysisError(null);
+    setResult(null);
+    setSelectedProductIndex(null);
     identifyProduct();
   };
 
+  const handleSkipAnalysis = () => {
+    console.log('[ConfirmProduct] User chose to skip analysis');
+    setShowSkipModal(false);
+    setLoading(false);
+    setIdentifying(false);
+    // Allow manual entry
+  };
+
   const handleReportIssue = () => {
-    console.log('User tapped Report an issue');
+    console.log('[ConfirmProduct] User tapped Report an issue');
     router.push({
       pathname: '/report-problem',
       params: {
@@ -574,20 +746,67 @@ export default function ConfirmProductScreen() {
   };
 
   const confidencePercentage = result ? Math.round(result.confidence * 100) : 0;
+  const hasIncompleteInfo = !title || !imageUri || !price;
 
   if (loading || identifying) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <Stack.Screen
           options={{
-            title: 'Identify Product',
+            title: 'Analyzing Product',
             headerBackTitle: 'Back',
           }}
         />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Identifying product...</Text>
+          <Text style={styles.loadingText}>Analyzing photo...</Text>
+          <Text style={[styles.loadingText, { fontSize: 12, marginTop: 8 }]}>
+            This may take a few seconds
+          </Text>
+          
+          {/* Skip button after 3 seconds */}
+          <TouchableOpacity
+            style={[styles.linkButton, { marginTop: 20 }]}
+            onPress={() => setShowSkipModal(true)}
+          >
+            <Text style={styles.linkButtonText}>Skip analysis</Text>
+          </TouchableOpacity>
         </View>
+
+        {/* Skip Analysis Modal */}
+        <Modal
+          visible={showSkipModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSkipModal(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setShowSkipModal(false)}>
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Skip Analysis?</Text>
+              <Text style={styles.modalText}>
+                You can skip the automatic analysis and enter product details manually.
+              </Text>
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                  onPress={() => setShowSkipModal(false)}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextSecondary]}>
+                    Wait
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                  onPress={handleSkipAnalysis}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>
+                    Skip
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -607,6 +826,29 @@ export default function ConfirmProductScreen() {
           resizeMode="cover"
         />
 
+        {/* Analysis Error */}
+        {analysisError && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorTitle}>Analysis Failed</Text>
+            <Text style={styles.errorText}>{analysisError}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
+              <Text style={styles.retryButtonText}>Retry Analysis</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Incomplete Information Warning */}
+        {hasIncompleteInfo && !analysisError && (
+          <View style={styles.incompleteWarning}>
+            <Text style={styles.incompleteTitle}>Incomplete Information</Text>
+            <Text style={styles.incompleteText}>
+              {result && result.suggestedProducts.length > 0
+                ? `${result.suggestedProducts.length} suggestion${result.suggestedProducts.length === 1 ? '' : 's'} available below`
+                : 'No matches found. You can enter details manually.'}
+            </Text>
+          </View>
+        )}
+
         {result && (
           <>
             <View style={styles.confidenceContainer}>
@@ -614,45 +856,56 @@ export default function ConfirmProductScreen() {
               <Text style={styles.confidenceValue}>{confidencePercentage}%</Text>
             </View>
 
-            <Text style={styles.sectionTitle}>We found these matches</Text>
+            {result.suggestedProducts.length > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>We found these matches</Text>
 
-            {result.suggestedProducts.map((product, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.productCard,
-                  selectedProductIndex === index && styles.selectedCard,
-                ]}
-                onPress={() => handleSelectProduct(index)}
-              >
-                <View style={styles.productCardContent}>
-                  {product.imageUrl && (
-                    <Image
-                      source={resolveImageSource(product.imageUrl)}
-                      style={styles.productImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productTitle}>{product.title}</Text>
-                    <TouchableOpacity
-                      style={styles.selectButton}
-                      onPress={() => handleSelectProduct(index)}
-                    >
-                      <Text style={styles.selectButtonText}>
-                        {selectedProductIndex === index ? 'Selected' : 'This is it'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
+                {result.suggestedProducts.map((product, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.productCard,
+                      selectedProductIndex === index && styles.selectedCard,
+                    ]}
+                    onPress={() => handleSelectProduct(index)}
+                  >
+                    <View style={styles.productCardContent}>
+                      {product.imageUrl && (
+                        <Image
+                          source={resolveImageSource(product.imageUrl)}
+                          style={styles.productImage}
+                          resizeMode="cover"
+                        />
+                      )}
+                      <View style={styles.productInfo}>
+                        <Text style={styles.productTitle}>{product.title}</Text>
+                        <TouchableOpacity
+                          style={styles.selectButton}
+                          onPress={() => handleSelectProduct(index)}
+                        >
+                          <Text style={styles.selectButtonText}>
+                            {selectedProductIndex === index ? 'Selected' : 'This is it'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
 
-            <TouchableOpacity style={styles.noneButton} onPress={handleNoneOfThese}>
-              <Text style={styles.noneButtonText}>None of these</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={styles.noneButton} onPress={handleNoneOfThese}>
+                  <Text style={styles.noneButtonText}>None of these</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.editSection}>
+                <Text style={styles.sectionTitle}>No matches found</Text>
+                <Text style={[styles.confidenceText, { marginBottom: 16 }]}>
+                  Enter product details manually below
+                </Text>
+              </View>
+            )}
 
-            {selectedProductIndex !== null && (
+            {(selectedProductIndex !== null || result.suggestedProducts.length === 0) && (
               <View style={styles.editSection}>
                 <Text style={styles.sectionTitle}>Edit Details</Text>
 
