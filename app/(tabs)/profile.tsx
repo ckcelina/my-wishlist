@@ -60,7 +60,7 @@ export default function ProfileScreen() {
   const { t } = useTranslation();
   const { language, changeLanguage } = useI18n();
   const { theme, themePreference, setThemePreference, isDark } = useAppTheme();
-  const { triggerHaptic } = useHaptics();
+  const haptics = useHaptics();
   
   const colors = useMemo(() => createColors(theme), [theme]);
   const typography = useMemo(() => createTypography(theme), [theme]);
@@ -320,14 +320,14 @@ export default function ProfileScreen() {
 
   const handleTogglePriceAlerts = async (value: boolean) => {
     console.log('[ProfileScreen] User toggled price alerts:', value);
-    triggerHaptic('light');
+    haptics.light();
     setPriceDropAlertsEnabled(value);
     await updateSettings({ priceDropAlertsEnabled: value });
   };
 
   const handleSelectCurrency = async (currency: { currencyCode: string; currencyName: string }) => {
     console.log('[ProfileScreen] User selected currency:', currency.currencyCode);
-    triggerHaptic('light');
+    haptics.light();
     setDefaultCurrency(currency.currencyCode);
     setCurrencyPickerVisible(false);
     await updateSettings({ defaultCurrency: currency.currencyCode });
@@ -335,13 +335,13 @@ export default function ProfileScreen() {
 
   const handleThemeChange = async (preference: 'light' | 'dark' | 'system') => {
     console.log('[ProfileScreen] User changed theme preference:', preference);
-    triggerHaptic('light');
+    haptics.light();
     await setThemePreference(preference);
   };
 
   const handleSignOut = async () => {
     console.log('[ProfileScreen] User tapped sign out');
-    triggerHaptic('medium');
+    haptics.medium();
     setShowSignOutModal(true);
   };
 
@@ -359,25 +359,25 @@ export default function ProfileScreen() {
 
   const handleContactSupport = () => {
     console.log('[ProfileScreen] User tapped contact support');
-    triggerHaptic('light');
+    haptics.light();
     Linking.openURL('mailto:support@mywishlist.app');
   };
 
   const handlePrivacyPolicy = () => {
     console.log('[ProfileScreen] User tapped privacy policy');
-    triggerHaptic('light');
+    haptics.light();
     router.push('/legal/privacy');
   };
 
   const handleTerms = () => {
     console.log('[ProfileScreen] User tapped terms');
-    triggerHaptic('light');
+    haptics.light();
     router.push('/legal/terms');
   };
 
   const handleEditLocation = () => {
     console.log('[ProfileScreen] User tapped edit location');
-    triggerHaptic('light');
+    haptics.light();
     router.push('/location');
   };
 
@@ -511,7 +511,10 @@ export default function ProfileScreen() {
             <Card>
               <TouchableOpacity
                 style={styles.settingRow}
-                onPress={() => setCurrencyPickerVisible(true)}
+                onPress={() => {
+                  haptics.light();
+                  setCurrencyPickerVisible(true);
+                }}
               >
                 <View style={styles.settingLeft}>
                   <Text style={styles.settingLabel}>{t('profile.currency')}</Text>
@@ -538,7 +541,10 @@ export default function ProfileScreen() {
 
               <TouchableOpacity
                 style={styles.settingRow}
-                onPress={() => router.push('/language-selector')}
+                onPress={() => {
+                  haptics.light();
+                  router.push('/language-selector');
+                }}
               >
                 <View style={styles.settingLeft}>
                   <Text style={styles.settingLabel}>{t('profile.language')}</Text>
@@ -576,7 +582,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={styles.linkButton}
                 onPress={() => {
-                  triggerHaptic('light');
+                  haptics.light();
                   router.push('/alerts');
                 }}
               >
@@ -591,7 +597,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
                 style={styles.linkButton}
                 onPress={() => {
-                  triggerHaptic('light');
+                  haptics.light();
                   router.push('/permissions-settings');
                 }}
               >
@@ -606,7 +612,7 @@ export default function ProfileScreen() {
               <TouchableOpacity 
                 style={styles.linkButton} 
                 onPress={() => {
-                  triggerHaptic('light');
+                  haptics.light();
                   router.push('/diagnostics-enhanced');
                 }}
               >
@@ -618,7 +624,7 @@ export default function ProfileScreen() {
               <TouchableOpacity 
                 style={styles.linkButton} 
                 onPress={() => {
-                  triggerHaptic('light');
+                  haptics.light();
                   router.push('/e2e-test');
                 }}
               >
@@ -682,7 +688,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonCancel]}
                   onPress={() => {
-                    triggerHaptic('light');
+                    haptics.light();
                     setShowSignOutModal(false);
                   }}
                 >
@@ -693,7 +699,7 @@ export default function ProfileScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalButtonConfirm]}
                   onPress={() => {
-                    triggerHaptic('medium');
+                    haptics.medium();
                     confirmSignOut();
                   }}
                 >
