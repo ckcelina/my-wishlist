@@ -1,2 +1,2 @@
 
-export { default } from './add';
+export { default } from './add.shared';
