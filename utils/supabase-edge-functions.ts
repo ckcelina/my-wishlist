@@ -647,11 +647,11 @@ export interface IdentifyProductFromImageRequest {
 export interface ProductMatchResult {
   id: string;
   name: string;
-  brand: string;
-  category: string;
+  brand: string | null;
+  category: string | null;
   imageUrl: string;
   confidence: number;
-  signals: {
+  signals?: {
     logo?: string;
     text?: string;
     visual?: string;

@@ -23,6 +23,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useLocation } from '@/contexts/LocationContext';
+import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchWishlists, fetchWishlistItems, fetchUserLocation } from '@/lib/supabase-helpers';
@@ -31,7 +32,7 @@ import { DuplicateDetectionModal } from '@/components/DuplicateDetectionModal';
 import { ProductMatchCard, ProductMatch } from '@/components/ProductMatchCard';
 import { supabase } from '@/lib/supabase';
 import { authenticatedPost } from '@/utils/api';
-import { identifyProductFromImage, ProductMatchResult } from '@/utils/supabase-edge-functions';
+import { identifyProductFromImage, getProductPrices } from '@/utils/supabase-edge-functions';
 
 // Placeholder image URL for fallback
 const PLACEHOLDER_IMAGE_URL = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80';
@@ -100,6 +101,7 @@ export default function ImportPreviewScreen() {
   const { user } = useAuth();
   const { theme } = useAppTheme();
   const { countryCode, cityId, currencyCode } = useLocation();
+  const { settings: smartLocationSettings } = useSmartLocation();
   const colors = createColors(theme);
   const typography = createTypography(theme);
   
@@ -143,6 +145,11 @@ export default function ImportPreviewScreen() {
   const [productMatches, setProductMatches] = useState<ProductMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<ProductMatch | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  
+  // Offers state (NEW)
+  const [offers, setOffers] = useState<AlternativeStore[]>([]);
+  const [offersLoading, setOffersLoading] = useState(false);
   
   // Data
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
@@ -513,9 +520,9 @@ export default function ImportPreviewScreen() {
   const handleFindMatches = useCallback(async () => {
     console.log('[ImportPreview] User tapped Find Matches');
     
-    // Get location from context or user location state
-    const effectiveCountryCode = countryCode || userLocation?.countryCode;
-    const effectiveCurrencyCode = currencyCode || currency;
+    // CRITICAL: Get location from SmartLocationContext (Settings only)
+    const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode;
+    const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency;
     
     if (!effectiveCountryCode) {
       Alert.alert(
@@ -529,17 +536,29 @@ export default function ImportPreviewScreen() {
       return;
     }
 
+    // Validate image exists
+    const imageToIdentify = selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined;
+    if (!imageToIdentify) {
+      Alert.alert(
+        'Image Required',
+        'Please upload or select an image to find similar products.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setLoadingMatches(true);
     setShowProductMatches(true);
 
     try {
       console.log('[ImportPreview] Calling identify-product-from-image Edge Function');
       console.log('[ImportPreview] Country:', effectiveCountryCode, 'Currency:', effectiveCurrencyCode);
+      console.log('[ImportPreview] Image URL:', imageToIdentify);
       
       // Call the new Supabase Edge Function
       const response = await identifyProductFromImage(
         undefined, // imageBase64 - not using base64 for now
-        selectedImage && selectedImage !== PLACEHOLDER_IMAGE_URL ? selectedImage : undefined, // imageUrl
+        imageToIdentify, // imageUrl
         effectiveCountryCode,
         effectiveCurrencyCode,
         'en' // languageCode - default to English for now
@@ -551,14 +570,14 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Found', response.matches.length, 'matches');
 
       // Convert ProductMatchResult to ProductMatch format
-      const convertedMatches: ProductMatch[] = response.matches.map((match: ProductMatchResult) => ({
+      const convertedMatches: ProductMatch[] = response.matches.map((match: any) => ({
         id: match.id,
         name: match.name,
         brand: match.brand || null,
         category: match.category || null,
         imageUrl: match.imageUrl,
         topPrice: {
-          amount: 0, // Placeholder - will be filled by product search
+          amount: 0, // Placeholder - will be filled by product-prices call
           currency: effectiveCurrencyCode,
         },
         store: {
@@ -578,6 +597,7 @@ export default function ImportPreviewScreen() {
           'No Matches Found',
           response.error || 'We couldn\'t find any similar products. Try manual entry instead.'
         );
+        setShowProductMatches(false);
       }
     } catch (error: any) {
       console.error('[ImportPreview] Error finding similar products:', error);
@@ -586,31 +606,38 @@ export default function ImportPreviewScreen() {
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, countryCode, currencyCode, currency, userLocation, router]);
+  }, [selectedImage, itemName, countryCode, currencyCode, currency, userLocation, smartLocationSettings, router]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback(async (match: ProductMatch) => {
     console.log('[ImportPreview] User selected product match:', match.name);
     setSelectedMatch(match);
+    setSelectedProductId(match.id); // Save productId to local state
     
     // Auto-fill form with match data
     setItemName(match.name);
     setBrand(match.brand || '');
+    if (match.category) {
+      // Store category if needed (you may want to add a category field)
+      console.log('[ImportPreview] Product category:', match.category);
+    }
     setSelectedImage(match.imageUrl);
-    setPrice(match.topPrice.amount.toString());
-    setCurrency(match.topPrice.currency);
-    setStoreName(match.store.name);
-    setStoreDomain(match.store.domain);
     
-    // TODO: Fetch real-time prices using the new product-prices Edge Function
-    // This will get current prices from multiple stores with caching
+    // Close the matches modal first for better UX
+    setShowProductMatches(false);
+    
+    // IMMEDIATELY call product-prices Edge Function
+    setOffersLoading(true);
     try {
       console.log('[ImportPreview] Fetching real-time prices for product:', match.id);
+      
+      // CRITICAL: Get location from SmartLocationContext (Settings only)
+      const effectiveCountryCode = smartLocationSettings?.activeSearchCountry || userLocation?.countryCode || 'US';
+      const effectiveCurrencyCode = smartLocationSettings?.currencyCode || currencyCode || currency || 'USD';
+      
+      console.log('[ImportPreview] Fetching prices for country:', effectiveCountryCode, 'currency:', effectiveCurrencyCode);
+      
       const { getProductPrices } = await import('@/utils/supabase-edge-functions');
-      
-      const effectiveCountryCode = countryCode || userLocation?.countryCode || 'US';
-      const effectiveCurrencyCode = currencyCode || currency || 'USD';
-      
       const pricesResponse = await getProductPrices(
         match.id,
         effectiveCountryCode,
@@ -620,7 +647,7 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Got prices:', pricesResponse.offers.length, 'offers');
       console.log('[ImportPreview] Best price:', pricesResponse.summary.bestOffer?.price, effectiveCurrencyCode);
       
-      // Convert offers to AlternativeStore format
+      // Convert offers to AlternativeStore format and set offers state
       if (pricesResponse.offers.length > 0) {
         const alternatives: AlternativeStore[] = pricesResponse.offers.map(offer => ({
           storeName: offer.storeName,
@@ -630,19 +657,36 @@ export default function ImportPreviewScreen() {
           url: offer.storeUrl,
           availability: offer.availability,
         }));
-        setAlternativeStores(alternatives);
         
-        // Update price with best offer
+        // Sort by price (cheapest first)
+        alternatives.sort((a, b) => a.price - b.price);
+        
+        setOffers(alternatives);
+        setAlternativeStores(alternatives); // Also set alternativeStores for compatibility
+        
+        // Update price with best offer (cheapest)
         if (pricesResponse.summary.bestOffer) {
           setPrice(pricesResponse.summary.bestOffer.price.toString());
           setCurrency(pricesResponse.summary.bestOffer.currencyCode);
+          setStoreName(pricesResponse.summary.bestOffer.storeName);
+          setStoreDomain(new URL(pricesResponse.summary.bestOffer.storeUrl).hostname.replace('www.', ''));
         }
+      } else {
+        // No offers found
+        console.log('[ImportPreview] No offers found for this product');
+        setOffers([]);
+        setAlternativeStores([]);
+        
+        // Set placeholder price
+        setPrice('0');
+        setCurrency(effectiveCurrencyCode);
       }
     } catch (error) {
       console.error('[ImportPreview] Error fetching prices:', error);
       // Continue with match data even if price fetch fails
+      setOffers([]);
       
-      // Fallback: Set alternative stores from match data
+      // Fallback: Set alternative stores from match data if available
       if (match.storeSuggestions && match.storeSuggestions.length > 0) {
         const alternatives: AlternativeStore[] = match.storeSuggestions.map(store => ({
           storeName: store.storeName,
@@ -652,19 +696,19 @@ export default function ImportPreviewScreen() {
           url: store.url,
           availability: 'in_stock',
         }));
+        setOffers(alternatives);
         setAlternativeStores(alternatives);
       }
+    } finally {
+      setOffersLoading(false);
     }
     
     // Remove warnings since we now have complete data
     setWarnings([]);
     
-    // Close the matches modal
-    setShowProductMatches(false);
-    
     // Auto-confirm as correct product
     setIsCorrectProduct(true);
-  }, [countryCode, currencyCode, currency, userLocation]);
+  }, [countryCode, currencyCode, currency, userLocation, smartLocationSettings]);
 
   // NEW: Handle "None of these" selection
   const handleNoneOfThese = useCallback(() => {
@@ -1153,8 +1197,77 @@ export default function ImportPreviewScreen() {
               />
             </View>
 
-            {/* Other Stores & Prices Section */}
-            {alternativeStores.length > 0 ? (
+            {/* Prices near you Section (NEW) */}
+            {offersLoading ? (
+              <View style={styles.offersLoadingSection}>
+                <ActivityIndicator size="large" color={colors.accent} />
+                <Text style={[styles.offersLoadingText, { color: colors.textSecondary }]}>
+                  Finding best prices...
+                </Text>
+              </View>
+            ) : offers.length > 0 ? (
+              <View style={styles.offersSection}>
+                <View style={styles.offersHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Prices near you</Text>
+                  <Text style={[styles.offersCount, { color: colors.textSecondary }]}>
+                    {offers.length} {offers.length === 1 ? 'offer' : 'offers'}
+                  </Text>
+                </View>
+                
+                {/* Show all offers (sorted cheapest first) */}
+                {offers.map((offer, index) => {
+                  const offerPrice = `${offer.currency} ${offer.price.toFixed(2)}`;
+                  const isCheapest = index === 0;
+                  
+                  return (
+                    <View 
+                      key={index} 
+                      style={[
+                        styles.offerCard, 
+                        { backgroundColor: colors.surface, borderColor: isCheapest ? colors.success : colors.border },
+                        isCheapest && styles.cheapestOfferCard,
+                      ]}
+                    >
+                      <View style={styles.offerInfo}>
+                        <View style={styles.offerHeader}>
+                          <Text style={[styles.offerStoreName, { color: colors.textPrimary }]}>
+                            {offer.storeName}
+                          </Text>
+                          {isCheapest && (
+                            <View style={[styles.cheapestBadge, { backgroundColor: colors.success }]}>
+                              <Text style={[styles.cheapestBadgeText, { color: colors.textInverse }]}>
+                                Cheapest
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={[styles.offerPrice, { color: isCheapest ? colors.success : colors.accent }]}>
+                          {offerPrice}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.openLinkButton, { backgroundColor: colors.accent }]}
+                        onPress={async () => {
+                          const { openStoreLink } = await import('@/utils/openStoreLink');
+                          await openStoreLink(offer.url, {
+                            source: 'import_preview_offers',
+                            storeDomain: offer.storeDomain,
+                          });
+                        }}
+                      >
+                        <Text style={[styles.openLinkText, { color: colors.textInverse }]}>Open</Text>
+                        <IconSymbol
+                          ios_icon_name="arrow.up.forward"
+                          android_material_icon_name="open-in-new"
+                          size={14}
+                          color={colors.textInverse}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : alternativeStores.length > 0 ? (
               <View style={styles.alternativesSection}>
                 <View style={styles.alternativesHeader}>
                   <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Other Stores & Prices</Text>
@@ -1692,6 +1805,84 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 80,
     textAlignVertical: 'top',
+  },
+  offersLoadingSection: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    marginBottom: spacing.xl,
+  },
+  offersLoadingText: {
+    fontSize: 14,
+    marginTop: spacing.md,
+  },
+  offersSection: {
+    marginBottom: spacing.xl,
+  },
+  offersHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  offersCount: {
+    fontSize: 14,
+  },
+  offerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 2,
+    marginBottom: spacing.sm,
+  },
+  cheapestOfferCard: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  offerInfo: {
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  offerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs / 2,
+  },
+  offerStoreName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cheapestBadge: {
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs / 2,
+    borderRadius: 8,
+  },
+  cheapestBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  offerPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  openLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs / 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 20,
+  },
+  openLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   alternativesSection: {
     marginBottom: spacing.xl,
