@@ -1,3 +1,4 @@
+
 /* eslint-disable */
 const { _isEditableFile } = require("./utils.js");
 
@@ -65,6 +66,39 @@ function findMapContext(path, t) {
   return null;
 }
 
+/**
+ * Check if a JSX element is a Fragment (React.Fragment or <>)
+ */
+function isFragment(path, t) {
+  const openingName = path.node.name;
+  
+  // Check for fragment shorthand (<>)
+  if (t.isJSXFragment(path.parent)) {
+    return true;
+  }
+  
+  // Check for <Fragment> or <React.Fragment>
+  if (t.isJSXIdentifier(openingName)) {
+    if (openingName.name === 'Fragment') {
+      return true;
+    }
+  }
+  
+  // Check for <React.Fragment>
+  if (t.isJSXMemberExpression(openingName)) {
+    if (
+      t.isJSXIdentifier(openingName.object) &&
+      openingName.object.name === 'React' &&
+      t.isJSXIdentifier(openingName.property) &&
+      openingName.property.name === 'Fragment'
+    ) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 module.exports = function ({ types: t }) {
   return {
     visitor: {
@@ -74,6 +108,11 @@ module.exports = function ({ types: t }) {
 
         if (!openingName || openingName.type !== "JSXIdentifier") return;
         if (!_isEditableFile(filename)) return;
+
+        // 🚨 CRITICAL FIX: Skip Fragment nodes - they cannot receive custom props
+        if (isFragment(path, t)) {
+          return;
+        }
 
         const loc = path.node.loc;
         const location = loc ? `${filename}:${loc.start.line}:${loc.start.column}` : "unknown";
