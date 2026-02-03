@@ -36,7 +36,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
-import { fetchWishlists, fetchUserLocation } from '@/lib/supabase-helpers';
+import { fetchWishlists } from '@/lib/supabase-helpers';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -211,6 +211,9 @@ export default function AddItemScreen() {
     }
   };
 
+  // Get country from Settings - NEVER reset or remove it
+  const searchCountry = smartLocationSettings?.activeSearchCountry;
+
   // Mode 2: Extract from URL
   const handleExtractUrl = async () => {
     console.log('[AddItem] handleExtractUrl called');
@@ -228,8 +231,6 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings - NEVER reset or remove it
-      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -297,7 +298,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
+                countryAvailability: searchCountry ? [searchCountry] : [],
                 sourceUrl: urlInput.trim(),
                 inputType: 'url',
               };
@@ -377,8 +378,6 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings - NEVER reset or remove it
-      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -410,7 +409,6 @@ export default function AddItemScreen() {
       console.log('[AddItem] Identification result:', result);
 
       // Navigate to import-preview with identified data (even if partial)
-      // Country persists from Settings - scanning NEVER resets it
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: cameraImage,
@@ -453,7 +451,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
+                countryAvailability: searchCountry ? [searchCountry] : [],
                 sourceUrl: '',
                 inputType: 'camera',
               };
@@ -533,8 +531,6 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings - NEVER reset or remove it
-      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -566,7 +562,6 @@ export default function AddItemScreen() {
       console.log('[AddItem] Identification result:', result);
 
       // Navigate to import-preview with identified data (even if partial)
-      // Country persists from Settings - scanning NEVER resets it
       const productData = {
         itemName: result.bestGuessTitle || '',
         imageUrl: uploadImage,
@@ -609,7 +604,7 @@ export default function AddItemScreen() {
                 storeDomain: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
+                countryAvailability: searchCountry ? [searchCountry] : [],
                 sourceUrl: '',
                 inputType: 'image',
               };
@@ -640,8 +635,6 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Get country from Settings - NEVER reset or remove it
-      const searchCountry = smartLocationSettings?.activeSearchCountry;
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -715,7 +708,7 @@ export default function AddItemScreen() {
         storeDomain: result.storeDomain,
         price: result.price,
         currency: result.currency || 'USD',
-        countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
+        countryAvailability: searchCountry ? [searchCountry] : [],
         sourceUrl: result.productUrl,
         inputType: 'name',
       };
@@ -795,7 +788,7 @@ export default function AddItemScreen() {
         storeDomain: '',
         price: manualPrice ? parseFloat(manualPrice) : null,
         currency: manualCurrency,
-        countryAvailability: smartLocationSettings?.activeSearchCountry ? [smartLocationSettings.activeSearchCountry] : [],
+        countryAvailability: searchCountry ? [searchCountry] : [],
         sourceUrl: manualStoreLink.trim() || '',
         notes: manualNotes.trim() || '',
         inputType: 'manual',
@@ -1315,7 +1308,7 @@ export default function AddItemScreen() {
   const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
 
   // Get current country from Settings for display
-  const currentCountry = smartLocationSettings?.activeSearchCountry;
+  const currentCountry = searchCountry;
   const showCountryWarning = !currentCountry;
 
   return (
