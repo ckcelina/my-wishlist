@@ -17,7 +17,6 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { Card } from '@/components/design-system/Card';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { dedupeById } from '@/utils/deduplication';
-import { updateWishlist } from '@/lib/supabase-helpers';
 import {
   View,
   Text,
@@ -437,18 +436,26 @@ export default function ListsScreen() {
     }
 
     try {
-      console.log('[ListsScreen] Creating new list:', trimmedName, 'type:', createListType, 'isDefault:', setAsDefault);
+      console.log('[ListsScreen] Creating new list:', trimmedName, 'type:', createListType, 'setAsDefault:', setAsDefault);
       
+      // CRITICAL FIX: Only pass is_default if user explicitly checked the box
+      // Do NOT pass is_default: false, let the backend handle the default logic
+      const insertData: any = {
+        user_id: user.id,
+        name: trimmedName,
+        list_type: createListType,
+        smart_plan_enabled: smartPlanEnabled,
+        smart_plan_template: selectedTemplate,
+      };
+
+      // Only include is_default if user explicitly wants to set it as default
+      if (setAsDefault === true) {
+        insertData.is_default = true;
+      }
+
       const { data, error } = await supabase
         .from('wishlists')
-        .insert({
-          user_id: user.id,
-          name: trimmedName,
-          list_type: createListType,
-          is_default: setAsDefault,
-          smart_plan_enabled: smartPlanEnabled,
-          smart_plan_template: selectedTemplate,
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -504,8 +511,13 @@ export default function ListsScreen() {
     try {
       console.log('[ListsScreen] Making list default:', selectedList.id);
 
-      // Use the updateWishlist helper which handles the transactional logic
-      await updateWishlist(selectedList.id, { is_default: true });
+      // Use Supabase to update - the database trigger will handle unsetting other defaults
+      const { error } = await supabase
+        .from('wishlists')
+        .update({ is_default: true })
+        .eq('id', selectedList.id);
+
+      if (error) throw error;
 
       setMenuVisible(false);
       setSelectedList(null);
