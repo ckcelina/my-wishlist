@@ -1350,10 +1350,10 @@ export default function AddItemScreen() {
                 Country not set
               </Text>
               <TouchableOpacity
-                style={[styles.settingsLink, { backgroundColor: colors.error }]}
+                style={[styles.settingsButton, { backgroundColor: colors.error }]}
                 onPress={() => router.push('/location')}
               >
-                <Text style={[styles.settingsLinkText, { color: colors.textInverse }]}>
+                <Text style={[styles.settingsButtonText, { color: colors.textInverse }]}>
                   Set in Settings
                 </Text>
               </TouchableOpacity>
@@ -1365,10 +1365,10 @@ export default function AddItemScreen() {
                   Country: {currentCountry}
                 </Text>
                 <TouchableOpacity
-                  style={[styles.settingsLink, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  style={[styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => router.push('/location')}
                 >
-                  <Text style={[styles.settingsLinkText, { color: colors.accent }]}>
+                  <Text style={[styles.settingsButtonText, { color: colors.accent }]}>
                     Change in Settings
                   </Text>
                   <IconSymbol
@@ -1674,7 +1674,7 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
       fontWeight: '500',
       flex: 1,
     },
-    settingsLink: {
+    settingsButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -1684,7 +1684,7 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
       borderWidth: 1,
       marginTop: spacing.xs / 2,
     },
-    settingsLinkText: {
+    settingsButtonText: {
       fontSize: 13,
       fontWeight: '500',
     },
