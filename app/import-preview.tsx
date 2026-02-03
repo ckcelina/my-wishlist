@@ -622,20 +622,32 @@ export default function ImportPreviewScreen() {
       setProductMatches(convertedMatches);
 
       if (convertedMatches.length === 0) {
+        // Show fallback options
         Alert.alert(
           'No Matches Found',
-          response.error || 'We couldn\'t find any similar products. Try manual entry instead.'
+          response.error || 'We couldn\'t find any similar products.',
+          [
+            { text: 'Try Another Photo', onPress: handleChangeImage },
+            { text: 'Manual Entry', onPress: handleManualEntry },
+          ]
         );
         setShowProductMatches(false);
       }
     } catch (error: any) {
       console.error('[ImportPreview] Error finding similar products:', error);
-      Alert.alert('Search Failed', error.message || 'Failed to find similar products. Please try again.');
+      Alert.alert(
+        'Search Failed',
+        error.message || 'Failed to find similar products.',
+        [
+          { text: 'Try Another Photo', onPress: handleChangeImage },
+          { text: 'Manual Entry', onPress: handleManualEntry },
+        ]
+      );
       setShowProductMatches(false);
     } finally {
       setLoadingMatches(false);
     }
-  }, [selectedImage, itemName, currentCountry, currentCurrency, router, user]);
+  }, [selectedImage, itemName, currentCountry, currentCurrency, router, user, handleChangeImage, handleManualEntry]);
 
   // NEW: Handle Product Match Selection
   const handleSelectMatch = useCallback(async (match: ProductMatch) => {
