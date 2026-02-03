@@ -39,6 +39,120 @@ interface IdentificationResult {
   suggestedProducts: SuggestedProduct[];
 }
 
+// Brand keywords for local detection (expandable)
+const BRAND_KEYWORDS = [
+  'kerastase',
+  'loreal',
+  'dior',
+  'chanel',
+  'nike',
+  'adidas',
+  'apple',
+  'samsung',
+  'sony',
+  'gucci',
+  'prada',
+  'versace',
+  'armani',
+  'burberry',
+  'hermes',
+  'cartier',
+  'rolex',
+  'omega',
+  'tissot',
+  'seiko',
+  'casio',
+  'fossil',
+  'michael kors',
+  'coach',
+  'kate spade',
+  'tory burch',
+  'ralph lauren',
+  'tommy hilfiger',
+  'calvin klein',
+  'hugo boss',
+  'lacoste',
+  'polo',
+  'zara',
+  'h&m',
+  'uniqlo',
+  'gap',
+  'old navy',
+  'banana republic',
+  'j.crew',
+  'anthropologie',
+  'urban outfitters',
+  'forever 21',
+  'topshop',
+  'asos',
+  'boohoo',
+  'prettylittlething',
+  'missguided',
+  'nasty gal',
+  'revolve',
+  'nordstrom',
+  'macys',
+  'bloomingdales',
+  'saks',
+  'neiman marcus',
+  'bergdorf goodman',
+  'barneys',
+  'sephora',
+  'ulta',
+  'mac',
+  'nars',
+  'urban decay',
+  'too faced',
+  'benefit',
+  'clinique',
+  'estee lauder',
+  'lancome',
+  'ysl',
+  'tom ford',
+  'charlotte tilbury',
+  'fenty beauty',
+  'kylie cosmetics',
+  'anastasia beverly hills',
+  'tarte',
+  'smashbox',
+  'bobbi brown',
+  'laura mercier',
+  'nyx',
+  'maybelline',
+  'revlon',
+  'covergirl',
+  'neutrogena',
+  'cetaphil',
+  'cerave',
+  'la roche posay',
+  'vichy',
+  'avene',
+  'bioderma',
+  'eucerin',
+  'nivea',
+  'dove',
+  'olay',
+  'garnier',
+  'pantene',
+  'head & shoulders',
+  'herbal essences',
+  'tresemme',
+  'aussie',
+  'ogx',
+  'redken',
+  'matrix',
+  'paul mitchell',
+  'sebastian',
+  'aveda',
+  'bumble and bumble',
+  'living proof',
+  'ouai',
+  'briogeo',
+  'olaplex',
+  'moroccanoil',
+  'argan oil',
+];
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -320,12 +434,136 @@ const styles = StyleSheet.create({
   modalButtonTextSecondary: {
     color: colors.text,
   },
+  detectedTextContainer: {
+    backgroundColor: '#e8f5e9',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#4caf50',
+  },
+  detectedTextTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2e7d32',
+    marginBottom: 8,
+  },
+  detectedTextContent: {
+    fontSize: 14,
+    color: '#1b5e20',
+    lineHeight: 20,
+  },
+  editHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginBottom: 8,
+  },
 });
 
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
   return source as ImageSourcePropType;
+}
+
+/**
+ * Clean and normalize text for processing
+ */
+function cleanAndNormalizeText(text: string): string {
+  return text
+    .replace(/[^a-zA-Z0-9\s&]/g, ' ') // Keep alphanumeric, spaces, and &
+    .replace(/\s+/g, ' ') // Collapse multiple spaces
+    .toLowerCase()
+    .trim();
+}
+
+/**
+ * Find brand keyword in text
+ */
+function findBrandKeyword(text: string, keywords: string[]): string | null {
+  const normalizedText = text.toLowerCase();
+  
+  // Sort keywords by length (longest first) to match multi-word brands first
+  const sortedKeywords = [...keywords].sort((a, b) => b.length - a.length);
+  
+  for (const keyword of sortedKeywords) {
+    if (normalizedText.includes(keyword.toLowerCase())) {
+      // Capitalize first letter of each word
+      return keyword
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract meaningful words from text
+ */
+function getMeaningfulWords(text: string, min: number, max: number): string | null {
+  // Common stop words to filter out
+  const stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+    'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
+    'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+    'would', 'should', 'could', 'may', 'might', 'must', 'can', 'this',
+    'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they',
+    'ml', 'oz', 'g', 'kg', 'lb', 'size', 'color', 'new', 'used',
+  ]);
+  
+  const words = text
+    .split(/\s+/)
+    .filter(word => {
+      // Filter out very short words, numbers only, and stop words
+      return (
+        word.length > 2 &&
+        !/^\d+$/.test(word) &&
+        !stopWords.has(word.toLowerCase())
+      );
+    });
+  
+  if (words.length === 0) return null;
+  
+  // Take between min and max words
+  const selectedWords = words.slice(0, Math.min(words.length, max));
+  
+  if (selectedWords.length < min) {
+    // If we don't have enough meaningful words, return what we have
+    return selectedWords.length > 0 ? selectedWords.join(' ') : null;
+  }
+  
+  // Capitalize first letter of each word
+  return selectedWords
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Perform local OCR/text extraction fallback
+ * This is a placeholder - in production, you would integrate a local OCR library
+ * For now, we'll extract text from the API response's detectedText field
+ */
+async function performLocalOcr(imageUri: string, apiDetectedText?: string): Promise<string | null> {
+  console.log('[LocalOCR] Starting local text extraction fallback');
+  
+  // If we have detected text from the API, use that as our "local OCR"
+  if (apiDetectedText && apiDetectedText.trim()) {
+    console.log('[LocalOCR] Using API detected text as fallback:', apiDetectedText);
+    return apiDetectedText.trim();
+  }
+  
+  // TODO: Integrate actual local OCR library here
+  // Options:
+  // 1. react-native-text-detector (iOS/Android native OCR)
+  // 2. expo-ml-kit (Google ML Kit for text recognition)
+  // 3. tesseract.js (JavaScript OCR, works on web too)
+  
+  console.warn('[LocalOCR] No local OCR library integrated yet. Returning null.');
+  return null;
 }
 
 export default function ConfirmProductScreen() {
@@ -351,6 +589,7 @@ export default function ConfirmProductScreen() {
   const [selectedProductIndex, setSelectedProductIndex] = useState<number | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [showSkipModal, setShowSkipModal] = useState(false);
+  const [detectedText, setDetectedText] = useState<string | null>(null);
   
   // Editable fields
   const [title, setTitle] = useState('');
@@ -378,6 +617,7 @@ export default function ConfirmProductScreen() {
     setLoading(true);
     setIdentifying(true);
     setAnalysisError(null);
+    setDetectedText(null); // Reset detected text for retry
 
     try {
       // Get location settings from SmartLocationContext (Settings only)
@@ -401,54 +641,137 @@ export default function ConfirmProductScreen() {
       console.log('[ConfirmProduct] Detected brand:', response.query.detectedBrand);
       console.log('[ConfirmProduct] Found', response.matches.length, 'matches');
 
-      // Convert response to IdentificationResult format
-      const identResult: IdentificationResult = {
-        bestGuessTitle: response.query.detectedText || response.query.detectedBrand || null,
-        bestGuessCategory: response.query.guessedCategory || null,
-        keywords: response.query.detectedText ? response.query.detectedText.split(' ') : [],
-        confidence: response.matches.length > 0 ? response.matches[0].confidence : 0,
-        suggestedProducts: response.matches.map(match => ({
-          title: match.name,
-          imageUrl: match.imageUrl,
-          likelyUrl: null, // We don't have URLs in the new format
-        })),
-      };
+      // Store raw detected text for UI display
+      const rawDetectedText = response.query.detectedText || '';
+      setDetectedText(rawDetectedText);
 
-      setResult(identResult);
+      // PRIMARY ANALYSIS SUCCESS - Use API matches
+      if (response.matches.length > 0) {
+        console.log('[ConfirmProduct] ✅ Primary analysis succeeded with', response.matches.length, 'matches');
+        
+        // Convert response to IdentificationResult format
+        const identResult: IdentificationResult = {
+          bestGuessTitle: response.query.detectedText || response.query.detectedBrand || null,
+          bestGuessCategory: response.query.guessedCategory || null,
+          keywords: response.query.detectedText ? response.query.detectedText.split(' ') : [],
+          confidence: response.matches[0].confidence,
+          suggestedProducts: response.matches.map(match => ({
+            title: match.name,
+            imageUrl: match.imageUrl,
+            likelyUrl: null,
+          })),
+        };
 
-      // Auto-fill Item Name if detected
-      if (identResult.bestGuessTitle) {
-        console.log('[ConfirmProduct] Auto-filling item name:', identResult.bestGuessTitle);
-        setTitle(identResult.bestGuessTitle);
-      }
+        setResult(identResult);
 
-      // If we have matches, auto-select the first one
-      if (identResult.suggestedProducts.length > 0) {
+        // Auto-fill Item Name from first match
+        const firstMatch = response.matches[0];
+        console.log('[ConfirmProduct] Auto-filling item name from first match:', firstMatch.name);
+        setTitle(firstMatch.name);
+
+        // Auto-select the first match
         console.log('[ConfirmProduct] Auto-selecting first match');
         setSelectedProductIndex(0);
-        const firstMatch = identResult.suggestedProducts[0];
-        setTitle(firstMatch.title);
         if (firstMatch.imageUrl) {
           setImageUri(firstMatch.imageUrl);
         }
-      }
 
-      // Clear error if successful
-      setAnalysisError(null);
+        // Clear error if successful
+        setAnalysisError(null);
+      } else {
+        // FALLBACK: Primary analysis returned no matches
+        console.log('[ConfirmProduct] ⚠️ Primary analysis returned no matches - activating fallback');
+        await activateLocalFallback(rawDetectedText);
+      }
     } catch (error: any) {
       console.error('[ConfirmProduct] ❌ Analysis failed:', error.message);
       console.error('[ConfirmProduct] Stack trace:', error.stack);
       
       // Set user-friendly error message
-      setAnalysisError("Couldn't analyze photo. Try again or enter details manually.");
+      setAnalysisError("Couldn't analyze photo. Using local detection.");
       
-      // Don't show Alert here - we'll show it in the UI
+      // FALLBACK: API call failed - try local OCR
+      console.log('[ConfirmProduct] 🔄 API failed - activating local fallback');
+      await activateLocalFallback();
     } finally {
       setLoading(false);
       setIdentifying(false);
       analysisStarted.current = false; // Allow retry
     }
   }, [imageUrl, smartLocationSettings, countryCode, currencyCode]);
+
+  /**
+   * LOCAL FALLBACK: Extract text locally and generate item name
+   */
+  const activateLocalFallback = async (apiDetectedText?: string) => {
+    console.log('[LocalFallback] 🔄 Activating local fallback mechanism');
+    
+    try {
+      // Step 1: Run local OCR (or use API detected text if available)
+      const localOcrText = await performLocalOcr(imageUrl as string, apiDetectedText);
+      console.log('[LocalFallback] Local OCR result:', localOcrText);
+      
+      if (localOcrText) {
+        // Store raw detected text for UI display
+        setDetectedText(localOcrText);
+        
+        // Step 2: Clean and normalize the text
+        const cleanedText = cleanAndNormalizeText(localOcrText);
+        console.log('[LocalFallback] Cleaned text:', cleanedText);
+        
+        // Step 3: Try to find a brand keyword
+        const brandKeyword = findBrandKeyword(cleanedText, BRAND_KEYWORDS);
+        console.log('[LocalFallback] Brand keyword found:', brandKeyword);
+        
+        if (brandKeyword) {
+          // Step 4a: Brand detected - use brand name with hint
+          const fallbackTitle = `${brandKeyword} (detected) - Please specify product`;
+          console.log('[LocalFallback] ✅ Setting item name with brand:', fallbackTitle);
+          setTitle(fallbackTitle);
+        } else {
+          // Step 4b: No brand - extract meaningful words
+          const meaningfulWords = getMeaningfulWords(cleanedText, 2, 6);
+          console.log('[LocalFallback] Meaningful words extracted:', meaningfulWords);
+          
+          if (meaningfulWords) {
+            console.log('[LocalFallback] ✅ Setting item name from meaningful words:', meaningfulWords);
+            setTitle(meaningfulWords);
+          } else {
+            // Step 4c: No meaningful words - generic fallback
+            console.log('[LocalFallback] ⚠️ No meaningful words found - using generic fallback');
+            setTitle('Product (detected) - Please specify');
+          }
+        }
+        
+        // Create a minimal result for UI consistency
+        setResult({
+          bestGuessTitle: localOcrText,
+          bestGuessCategory: null,
+          keywords: cleanedText.split(' '),
+          confidence: 0.5, // Low confidence for local fallback
+          suggestedProducts: [],
+        });
+      } else {
+        // Step 5: Truly no readable text detected
+        console.log('[LocalFallback] ⚠️ No readable text detected in image');
+        setDetectedText('No readable text detected');
+        setTitle('Product - Please specify');
+        
+        setResult({
+          bestGuessTitle: null,
+          bestGuessCategory: null,
+          keywords: [],
+          confidence: 0,
+          suggestedProducts: [],
+        });
+      }
+    } catch (fallbackError: any) {
+      console.error('[LocalFallback] ❌ Fallback failed:', fallbackError);
+      // Even if fallback fails, set a generic title
+      setTitle('Product - Please specify');
+      setDetectedText('Error detecting text');
+    }
+  };
 
   /**
    * CRITICAL: Run analysis automatically on mount if we have a photo
@@ -724,6 +1047,8 @@ export default function ConfirmProductScreen() {
     setAnalysisError(null);
     setResult(null);
     setSelectedProductIndex(null);
+    setDetectedText(null);
+    setTitle(''); // Clear title for fresh analysis
     identifyProduct();
   };
 
@@ -826,10 +1151,18 @@ export default function ConfirmProductScreen() {
           resizeMode="cover"
         />
 
+        {/* Detected Text Display */}
+        {detectedText && detectedText !== 'No readable text detected' && (
+          <View style={styles.detectedTextContainer}>
+            <Text style={styles.detectedTextTitle}>Detected from photo:</Text>
+            <Text style={styles.detectedTextContent}>{detectedText}</Text>
+          </View>
+        )}
+
         {/* Analysis Error */}
         {analysisError && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorTitle}>Analysis Failed</Text>
+            <Text style={styles.errorTitle}>Analysis Issue</Text>
             <Text style={styles.errorText}>{analysisError}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={handleTryAgain}>
               <Text style={styles.retryButtonText}>Retry Analysis</Text>
@@ -910,6 +1243,9 @@ export default function ConfirmProductScreen() {
                 <Text style={styles.sectionTitle}>Edit Details</Text>
 
                 <Text style={styles.label}>Title *</Text>
+                <Text style={styles.editHint}>
+                  Tap to edit and correct the detected product name
+                </Text>
                 <TextInput
                   style={styles.input}
                   placeholder="Enter product title"
