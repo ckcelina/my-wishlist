@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Fragment } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -102,6 +102,9 @@ export default function ImportPreviewScreen() {
   
   const params = useLocalSearchParams();
   
+  // Parse extracted data from params - STABLE reference
+  const dataParam = useMemo(() => params.data, [params.data]);
+  
   // Parse extracted data from params
   const [productData, setProductData] = useState<ExtractedProductData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,73 +145,6 @@ export default function ImportPreviewScreen() {
   // Warnings
   const [warnings, setWarnings] = useState<string[]>([]);
 
-  useEffect(() => {
-    console.log('[ImportPreview] Initializing with params:', params);
-    initializeScreen();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params]);
-
-  useEffect(() => {
-    if (user) {
-      fetchUserWishlists();
-      fetchUserLocationData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  const initializeScreen = async () => {
-    try {
-      // Parse product data from params
-      const dataParam = params.data;
-      if (dataParam && typeof dataParam === 'string') {
-        const parsed = JSON.parse(dataParam);
-        console.log('[ImportPreview] Parsed product data:', parsed);
-        
-        setProductData(parsed);
-        setItemName(parsed.itemName || '');
-        setBrand(parsed.brand || '');
-        
-        // Set suggested images (top 5)
-        const images = parsed.extractedImages || [];
-        setSuggestedImages(images.slice(0, 5));
-        console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
-        
-        // Auto-select image based on input type
-        const autoSelectedImage = autoSelectImage(parsed);
-        setSelectedImage(autoSelectedImage);
-        console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
-        
-        setStoreName(parsed.storeName || '');
-        setStoreDomain(parsed.storeDomain || '');
-        setPrice(parsed.price?.toString() || '');
-        setCurrency(parsed.currency || 'USD');
-        setNotes(parsed.notes || '');
-        
-        // Check for warnings
-        const newWarnings: string[] = [];
-        if (!parsed.itemName) newWarnings.push('Item name is missing');
-        if (!autoSelectedImage || autoSelectedImage === PLACEHOLDER_IMAGE_URL) {
-          newWarnings.push('No image available - using placeholder');
-        }
-        if (!parsed.price) newWarnings.push('Price not detected');
-        if (!parsed.storeName) newWarnings.push('Store name not detected');
-        
-        setWarnings(newWarnings);
-        
-        // Load alternatives if available
-        if (parsed.alternativeStores && parsed.alternativeStores.length > 0) {
-          setAlternativeStores(parsed.alternativeStores);
-        }
-      }
-    } catch (error) {
-      console.error('[ImportPreview] Error parsing product data:', error);
-      Alert.alert('Error', 'Failed to load product data');
-      router.back();
-    } finally {
-      setLoading(false);
-    }
-  };
-
   /**
    * Auto-select the best image based on input type
    * Priority:
@@ -217,7 +153,7 @@ export default function ImportPreviewScreen() {
    * 3. Name search: Use the best search result image
    * 4. Fallback: Use placeholder
    */
-  const autoSelectImage = (data: ExtractedProductData): string => {
+  const autoSelectImage = useCallback((data: ExtractedProductData): string => {
     const inputType = data.inputType || 'manual';
     
     console.log('[ImportPreview] Auto-selecting image for input type:', inputType);
@@ -250,10 +186,70 @@ export default function ImportPreviewScreen() {
     // Fallback to placeholder
     console.log('[ImportPreview] No suitable image found, using placeholder');
     return PLACEHOLDER_IMAGE_URL;
-  };
+  }, []);
 
-  const fetchUserWishlists = async () => {
-    if (!user) return;
+  const initializeScreen = useCallback(async () => {
+    try {
+      // Guard: Only run if dataParam exists
+      if (!dataParam || typeof dataParam !== 'string') {
+        console.log('[ImportPreview] No data param, skipping initialization');
+        setLoading(false);
+        return;
+      }
+
+      const parsed = JSON.parse(dataParam);
+      console.log('[ImportPreview] Parsed product data:', parsed);
+      
+      setProductData(parsed);
+      setItemName(parsed.itemName || '');
+      setBrand(parsed.brand || '');
+      
+      // Set suggested images (top 5)
+      const images = parsed.extractedImages || [];
+      setSuggestedImages(images.slice(0, 5));
+      console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
+      
+      // Auto-select image based on input type
+      const autoSelectedImage = autoSelectImage(parsed);
+      setSelectedImage(autoSelectedImage);
+      console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
+      
+      setStoreName(parsed.storeName || '');
+      setStoreDomain(parsed.storeDomain || '');
+      setPrice(parsed.price?.toString() || '');
+      setCurrency(parsed.currency || 'USD');
+      setNotes(parsed.notes || '');
+      
+      // Check for warnings
+      const newWarnings: string[] = [];
+      if (!parsed.itemName) newWarnings.push('Item name is missing');
+      if (!autoSelectedImage || autoSelectedImage === PLACEHOLDER_IMAGE_URL) {
+        newWarnings.push('No image available - using placeholder');
+      }
+      if (!parsed.price) newWarnings.push('Price not detected');
+      if (!parsed.storeName) newWarnings.push('Store name not detected');
+      
+      setWarnings(newWarnings);
+      
+      // Load alternatives if available
+      if (parsed.alternativeStores && parsed.alternativeStores.length > 0) {
+        setAlternativeStores(parsed.alternativeStores);
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error parsing product data:', error);
+      Alert.alert('Error', 'Failed to load product data');
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  }, [dataParam, autoSelectImage, router]);
+
+  const fetchUserWishlists = useCallback(async () => {
+    // Guard: Only run if user exists
+    if (!user) {
+      console.log('[ImportPreview] No user, skipping wishlist fetch');
+      return;
+    }
     
     try {
       console.log('[ImportPreview] Fetching wishlists');
@@ -268,10 +264,14 @@ export default function ImportPreviewScreen() {
     } catch (error) {
       console.error('[ImportPreview] Error fetching wishlists:', error);
     }
-  };
+  }, [user]);
 
-  const fetchUserLocationData = async () => {
-    if (!user) return;
+  const fetchUserLocationData = useCallback(async () => {
+    // Guard: Only run if user exists
+    if (!user) {
+      console.log('[ImportPreview] No user, skipping location fetch');
+      return;
+    }
     
     try {
       console.log('[ImportPreview] Fetching user location');
@@ -288,9 +288,23 @@ export default function ImportPreviewScreen() {
       console.error('[ImportPreview] Error fetching location:', error);
       // Location is optional, continue without it
     }
-  };
+  }, [user]);
 
-  const checkForDuplicates = async () => {
+  // Initialize screen ONCE when dataParam changes
+  useEffect(() => {
+    console.log('[ImportPreview] Initializing with params:', params);
+    initializeScreen();
+  }, [initializeScreen]);
+
+  // Fetch wishlists and location ONCE when user changes
+  useEffect(() => {
+    if (user) {
+      fetchUserWishlists();
+      fetchUserLocationData();
+    }
+  }, [user, fetchUserWishlists, fetchUserLocationData]);
+
+  const checkForDuplicates = useCallback(async () => {
     if (!selectedWishlistId || !itemName.trim()) {
       console.log('[ImportPreview] Skipping duplicate check - missing data');
       return;
@@ -363,23 +377,23 @@ export default function ImportPreviewScreen() {
     } finally {
       setCheckingDuplicates(false);
     }
-  };
+  }, [selectedWishlistId, itemName, productData]);
 
-  const handleChangeImage = async () => {
+  const handleChangeImage = useCallback(async () => {
     console.log('[ImportPreview] User tapped Change Photo');
     setShowImagePicker(true);
-  };
+  }, []);
 
-  const handleSelectImage = (imageUrl: string) => {
+  const handleSelectImage = useCallback((imageUrl: string) => {
     console.log('[ImportPreview] Image selected:', imageUrl);
     setSelectedImage(imageUrl);
     setShowImagePicker(false);
     
     // Remove "No image available" warning if it exists
     setWarnings(prev => prev.filter(w => !w.includes('image')));
-  };
+  }, []);
 
-  const handleUploadImage = async () => {
+  const handleUploadImage = useCallback(async () => {
     console.log('[ImportPreview] User tapped Upload from Gallery');
     
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -395,9 +409,9 @@ export default function ImportPreviewScreen() {
       // Upload to Supabase Storage
       await uploadImageToSupabase(localUri);
     }
-  };
+  }, []);
 
-  const handleTakePhoto = async () => {
+  const handleTakePhoto = useCallback(async () => {
     console.log('[ImportPreview] User tapped Take Photo');
     
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -419,9 +433,9 @@ export default function ImportPreviewScreen() {
       // Upload to Supabase Storage
       await uploadImageToSupabase(localUri);
     }
-  };
+  }, []);
 
-  const uploadImageToSupabase = async (localUri: string) => {
+  const uploadImageToSupabase = useCallback(async (localUri: string) => {
     if (!user) {
       Alert.alert('Error', 'You must be logged in to upload images');
       return;
@@ -479,9 +493,9 @@ export default function ImportPreviewScreen() {
     } finally {
       setUploadingImage(false);
     }
-  };
+  }, [user, suggestedImages]);
 
-  const handleRetryExtraction = () => {
+  const handleRetryExtraction = useCallback(() => {
     console.log('[ImportPreview] User tapped Retry');
     Alert.alert(
       'Retry Extraction',
@@ -497,15 +511,15 @@ export default function ImportPreviewScreen() {
         },
       ]
     );
-  };
+  }, [router]);
 
-  const handleManualEntry = () => {
+  const handleManualEntry = useCallback(() => {
     console.log('[ImportPreview] User tapped Manual Entry');
     // Navigate back to add screen with manual mode selected
     router.back();
-  };
+  }, [router]);
 
-  const handleReportProblem = () => {
+  const handleReportProblem = useCallback(() => {
     console.log('[ImportPreview] User tapped Report a Problem');
     router.push({
       pathname: '/report-problem',
@@ -515,9 +529,9 @@ export default function ImportPreviewScreen() {
         sourceUrl: productData?.sourceUrl || '',
       },
     });
-  };
+  }, [router, itemName, productData]);
 
-  const handleConfirmAndAdd = async () => {
+  const handleConfirmAndAdd = useCallback(async () => {
     console.log('[ImportPreview] User tapped Confirm & Add');
     
     // Validation
@@ -550,9 +564,9 @@ export default function ImportPreviewScreen() {
 
     // No duplicates, proceed with saving
     await saveItem();
-  };
+  }, [itemName, isCorrectProduct, selectedWishlistId, checkForDuplicates, duplicates.length]);
 
-  const saveItem = async () => {
+  const saveItem = useCallback(async () => {
     setSaving(true);
     
     try {
@@ -638,15 +652,15 @@ export default function ImportPreviewScreen() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [selectedWishlistId, itemName, selectedImage, price, currency, productData, storeDomain, notes, countryCode, cityId, currencyCode, alternativeStores, userLocation, uploadImageToSupabase, router]);
 
-  const handleDuplicateAddAnyway = async () => {
+  const handleDuplicateAddAnyway = useCallback(async () => {
     console.log('[ImportPreview] User chose to add anyway despite duplicates');
     setShowDuplicateModal(false);
     await saveItem();
-  };
+  }, [saveItem]);
 
-  const handleDuplicateReplace = async (duplicateId: string) => {
+  const handleDuplicateReplace = useCallback(async (duplicateId: string) => {
     console.log('[ImportPreview] User chose to replace duplicate:', duplicateId);
     setShowDuplicateModal(false);
     
@@ -655,15 +669,15 @@ export default function ImportPreviewScreen() {
       'This feature will be available soon. For now, you can delete the old item manually and add the new one.',
       [{ text: 'OK' }]
     );
-  };
+  }, []);
 
-  const handleDuplicateCancel = () => {
+  const handleDuplicateCancel = useCallback(() => {
     console.log('[ImportPreview] User cancelled duplicate detection');
     setShowDuplicateModal(false);
     setDuplicates([]);
-  };
+  }, []);
 
-  const handleLoadAlternatives = async () => {
+  const handleLoadAlternatives = useCallback(async () => {
     if (!itemName) {
       Alert.alert('Missing Information', 'Please enter an item name first');
       return;
@@ -728,9 +742,9 @@ export default function ImportPreviewScreen() {
       setLoadingAlternatives(false);
       setSearchStage('idle');
     }
-  };
+  }, [itemName, userLocation, selectedImage, productData, router]);
 
-  const getStageLabel = (stage: SearchStage): string => {
+  const getStageLabel = useCallback((stage: SearchStage): string => {
     switch (stage) {
       case 'finding_stores':
         return 'Finding stores...';
@@ -745,7 +759,7 @@ export default function ImportPreviewScreen() {
       default:
         return '';
     }
-  };
+  }, []);
 
   if (loading) {
     return (

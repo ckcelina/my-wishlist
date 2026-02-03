@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, Fragment, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -867,7 +867,7 @@ export default function AddItemScreen() {
             {extracting ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Fragment>
+              <View style={styles.buttonContent}>
                 <IconSymbol
                   ios_icon_name="wand.and.stars"
                   android_material_icon_name="auto-fix-high"
@@ -875,7 +875,7 @@ export default function AddItemScreen() {
                   color={colors.textInverse}
                 />
                 <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Extract Item Details</Text>
-              </Fragment>
+              </View>
             )}
           </TouchableOpacity>
 
@@ -945,7 +945,7 @@ export default function AddItemScreen() {
           {identifyingCamera ? (
             <ActivityIndicator size="small" color={colors.textInverse} />
           ) : (
-            <Fragment>
+            <View style={styles.buttonContent}>
               <IconSymbol
                 ios_icon_name="sparkles"
                 android_material_icon_name="auto-fix-high"
@@ -953,7 +953,7 @@ export default function AddItemScreen() {
                 color={colors.textInverse}
               />
               <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Identify Product</Text>
-            </Fragment>
+            </View>
           )}
         </TouchableOpacity>
       )}
@@ -1022,7 +1022,7 @@ export default function AddItemScreen() {
           {identifyingUpload ? (
             <ActivityIndicator size="small" color={colors.textInverse} />
           ) : (
-            <Fragment>
+            <View style={styles.buttonContent}>
               <IconSymbol
                 ios_icon_name="sparkles"
                 android_material_icon_name="auto-fix-high"
@@ -1030,7 +1030,7 @@ export default function AddItemScreen() {
                 color={colors.textInverse}
               />
               <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Identify Product</Text>
-            </Fragment>
+            </View>
           )}
         </TouchableOpacity>
       )}
@@ -1096,7 +1096,7 @@ export default function AddItemScreen() {
             {searching ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Fragment>
+              <View style={styles.buttonContent}>
                 <IconSymbol
                   ios_icon_name="magnifyingglass"
                   android_material_icon_name="search"
@@ -1104,7 +1104,7 @@ export default function AddItemScreen() {
                   color={colors.textInverse}
                 />
                 <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Search</Text>
-              </Fragment>
+              </View>
             )}
           </TouchableOpacity>
 
@@ -1243,7 +1243,7 @@ export default function AddItemScreen() {
             {savingManual ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
-              <Fragment>
+              <View style={styles.buttonContent}>
                 <IconSymbol
                   ios_icon_name="checkmark"
                   android_material_icon_name="check"
@@ -1251,7 +1251,7 @@ export default function AddItemScreen() {
                   color={colors.textInverse}
                 />
                 <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Continue to Preview</Text>
-              </Fragment>
+              </View>
             )}
           </TouchableOpacity>
 
@@ -1777,6 +1777,11 @@ function createStyles(colors: ReturnType<typeof createColors>, typography: Retur
     },
     actionButtonDisabled: {
       opacity: 0.5,
+    },
+    buttonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
     },
     actionButtonText: {
       fontSize: 16,
