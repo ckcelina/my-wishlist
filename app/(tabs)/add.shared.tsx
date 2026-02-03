@@ -804,10 +804,10 @@ export default function AddItemScreen() {
   // Show configuration error UI if environment is not configured
   if (configError) {
     return (
-      <>
+      <View style={{ flex: 1 }}>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
         <ConfigurationError message={configError} onRetry={handleRetryConfiguration} />
-      </>
+      </View>
     );
   }
 
@@ -879,7 +879,9 @@ export default function AddItemScreen() {
             disabled={extracting}
           >
             {extracting ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
+              <View style={styles.buttonContent}>
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              </View>
             ) : (
               <View style={styles.buttonContent}>
                 <IconSymbol
@@ -957,7 +959,9 @@ export default function AddItemScreen() {
           disabled={identifyingCamera}
         >
           {identifyingCamera ? (
-            <ActivityIndicator size="small" color={colors.textInverse} />
+            <View style={styles.buttonContent}>
+              <ActivityIndicator size="small" color={colors.textInverse} />
+            </View>
           ) : (
             <View style={styles.buttonContent}>
               <IconSymbol
@@ -1034,7 +1038,9 @@ export default function AddItemScreen() {
           disabled={identifyingUpload}
         >
           {identifyingUpload ? (
-            <ActivityIndicator size="small" color={colors.textInverse} />
+            <View style={styles.buttonContent}>
+              <ActivityIndicator size="small" color={colors.textInverse} />
+            </View>
           ) : (
             <View style={styles.buttonContent}>
               <IconSymbol
@@ -1108,7 +1114,9 @@ export default function AddItemScreen() {
             disabled={searching}
           >
             {searching ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
+              <View style={styles.buttonContent}>
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              </View>
             ) : (
               <View style={styles.buttonContent}>
                 <IconSymbol
@@ -1255,7 +1263,9 @@ export default function AddItemScreen() {
             disabled={savingManual}
           >
             {savingManual ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
+              <View style={styles.buttonContent}>
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              </View>
             ) : (
               <View style={styles.buttonContent}>
                 <IconSymbol
@@ -1294,7 +1304,7 @@ export default function AddItemScreen() {
   const showCountryWarning = !currentCountry;
 
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
         {/* Always-visible header with Wishlist - NO delivery address UI */}
@@ -1600,7 +1610,7 @@ export default function AddItemScreen() {
           </Pressable>
         </Modal>
       </SafeAreaView>
-    </>
+    </View>
   );
 }
 
