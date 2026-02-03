@@ -54,10 +54,12 @@ export default {
     slug: 'My Wishlist',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
+    // Widget/App Icon - Use the final_quest asset for OS-level icon
+    icon: './assets/images/final_quest_240x240.png',
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     splash: {
+      // Splash screen uses the in-app logo (purple gift box)
       image: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
       resizeMode: 'contain',
       backgroundColor: '#EFEFFF',
@@ -86,7 +88,8 @@ export default {
     },
     android: {
       adaptiveIcon: {
-        foregroundImage: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
+        // Widget/App Icon - Use the final_quest asset for OS-level icon
+        foregroundImage: './assets/images/final_quest_240x240.png',
         backgroundColor: '#EFEFFF',
       },
       edgeToEdgeEnabled: true,
@@ -126,7 +129,8 @@ export default {
       ],
     },
     web: {
-      favicon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
+      // Web favicon uses the widget asset
+      favicon: './assets/images/final_quest_240x240.png',
       bundler: 'metro',
     },
     plugins: [
@@ -136,7 +140,8 @@ export default {
       [
         'expo-notifications',
         {
-          icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
+          // Notification icon uses the widget asset
+          icon: './assets/images/final_quest_240x240.png',
           color: '#652DF5',
           defaultChannel: 'price-drops',
         },
