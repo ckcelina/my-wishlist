@@ -109,9 +109,21 @@ export default function ImportPreviewScreen() {
   
   // CRITICAL FIX: Use ref to track if initialization has run
   const initializationDone = useRef(false);
+  const wishlistsFetched = useRef(false);
+  const locationFetched = useRef(false);
   
-  // Parse extracted data from params - STABLE reference
-  const dataParam = useMemo(() => params.data, [params.data]);
+  // CRITICAL FIX: Properly memoize dataParam with stable reference
+  const dataParam = useMemo(() => {
+    const rawData = params.data;
+    if (!rawData || typeof rawData !== 'string') return null;
+    
+    try {
+      return JSON.parse(decodeURIComponent(rawData));
+    } catch (e) {
+      console.error('[ImportPreview] Error parsing data param:', e);
+      return null;
+    }
+  }, [params.data]); // Only re-parse when params.data actually changes
   
   // Parse extracted data from params
   const [productData, setProductData] = useState<ExtractedProductData | null>(null);
@@ -174,49 +186,6 @@ export default function ImportPreviewScreen() {
     return !itemName || !selectedImage || selectedImage === PLACEHOLDER_IMAGE_URL || !price;
   }, [itemName, selectedImage, price]);
 
-  /**
-   * Auto-select the best image based on input type
-   * Priority:
-   * 1. URL: Use extracted og:image or primary product image (highest resolution)
-   * 2. Camera/Upload: Use the uploaded image
-   * 3. Name search: Use the best search result image
-   * 4. Fallback: Use placeholder
-   */
-  const autoSelectImage = useCallback((data: ExtractedProductData): string => {
-    const inputType = data.inputType || 'manual';
-    
-    console.log('[ImportPreview] Auto-selecting image for input type:', inputType);
-    
-    // For URL input: prefer extracted image (highest resolution, non-logo)
-    if (inputType === 'url') {
-      if (data.extractedImages && data.extractedImages.length > 0) {
-        // Return the first extracted image (should be highest quality, non-logo)
-        return data.extractedImages[0];
-      }
-      if (data.imageUrl) {
-        return data.imageUrl;
-      }
-    }
-    
-    // For camera/upload: use the uploaded image
-    if (inputType === 'camera' || inputType === 'image') {
-      if (data.imageUrl) {
-        return data.imageUrl;
-      }
-    }
-    
-    // For name search: use the best result image (high-res, clean)
-    if (inputType === 'name') {
-      if (data.imageUrl) {
-        return data.imageUrl;
-      }
-    }
-    
-    // Fallback to placeholder
-    console.log('[ImportPreview] No suitable image found, using placeholder');
-    return PLACEHOLDER_IMAGE_URL;
-  }, []);
-
   // CRITICAL FIX: Initialize screen ONCE with stable dependencies
   useEffect(() => {
     // Guard: Only run once
@@ -226,7 +195,7 @@ export default function ImportPreviewScreen() {
     }
 
     // Guard: Only run if dataParam exists
-    if (!dataParam || typeof dataParam !== 'string') {
+    if (!dataParam) {
       console.log('[ImportPreview] No data param, skipping initialization');
       setLoading(false);
       return;
@@ -236,61 +205,60 @@ export default function ImportPreviewScreen() {
     initializationDone.current = true; // Mark as done IMMEDIATELY to prevent re-runs
 
     try {
-      const parsed = JSON.parse(dataParam);
-      console.log('[ImportPreview] Parsed product data:', parsed);
+      console.log('[ImportPreview] Parsed product data:', dataParam);
       
-      setProductData(parsed);
-      setItemName(parsed.itemName || '');
-      setBrand(parsed.brand || '');
+      setProductData(dataParam);
+      setItemName(dataParam.itemName || '');
+      setBrand(dataParam.brand || '');
       
       // Set suggested images (top 5)
-      const images = parsed.extractedImages || [];
+      const images = dataParam.extractedImages || [];
       setSuggestedImages(images.slice(0, 5));
       console.log('[ImportPreview] Suggested images:', images.slice(0, 5));
       
-      // Auto-select image based on input type - use local variable to avoid dependency
-      const inputType = parsed.inputType || 'manual';
+      // CRITICAL FIX: Auto-select image based on input type - use local variable to avoid dependency
+      const inputType = dataParam.inputType || 'manual';
       let autoSelectedImage = PLACEHOLDER_IMAGE_URL;
       
       if (inputType === 'url') {
-        if (parsed.extractedImages && parsed.extractedImages.length > 0) {
-          autoSelectedImage = parsed.extractedImages[0];
-        } else if (parsed.imageUrl) {
-          autoSelectedImage = parsed.imageUrl;
+        if (dataParam.extractedImages && dataParam.extractedImages.length > 0) {
+          autoSelectedImage = dataParam.extractedImages[0];
+        } else if (dataParam.imageUrl) {
+          autoSelectedImage = dataParam.imageUrl;
         }
       } else if (inputType === 'camera' || inputType === 'image') {
-        if (parsed.imageUrl) {
-          autoSelectedImage = parsed.imageUrl;
+        if (dataParam.imageUrl) {
+          autoSelectedImage = dataParam.imageUrl;
         }
       } else if (inputType === 'name') {
-        if (parsed.imageUrl) {
-          autoSelectedImage = parsed.imageUrl;
+        if (dataParam.imageUrl) {
+          autoSelectedImage = dataParam.imageUrl;
         }
       }
       
       setSelectedImage(autoSelectedImage);
       console.log('[ImportPreview] Auto-selected image:', autoSelectedImage);
       
-      setStoreName(parsed.storeName || '');
-      setStoreDomain(parsed.storeDomain || '');
-      setPrice(parsed.price?.toString() || '');
-      setCurrency(parsed.currency || 'USD');
-      setNotes(parsed.notes || '');
+      setStoreName(dataParam.storeName || '');
+      setStoreDomain(dataParam.storeDomain || '');
+      setPrice(dataParam.price?.toString() || '');
+      setCurrency(dataParam.currency || 'USD');
+      setNotes(dataParam.notes || '');
       
       // Check for warnings
       const newWarnings: string[] = [];
-      if (!parsed.itemName) newWarnings.push('Item name is missing');
+      if (!dataParam.itemName) newWarnings.push('Item name is missing');
       if (!autoSelectedImage || autoSelectedImage === PLACEHOLDER_IMAGE_URL) {
         newWarnings.push('No image available - using placeholder');
       }
-      if (!parsed.price) newWarnings.push('Price not detected');
-      if (!parsed.storeName) newWarnings.push('Store name not detected');
+      if (!dataParam.price) newWarnings.push('Price not detected');
+      if (!dataParam.storeName) newWarnings.push('Store name not detected');
       
       setWarnings(newWarnings);
       
       // Load alternatives if available
-      if (parsed.alternativeStores && parsed.alternativeStores.length > 0) {
-        setAlternativeStores(parsed.alternativeStores);
+      if (dataParam.alternativeStores && dataParam.alternativeStores.length > 0) {
+        setAlternativeStores(dataParam.alternativeStores);
       }
     } catch (error) {
       console.error('[ImportPreview] Error parsing product data:', error);
@@ -300,10 +268,6 @@ export default function ImportPreviewScreen() {
       setLoading(false);
     }
   }, [dataParam, router]); // Stable dependencies only
-
-  // Guards to prevent multiple fetches
-  const wishlistsFetched = useRef(false);
-  const locationFetched = useRef(false);
 
   const fetchUserWishlists = useCallback(async () => {
     // Guard: Only run if user exists and not already fetched
@@ -538,9 +502,12 @@ export default function ImportPreviewScreen() {
       setSelectedImage(publicUrl);
       
       // Add to suggested images if not already there
-      if (!suggestedImages.includes(publicUrl)) {
-        setSuggestedImages(prev => [publicUrl, ...prev].slice(0, 5));
-      }
+      setSuggestedImages(prev => {
+        if (!prev.includes(publicUrl)) {
+          return [publicUrl, ...prev].slice(0, 5);
+        }
+        return prev;
+      });
       
       setShowImagePicker(false);
       
@@ -552,7 +519,7 @@ export default function ImportPreviewScreen() {
     } finally {
       setUploadingImage(false);
     }
-  }, [user, suggestedImages]);
+  }, [user]);
 
   // NEW: Find Similar Products using Supabase Edge Function
   const handleFindMatches = useCallback(async () => {
