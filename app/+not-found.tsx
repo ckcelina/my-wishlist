@@ -11,7 +11,7 @@ export default function NotFoundScreen() {
   const { theme } = useAppTheme();
   const router = useRouter();
   const colors = useMemo(() => createColors(theme), [theme]);
-  const typography = useMemo(() => createTypography(), []);
+  const typography = useMemo(() => createTypography(theme), [theme]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -57,6 +57,7 @@ export default function NotFoundScreen() {
   }), [colors, typography]);
 
   const handleGoHome = () => {
+    console.log('User tapped Go to Wishlists button from 404 page');
     router.replace('/(tabs)/wishlists');
   };
 
