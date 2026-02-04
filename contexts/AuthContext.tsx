@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 import { createWishlist } from '@/lib/supabase-helpers';
@@ -22,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const isMountedRef = useRef(false);
 
   /**
    * Safe wrapper for version tracking that NEVER crashes auth flow
@@ -92,10 +93,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Mark component as mounted
+    isMountedRef.current = true;
     console.log('[AuthContext] Initializing auth state...');
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session: initialSession }, error }) => {
+      // CRITICAL FIX: Only update state if component is still mounted
+      if (!isMountedRef.current) {
+        console.log('[AuthContext] Component unmounted before session loaded, skipping state update');
+        return;
+      }
+
       if (error) {
         console.error('[AuthContext] Error getting initial session:', error);
       } else {
@@ -119,12 +128,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch((sessionError) => {
       // Extra safety: catch any session errors
       console.error('[AuthContext] Unexpected error getting session:', sessionError);
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
+        // CRITICAL FIX: Only update state if component is still mounted
+        if (!isMountedRef.current) {
+          console.log('[AuthContext] Component unmounted, skipping auth state change');
+          return;
+        }
+
         console.log('[AuthContext] Auth state changed:', event, currentSession?.user?.id || 'No user');
         setSession(currentSession);
         setUser(currentSession?.user ?? null);
@@ -147,6 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       console.log('[AuthContext] Cleaning up auth subscription');
+      isMountedRef.current = false;
       subscription.unsubscribe();
     };
   }, []);
