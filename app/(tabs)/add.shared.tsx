@@ -1,12 +1,4 @@
 
-// CRITICAL FIX: Guard against circular imports
-// This prevents "Maximum call stack size exceeded" errors
-if (typeof (global as any).__ADD_SCREEN_LOADED !== 'undefined') {
-  console.error('[CRITICAL] Circular import detected in add.shared.tsx! This file is being loaded multiple times.');
-  throw new Error('Circular import detected in AddItemScreen');
-}
-(global as any).__ADD_SCREEN_LOADED = true;
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,

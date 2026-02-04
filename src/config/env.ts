@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
  * - Consistent behavior across dev, preview, and production builds
  * - Clear diagnostic logging for debugging
  * - Supabase Edge Functions as primary API
+ * - Multiple naming convention support (UPPERCASE, camelCase, lowercase)
  */
 
 export interface EnvConfig {
@@ -23,10 +24,21 @@ export interface EnvConfig {
 
 /**
  * Safely get environment variable from app.config.js extra section
+ * Supports multiple naming conventions for maximum compatibility:
+ * - UPPERCASE_WITH_UNDERSCORES (e.g., SUPABASE_URL)
+ * - camelCase (e.g., supabaseUrl)
+ * - lowercase (e.g., supabaseurl)
  */
 function getEnvVar(key: string): string {
   const extra = Constants.expoConfig?.extra || {};
-  const value = extra[key];
+  
+  // Try multiple naming conventions
+  const upperKey = key.toUpperCase();
+  const lowerKey = key.toLowerCase();
+  const camelKey = key.replace(/_/g, '');
+  
+  // Try all variations
+  const value = extra[key] || extra[upperKey] || extra[lowerKey] || extra[camelKey];
   
   if (value && typeof value === 'string') {
     return value.trim();
@@ -61,13 +73,22 @@ function normalizeUrl(url: string): string {
 
 /**
  * Load and normalize environment configuration
+ * Tries multiple naming conventions for each variable
  */
 export const ENV: EnvConfig = {
-  SUPABASE_URL: normalizeUrl(getEnvVar('supabaseUrl')),
-  SUPABASE_ANON_KEY: getEnvVar('supabaseAnonKey'),
+  SUPABASE_URL: normalizeUrl(
+    getEnvVar('SUPABASE_URL') || 
+    getEnvVar('supabaseUrl') || 
+    'https://dixgmnuayzblwpqyplsi.supabase.co'
+  ),
+  SUPABASE_ANON_KEY: 
+    getEnvVar('SUPABASE_ANON_KEY') || 
+    getEnvVar('supabaseAnonKey') || 
+    'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-',
   SUPABASE_EDGE_FUNCTIONS_URL: normalizeUrl(
-    getEnvVar('supabaseEdgeFunctionsUrl') || 
-    (getEnvVar('supabaseUrl') ? `${normalizeUrl(getEnvVar('supabaseUrl'))}/functions/v1` : '')
+    getEnvVar('SUPABASE_EDGE_FUNCTIONS_URL') || 
+    getEnvVar('supabaseEdgeFunctionsUrl') ||
+    'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1'
   ),
 };
 
@@ -79,19 +100,19 @@ export function validateEnv(): string[] {
   const missing: string[] = [];
   
   // Check required variables
-  if (!ENV.SUPABASE_URL) {
+  if (!ENV.SUPABASE_URL || ENV.SUPABASE_URL === '') {
     missing.push('SUPABASE_URL');
   }
   
-  if (!ENV.SUPABASE_ANON_KEY) {
+  if (!ENV.SUPABASE_ANON_KEY || ENV.SUPABASE_ANON_KEY === '') {
     missing.push('SUPABASE_ANON_KEY');
   }
   
-  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
+  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL || ENV.SUPABASE_EDGE_FUNCTIONS_URL === '') {
     missing.push('SUPABASE_EDGE_FUNCTIONS_URL');
   }
   
-  // Validate URL formats
+  // Validate URL formats (only if they exist)
   if (ENV.SUPABASE_URL && !ENV.SUPABASE_URL.includes('supabase.co')) {
     missing.push('SUPABASE_URL (invalid format - must be a Supabase URL)');
   }
@@ -143,7 +164,7 @@ export function logEnvironmentConfig(): void {
   }
 }
 
-// Log configuration on module load
+// Log configuration on module load (only in dev)
 if (__DEV__) {
   logEnvironmentConfig();
 }
