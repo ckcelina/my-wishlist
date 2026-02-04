@@ -481,37 +481,287 @@ export function generateShareSlug(): string {
 }
 
 // ============================================================================
-// USER SETTINGS
+// USER SETTINGS (using RPC functions)
 // ============================================================================
 
 export interface UserSettings {
-  priceDropAlertsEnabled: boolean;
-  weeklyDigestEnabled: boolean;
-  defaultCurrency: string;
+  userId: string;
+  country: string | null;
+  city: string | null;
+  currency: string | null;
+  updatedAt: string;
 }
 
-export async function fetchUserSettings(userId: string): Promise<UserSettings> {
-  console.log('[Supabase] Fetching user settings for:', userId);
+export async function fetchUserSettings(userId: string): Promise<UserSettings | null> {
+  console.log('[Supabase] Fetching user settings via RPC for:', userId);
   
-  // For now, return default settings since we don't have a user_settings table yet
-  // This can be extended when the backend adds user settings support
-  return {
-    priceDropAlertsEnabled: false,
-    weeklyDigestEnabled: false,
-    defaultCurrency: 'USD',
-  };
+  try {
+    const { data, error } = await supabase.rpc('get_user_settings');
+
+    if (error) {
+      console.error('[Supabase] Error fetching user settings:', error);
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      console.log('[Supabase] No user settings found for:', userId);
+      return null;
+    }
+
+    const settings = data[0];
+    console.log('[Supabase] User settings found:', settings);
+    
+    return {
+      userId: settings.user_id,
+      country: settings.country,
+      city: settings.city,
+      currency: settings.currency,
+      updatedAt: settings.updated_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception fetching user settings:', err);
+    return null;
+  }
 }
 
-export async function updateUserSettings(userId: string, settings: Partial<UserSettings>): Promise<UserSettings> {
-  console.log('[Supabase] Updating user settings for:', userId, settings);
+export async function updateUserSettings(
+  country: string | null,
+  city: string | null,
+  currency: string | null
+): Promise<void> {
+  console.log('[Supabase] Updating user settings via RPC:', { country, city, currency });
   
-  // For now, just return the updated settings
-  // This can be extended when the backend adds user settings support
-  const currentSettings = await fetchUserSettings(userId);
-  return {
-    ...currentSettings,
-    ...settings,
-  };
+  try {
+    const { error } = await supabase.rpc('upsert_user_settings', {
+      _country: country,
+      _city: city,
+      _currency: currency,
+    });
+
+    if (error) {
+      console.error('[Supabase] Error updating user settings:', error);
+      throw new Error(`Failed to update user settings: ${error.message}`);
+    }
+
+    console.log('[Supabase] User settings updated successfully');
+  } catch (err) {
+    console.error('[Supabase] Exception updating user settings:', err);
+    throw err;
+  }
+}
+
+// ============================================================================
+// SEARCH CACHE
+// ============================================================================
+
+export interface SearchCacheEntry {
+  id: number;
+  userId: string | null;
+  query: string;
+  country: string | null;
+  currency: string | null;
+  results: any;
+  createdAt: string;
+}
+
+export async function fetchSearchCache(
+  query: string,
+  country: string | null,
+  currency: string | null,
+  userId: string | null = null
+): Promise<SearchCacheEntry | null> {
+  console.log('[Supabase] Fetching search cache for:', { query, country, currency, userId });
+  
+  try {
+    let queryBuilder = supabase
+      .from('search_cache')
+      .select('*')
+      .eq('query', query);
+
+    if (country) {
+      queryBuilder = queryBuilder.eq('country', country);
+    } else {
+      queryBuilder = queryBuilder.is('country', null);
+    }
+
+    if (currency) {
+      queryBuilder = queryBuilder.eq('currency', currency);
+    } else {
+      queryBuilder = queryBuilder.is('currency', null);
+    }
+
+    if (userId) {
+      queryBuilder = queryBuilder.eq('user_id', userId);
+    } else {
+      queryBuilder = queryBuilder.is('user_id', null);
+    }
+
+    const { data, error } = await queryBuilder.maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching search cache:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.log('[Supabase] No search cache found');
+      return null;
+    }
+
+    console.log('[Supabase] Search cache found:', data.id);
+    
+    return {
+      id: data.id,
+      userId: data.user_id,
+      query: data.query,
+      country: data.country,
+      currency: data.currency,
+      results: data.results,
+      createdAt: data.created_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception fetching search cache:', err);
+    return null;
+  }
+}
+
+export async function createSearchCache(
+  query: string,
+  country: string | null,
+  currency: string | null,
+  results: any,
+  userId: string | null = null
+): Promise<SearchCacheEntry | null> {
+  console.log('[Supabase] Creating search cache for:', { query, country, currency, userId });
+  
+  try {
+    const { data, error } = await supabase
+      .from('search_cache')
+      .insert({
+        user_id: userId,
+        query,
+        country,
+        currency,
+        results,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Supabase] Error creating search cache:', error);
+      return null;
+    }
+
+    console.log('[Supabase] Search cache created:', data.id);
+    
+    return {
+      id: data.id,
+      userId: data.user_id,
+      query: data.query,
+      country: data.country,
+      currency: data.currency,
+      results: data.results,
+      createdAt: data.created_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception creating search cache:', err);
+    return null;
+  }
+}
+
+// ============================================================================
+// IMAGE ANALYSIS CACHE
+// ============================================================================
+
+export interface ImageAnalysisCacheEntry {
+  id: number;
+  userId: string | null;
+  imageHash: string;
+  results: any;
+  createdAt: string;
+}
+
+export async function fetchImageAnalysisCache(
+  imageHash: string,
+  userId: string | null = null
+): Promise<ImageAnalysisCacheEntry | null> {
+  console.log('[Supabase] Fetching image analysis cache for:', { imageHash, userId });
+  
+  try {
+    let queryBuilder = supabase
+      .from('image_analysis_cache')
+      .select('*')
+      .eq('image_hash', imageHash);
+
+    if (userId) {
+      queryBuilder = queryBuilder.eq('user_id', userId);
+    } else {
+      queryBuilder = queryBuilder.is('user_id', null);
+    }
+
+    const { data, error } = await queryBuilder.maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching image analysis cache:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.log('[Supabase] No image analysis cache found');
+      return null;
+    }
+
+    console.log('[Supabase] Image analysis cache found:', data.id);
+    
+    return {
+      id: data.id,
+      userId: data.user_id,
+      imageHash: data.image_hash,
+      results: data.results,
+      createdAt: data.created_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception fetching image analysis cache:', err);
+    return null;
+  }
+}
+
+export async function createImageAnalysisCache(
+  imageHash: string,
+  results: any,
+  userId: string | null = null
+): Promise<ImageAnalysisCacheEntry | null> {
+  console.log('[Supabase] Creating image analysis cache for:', { imageHash, userId });
+  
+  try {
+    const { data, error } = await supabase
+      .from('image_analysis_cache')
+      .insert({
+        user_id: userId,
+        image_hash: imageHash,
+        results,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[Supabase] Error creating image analysis cache:', error);
+      return null;
+    }
+
+    console.log('[Supabase] Image analysis cache created:', data.id);
+    
+    return {
+      id: data.id,
+      userId: data.user_id,
+      imageHash: data.image_hash,
+      results: data.results,
+      createdAt: data.created_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception creating image analysis cache:', err);
+    return null;
+  }
 }
 
 // ============================================================================
