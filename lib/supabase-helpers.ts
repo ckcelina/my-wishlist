@@ -481,7 +481,7 @@ export function generateShareSlug(): string {
 }
 
 // ============================================================================
-// USER SETTINGS (using RPC functions)
+// USER SETTINGS
 // ============================================================================
 
 export interface UserSettings {
@@ -505,57 +505,120 @@ const DEFAULT_USER_SETTINGS: Omit<UserSettings, 'userId' | 'updatedAt'> = {
   currency: 'USD',
 };
 
+// In-flight request guard to prevent concurrent execution for the same user
+const inFlightUserSettingsRequests = new Map<string, Promise<UserSettings>>();
+
 export async function fetchUserSettings(userId: string): Promise<UserSettings> {
-  console.log('[Supabase] Fetching user settings via RPC for:', userId);
+  console.log('[Supabase] fetchUserSettings called for userId:', userId);
   
-  try {
-    const { data, error } = await supabase.rpc('get_user_settings');
-
-    if (error) {
-      console.error('[Supabase] Error fetching user settings:', error);
-      console.warn('[Supabase] Returning default settings due to error');
-      return {
-        userId,
-        ...DEFAULT_USER_SETTINGS,
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    if (!data || data.length === 0) {
-      console.log('[Supabase] No user settings found for:', userId);
-      console.log('[Supabase] Returning default settings');
-      return {
-        userId,
-        ...DEFAULT_USER_SETTINGS,
-        updatedAt: new Date().toISOString(),
-      };
-    }
-
-    const settings = data[0];
-    console.log('[Supabase] User settings found:', settings);
-    
-    // Map database columns to frontend interface
-    // Database has: notification_enabled, country, city, currency
-    // Frontend expects: priceDropAlertsEnabled, weeklyDigestEnabled, defaultCurrency, country, city, currency
+  if (!userId) {
+    console.warn('[Supabase] fetchUserSettings called with null/empty userId, returning defaults');
     return {
-      userId: settings.user_id,
-      priceDropAlertsEnabled: settings.notification_enabled ?? false,
-      weeklyDigestEnabled: false, // Not stored in database yet
-      defaultCurrency: settings.currency ?? 'USD',
-      country: settings.country ?? null,
-      city: settings.city ?? null,
-      currency: settings.currency ?? 'USD',
-      updatedAt: settings.updated_at,
-    };
-  } catch (err) {
-    console.error('[Supabase] Exception fetching user settings:', err);
-    console.warn('[Supabase] Returning default settings due to exception');
-    return {
-      userId,
+      userId: '',
       ...DEFAULT_USER_SETTINGS,
       updatedAt: new Date().toISOString(),
     };
   }
+
+  // If a request is already in flight for this user, return the existing promise
+  if (inFlightUserSettingsRequests.has(userId)) {
+    console.log('[Supabase] In-flight request detected for userId:', userId, '- returning existing promise');
+    return inFlightUserSettingsRequests.get(userId)!;
+  }
+
+  const requestPromise = (async () => {
+    try {
+      console.log('[Supabase] Step 1: Attempting to SELECT user_settings for userId:', userId);
+      
+      // 1. First, try to SELECT the row
+      const { data: existingSettings, error: selectError } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        // PGRST116 is "no rows found" - this is expected if the row doesn't exist
+        console.error('[Supabase] Error selecting user settings:', selectError);
+        console.warn('[Supabase] Returning default settings due to select error');
+        return {
+          userId,
+          ...DEFAULT_USER_SETTINGS,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      // 2. If a row exists, return it
+      if (existingSettings) {
+        console.log('[Supabase] User settings found, returning existing settings');
+        return {
+          userId: existingSettings.user_id,
+          priceDropAlertsEnabled: existingSettings.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+          weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
+          defaultCurrency: existingSettings.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
+          country: existingSettings.country,
+          city: existingSettings.city,
+          currency: existingSettings.currency ?? DEFAULT_USER_SETTINGS.currency,
+          updatedAt: existingSettings.updated_at || new Date().toISOString(),
+        };
+      }
+
+      console.log('[Supabase] Step 2: No user_settings row exists, creating with UPSERT');
+
+      // 3. If the row does not exist, create it using UPSERT
+      const defaults = {
+        user_id: userId,
+        notification_enabled: DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+        currency: DEFAULT_USER_SETTINGS.currency,
+        country: DEFAULT_USER_SETTINGS.country,
+        city: DEFAULT_USER_SETTINGS.city,
+      };
+
+      const { data: newSettings, error: upsertError } = await supabase
+        .from('user_settings')
+        .upsert(defaults, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+
+      if (upsertError) {
+        console.error('[Supabase] Error upserting user settings:', upsertError);
+        console.warn('[Supabase] Returning default settings due to upsert error');
+        return {
+          userId,
+          ...DEFAULT_USER_SETTINGS,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      console.log('[Supabase] User settings created successfully via UPSERT');
+      return {
+        userId: newSettings.user_id,
+        priceDropAlertsEnabled: newSettings.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+        weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
+        defaultCurrency: newSettings.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
+        country: newSettings.country,
+        city: newSettings.city,
+        currency: newSettings.currency ?? DEFAULT_USER_SETTINGS.currency,
+        updatedAt: newSettings.updated_at || new Date().toISOString(),
+      };
+
+    } catch (e) {
+      console.error('[Supabase] Unexpected error in fetchUserSettings:', e);
+      return {
+        userId,
+        ...DEFAULT_USER_SETTINGS,
+        updatedAt: new Date().toISOString(),
+      };
+    } finally {
+      // Remove the in-flight request from the map
+      console.log('[Supabase] Removing in-flight request for userId:', userId);
+      inFlightUserSettingsRequests.delete(userId);
+    }
+  })();
+
+  // Store the promise in the map
+  inFlightUserSettingsRequests.set(userId, requestPromise);
+  return requestPromise;
 }
 
 export async function updateUserSettings(
@@ -569,19 +632,37 @@ export async function updateUserSettings(
     currency?: string | null;
   }
 ): Promise<UserSettings> {
-  console.log('[Supabase] Updating user settings via RPC:', updates);
+  console.log('[Supabase] Updating user settings for userId:', userId, 'updates:', updates);
   
   try {
     // Map frontend field names to database field names
-    const _country = updates.country !== undefined ? updates.country : undefined;
-    const _city = updates.city !== undefined ? updates.city : undefined;
-    const _currency = updates.defaultCurrency || updates.currency || undefined;
+    const dbUpdates: any = {};
     
-    const { error } = await supabase.rpc('upsert_user_settings', {
-      _country,
-      _city,
-      _currency,
-    });
+    if (updates.priceDropAlertsEnabled !== undefined) {
+      dbUpdates.notification_enabled = updates.priceDropAlertsEnabled;
+    }
+    if (updates.country !== undefined) {
+      dbUpdates.country = updates.country;
+    }
+    if (updates.city !== undefined) {
+      dbUpdates.city = updates.city;
+    }
+    if (updates.defaultCurrency !== undefined || updates.currency !== undefined) {
+      dbUpdates.currency = updates.defaultCurrency || updates.currency;
+    }
+
+    // Use UPSERT to handle both insert and update cases
+    const { data, error } = await supabase
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: userId,
+          ...dbUpdates,
+        },
+        { onConflict: 'user_id' }
+      )
+      .select('*')
+      .single();
 
     if (error) {
       console.error('[Supabase] Error updating user settings:', error);
@@ -590,8 +671,16 @@ export async function updateUserSettings(
 
     console.log('[Supabase] User settings updated successfully');
     
-    // Fetch and return the updated settings
-    return await fetchUserSettings(userId);
+    return {
+      userId: data.user_id,
+      priceDropAlertsEnabled: data.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+      weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
+      defaultCurrency: data.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
+      country: data.country,
+      city: data.city,
+      currency: data.currency ?? DEFAULT_USER_SETTINGS.currency,
+      updatedAt: data.updated_at || new Date().toISOString(),
+    };
   } catch (err) {
     console.error('[Supabase] Exception updating user settings:', err);
     throw err;
