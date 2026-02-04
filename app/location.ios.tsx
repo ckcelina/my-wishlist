@@ -18,7 +18,6 @@ import { Toast } from '@/components/design-system/Toast';
 import { Card } from '@/components/design-system/Card';
 import { Divider } from '@/components/design-system/Divider';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import { authenticatedGet, authenticatedPost, authenticatedDelete } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -26,21 +25,22 @@ import { CountryPicker } from '@/components/pickers/CountryPicker';
 import { CityPicker } from '@/components/pickers/CityPicker';
 import { getCountryFlag } from '@/constants/countries';
 import { determineDefaultLocation, preloadCitiesForCountry } from '@/src/services/locationBootstrap';
+import { supabase } from '@/lib/supabase';
 
 interface UserLocation {
   id: string;
-  userId: string;
-  countryCode: string;
-  countryName: string;
+  user_id: string;
+  country_code: string;
+  country_name: string;
   city: string | null;
   region: string | null;
-  postalCode: string | null;
-  geonameId: string | null;
+  postal_code: string | null;
+  geoname_id: string | null;
   lat: number | null;
   lng: number | null;
   area: string | null;
-  addressLine: string | null;
-  updatedAt: string;
+  address_line: string | null;
+  updated_at: string;
 }
 
 // Countries that support area/address fields
@@ -210,61 +210,28 @@ export default function LocationScreen() {
   });
 
   const fetchLocation = useCallback(async () => {
-    console.log('[LocationScreen] Fetching user location');
+    console.log('[LocationScreen] Fetching user location from Supabase');
+    
+    if (!user) {
+      console.log('[LocationScreen] No user, skipping fetch');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await authenticatedGet<UserLocation | null>('/api/users/location');
+      const { data, error } = await supabase
+        .from('user_location')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
       
-      if (data) {
-        console.log('[LocationScreen] Location found:', data);
-        setHasLocation(true);
-        setCountryCode(data.countryCode);
-        setCountryName(data.countryName);
-        setCity(data.city || '');
-        setRegion(data.region || '');
-        setGeonameId(data.geonameId);
-        setLat(data.lat);
-        setLng(data.lng);
-        setArea(data.area || '');
-        setAddressLine(data.addressLine || '');
-        
-        // Preload cities for saved country
-        if (data.countryCode) {
-          console.log('[LocationScreen] Preloading cities for saved country:', data.countryCode);
-          const cities = await preloadCitiesForCountry(data.countryCode);
-          setPreloadedCities(cities);
-        }
-      } else {
-        console.log('[LocationScreen] No location set, running bootstrap');
-        setHasLocation(false);
-        
-        // Run automatic location detection
-        const bootstrap = await determineDefaultLocation();
-        
-        if (bootstrap.countryCode && bootstrap.countryName) {
-          console.log('[LocationScreen] Bootstrap detected country:', bootstrap.countryName);
-          setCountryCode(bootstrap.countryCode);
-          setCountryName(bootstrap.countryName);
-          setPreloadedCities(bootstrap.topCities);
-          setHasUnsavedChanges(true);
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No location found (not an error)
+          console.log('[LocationScreen] No location set, running bootstrap');
+          setHasLocation(false);
           
-          // Show toast to inform user
-          setToastMessage(`Detected location: ${bootstrap.countryName}`);
-          setToastType('success');
-          setToastVisible(true);
-        } else {
-          console.log('[LocationScreen] Bootstrap could not detect country');
-        }
-      }
-    } catch (error: any) {
-      console.error('[LocationScreen] Error fetching location:', error);
-      
-      // If the error is a 404, it means no location is set (not an error)
-      if (error.message && error.message.includes('404')) {
-        console.log('[LocationScreen] No location set (404), running bootstrap');
-        setHasLocation(false);
-        
-        // Run automatic location detection
-        try {
+          // Run automatic location detection
           const bootstrap = await determineDefaultLocation();
           
           if (bootstrap.countryCode && bootstrap.countryName) {
@@ -281,20 +248,38 @@ export default function LocationScreen() {
           } else {
             console.log('[LocationScreen] Bootstrap could not detect country');
           }
-        } catch (bootstrapError) {
-          console.error('[LocationScreen] Bootstrap failed:', bootstrapError);
+        } else {
+          throw error;
         }
-      } else {
-        // For other errors, show a toast but don't block the UI
-        console.error('[LocationScreen] Failed to fetch location:', error.message);
-        setToastMessage('Unable to load location. You can still set it.');
-        setToastType('error');
-        setToastVisible(true);
+      } else if (data) {
+        console.log('[LocationScreen] Location found:', data);
+        setHasLocation(true);
+        setCountryCode(data.country_code);
+        setCountryName(data.country_name);
+        setCity(data.city || '');
+        setRegion(data.region || '');
+        setGeonameId(data.geoname_id);
+        setLat(data.lat);
+        setLng(data.lng);
+        setArea(data.area || '');
+        setAddressLine(data.address_line || '');
+        
+        // Preload cities for saved country
+        if (data.country_code) {
+          console.log('[LocationScreen] Preloading cities for saved country:', data.country_code);
+          const cities = await preloadCitiesForCountry(data.country_code);
+          setPreloadedCities(cities);
+        }
       }
+    } catch (error: any) {
+      console.error('[LocationScreen] Error fetching location:', error);
+      setToastMessage('Unable to load location. You can still set it.');
+      setToastType('error');
+      setToastVisible(true);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -310,7 +295,14 @@ export default function LocationScreen() {
       return;
     }
 
-    console.log('[LocationScreen] Saving location:', {
+    if (!user) {
+      console.log('[LocationScreen] Cannot save: no user');
+      haptics.warning();
+      Alert.alert('Error', 'You must be logged in to save location');
+      return;
+    }
+
+    console.log('[LocationScreen] Saving location to Supabase:', {
       countryCode,
       countryName,
       city,
@@ -319,17 +311,29 @@ export default function LocationScreen() {
 
     setSaving(true);
     try {
-      await authenticatedPost('/api/users/location', {
-        countryCode,
-        countryName,
-        city: city || undefined,
-        region: region || undefined,
-        geonameId: geonameId || undefined,
-        lat: lat || undefined,
-        lng: lng || undefined,
-        area: area || undefined,
-        addressLine: addressLine || undefined,
-      });
+      const locationData = {
+        user_id: user.id,
+        country_code: countryCode,
+        country_name: countryName,
+        city: city || null,
+        region: region || null,
+        geoname_id: geonameId || null,
+        lat: lat || null,
+        lng: lng || null,
+        area: area || null,
+        address_line: addressLine || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('user_location')
+        .upsert(locationData, {
+          onConflict: 'user_id',
+        });
+
+      if (error) {
+        throw error;
+      }
 
       console.log('[LocationScreen] Location saved successfully');
       setHasLocation(true);
@@ -342,8 +346,7 @@ export default function LocationScreen() {
     } catch (error: any) {
       console.error('[LocationScreen] Error saving location:', error);
       
-      const errorMessage = error.message || 'Failed to save location';
-      setToastMessage(errorMessage.includes('Backend URL') ? 'Unable to save location. Please try again later.' : 'Failed to save location');
+      setToastMessage('Failed to save location');
       setToastType('error');
       setToastVisible(true);
       haptics.error();
@@ -384,6 +387,11 @@ export default function LocationScreen() {
   };
 
   const handleDelete = async () => {
+    if (!user) {
+      console.log('[LocationScreen] Cannot delete: no user');
+      return;
+    }
+
     haptics.warning();
     Alert.alert(
       'Remove Location',
@@ -398,9 +406,17 @@ export default function LocationScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            console.log('[LocationScreen] Removing location');
+            console.log('[LocationScreen] Removing location from Supabase');
             try {
-              await authenticatedDelete('/api/users/location');
+              const { error } = await supabase
+                .from('user_location')
+                .delete()
+                .eq('user_id', user.id);
+
+              if (error) {
+                throw error;
+              }
+
               console.log('[LocationScreen] Location removed');
               haptics.success();
               router.back();
