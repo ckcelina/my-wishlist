@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Image, StyleSheet, ImageSourcePropType } from 'react-native';
+import { Image, StyleSheet, View, ImageSourcePropType } from 'react-native';
 import { useAppTheme } from '@/contexts/ThemeContext';
 
 interface LogoProps {
@@ -8,42 +8,46 @@ interface LogoProps {
   style?: any;
 }
 
-// Helper to resolve image sources
+// Helper to resolve image sources (handles both local require() and remote URLs)
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
   return source as ImageSourcePropType;
 }
 
-export function Logo({ size = 'medium', style }: LogoProps) {
+export const Logo: React.FC<LogoProps> = ({ size = 'medium', style }) => {
   const { isDark } = useAppTheme();
   
-  // Use theme-aware logo assets
-  // Light mode: purple gift box logo
-  // Dark mode: dark variant logo
+  // Use theme-appropriate logo
   const logoSource = isDark
     ? require('@/assets/images/natively-dark.png')
     : require('@/assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png');
-  
+
   const sizeStyles = {
-    small: { width: 80, height: 80 },
-    medium: { width: 120, height: 120 },
-    large: { width: 160, height: 160 },
+    small: { width: 40, height: 40 },
+    medium: { width: 80, height: 80 },
+    large: { width: 120, height: 120 },
   };
-  
-  console.log('[Logo] Rendering My Wishlist logo - Theme:', isDark ? 'dark' : 'light');
-  
+
+  const dimensions = sizeStyles[size];
+
   return (
-    <Image
-      source={resolveImageSource(logoSource)}
-      style={[sizeStyles[size], styles.logo, style]}
-      resizeMode="contain"
-    />
+    <View style={[styles.container, style]}>
+      <Image
+        source={resolveImageSource(logoSource)}
+        style={[styles.logo, dimensions]}
+        resizeMode="contain"
+      />
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logo: {
-    borderRadius: 0, // Remove border radius to show full logo
+    // Dimensions set dynamically based on size prop
   },
 });
