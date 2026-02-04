@@ -53,8 +53,8 @@ export default function TabLayout() {
   // Define the tabs configuration
   const tabs: TabBarItem[] = [
     {
-      name: 'wishlists',
-      route: '/(tabs)/wishlists',
+      name: 'lists',
+      route: '/(tabs)/lists',
       icon: 'favorite-border', // Heart outline icon
       label: 'Wishlists',
     },
@@ -82,7 +82,7 @@ export default function TabLayout() {
           animation: 'fade', // Smooth transition animations
         }}
       >
-        <Stack.Screen key="wishlists" name="wishlists" />
+        <Stack.Screen key="lists" name="lists" />
         <Stack.Screen key="add" name="add" />
         <Stack.Screen key="profile" name="profile" />
       </Stack>

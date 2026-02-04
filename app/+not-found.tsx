@@ -58,7 +58,8 @@ export default function NotFoundScreen() {
 
   const handleGoHome = () => {
     console.log('User tapped Go to Wishlists button from 404 page');
-    router.replace('/(tabs)/wishlists');
+    // Navigate to the correct route - lists, not wishlists
+    router.replace('/(tabs)/lists');
   };
 
   return (

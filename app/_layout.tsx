@@ -43,6 +43,14 @@ function RootLayoutNav() {
       'item',
       'shared',
       'auth-callback',
+      'location',
+      'alerts',
+      'diagnostics',
+      'diagnostics-enhanced',
+      'e2e-test',
+      'language-selector',
+      'permissions-settings',
+      'legal',
     ];
     
     const isAllowedRoute = allowedRoutes.some(route => segments[0] === route);
@@ -61,8 +69,8 @@ function RootLayoutNav() {
       router.replace('/auth');
     } else if (user && !inAuthGroup && !isAllowedRoute) {
       // User is signed in but not in protected routes (and not in allowed routes)
-      console.log('[RootLayout] Redirecting to /(tabs)/wishlists');
-      router.replace('/(tabs)/wishlists');
+      console.log('[RootLayout] Redirecting to /(tabs)/lists');
+      router.replace('/(tabs)/lists');
     }
   }, [user, loading, segments, router]);
 

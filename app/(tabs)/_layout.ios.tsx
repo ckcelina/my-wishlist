@@ -52,7 +52,7 @@ export default function TabLayout() {
 
   return (
     <NativeTabs>
-      <NativeTabs.Trigger key="wishlists" name="wishlists">
+      <NativeTabs.Trigger key="lists" name="lists">
         <Icon sf={{ default: 'heart', selected: 'heart.fill' }} />
         <Label>Wishlists</Label>
       </NativeTabs.Trigger>
