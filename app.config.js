@@ -7,7 +7,7 @@ export default {
   owner: 'ckcelina',
   version: '1.0.0',
   orientation: 'portrait',
-  icon: './assets/images/final_quest_240x240.png',
+  icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
   userInterfaceStyle: 'automatic',
   splash: {
     image: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
@@ -19,7 +19,7 @@ export default {
     supportsTablet: true,
     bundleIdentifier: 'com.ckcelina.mywishlist',
     appleTeamId: 'HY2V55PTYK',
-    icon: './assets/images/final_quest_240x240.png',
+    icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
       NSCameraUsageDescription: 'This app needs access to your camera to scan product barcodes and take photos of items you want to add to your wishlist.',
@@ -31,7 +31,7 @@ export default {
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/final_quest_240x240.png',
+      foregroundImage: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
       backgroundColor: '#EFEFFF',
     },
     package: 'com.mywishlist.app',
@@ -45,7 +45,7 @@ export default {
     scheme: 'mywishlist',
   },
   web: {
-    favicon: './assets/images/final_quest_240x240.png',
+    favicon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
     bundler: 'metro',
   },
   plugins: [
@@ -81,7 +81,7 @@ export default {
     supabaseEdgeFunctionsUrl: process.env.EXPO_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
   },
   notification: {
-    icon: './assets/images/final_quest_240x240.png',
+    icon: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
     color: '#6366F1',
   },
 };
