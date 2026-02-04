@@ -3,11 +3,11 @@ export default {
   expo: {
     name: 'My Wishlist',
     slug: 'my-wishlist',
+    owner: 'ckcelina',
     version: '1.0.0',
     orientation: 'portrait',
     icon: './assets/images/final_quest_240x240.png',
     userInterfaceStyle: 'automatic',
-    scheme: 'mywishlist',
     splash: {
       image: './assets/images/e86a516f-63f8-47ae-96ef-8f37ff302d99.png',
       resizeMode: 'contain',
@@ -16,14 +16,17 @@ export default {
     assetBundlePatterns: ['**/*'],
     ios: {
       supportsTablet: true,
-      bundleIdentifier: 'com.mywishlist.app',
+      bundleIdentifier: 'com.ckcelina.mywishlist',
+      appleTeamId: 'HY2V55PTYK',
       icon: './assets/images/final_quest_240x240.png',
       infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
         NSCameraUsageDescription: 'This app needs access to your camera to scan product barcodes and take photos of items you want to add to your wishlist.',
         NSPhotoLibraryUsageDescription: 'This app needs access to your photo library to select images of items you want to add to your wishlist.',
         NSPhotoLibraryAddUsageDescription: 'This app needs permission to save images to your photo library.',
         NSLocationWhenInUseUsageDescription: 'This app needs your location to show you relevant stores and prices in your area.',
       },
+      scheme: 'mywishlist',
     },
     android: {
       adaptiveIcon: {
@@ -38,6 +41,7 @@ export default {
         'ACCESS_FINE_LOCATION',
         'ACCESS_COARSE_LOCATION',
       ],
+      scheme: 'mywishlist',
     },
     web: {
       favicon: './assets/images/final_quest_240x240.png',
@@ -67,7 +71,7 @@ export default {
         origin: false,
       },
       eas: {
-        projectId: 'your-project-id',
+        projectId: 'b6c4964e-ea64-479d-8bce-b38e8e9b3ee5',
       },
     },
     notification: {
