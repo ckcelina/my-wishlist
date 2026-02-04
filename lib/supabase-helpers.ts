@@ -493,25 +493,116 @@ export interface UserSettings {
 export async function fetchUserSettings(userId: string): Promise<UserSettings> {
   console.log('[Supabase] Fetching user settings for:', userId);
   
-  // For now, return default settings since we don't have a user_settings table yet
-  // This can be extended when the backend adds user settings support
-  return {
-    priceDropAlertsEnabled: false,
-    weeklyDigestEnabled: false,
-    defaultCurrency: 'USD',
-  };
+  try {
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching user settings:', error);
+      // Return defaults on error
+      return {
+        priceDropAlertsEnabled: false,
+        weeklyDigestEnabled: false,
+        defaultCurrency: 'USD',
+      };
+    }
+
+    if (!data) {
+      // No settings found, return defaults
+      return {
+        priceDropAlertsEnabled: false,
+        weeklyDigestEnabled: false,
+        defaultCurrency: 'USD',
+      };
+    }
+
+    return {
+      priceDropAlertsEnabled: data.price_drop_alerts_enabled || false,
+      weeklyDigestEnabled: data.weekly_digest_enabled || false,
+      defaultCurrency: data.currency || 'USD',
+    };
+  } catch (error) {
+    console.error('[Supabase] Exception fetching user settings:', error);
+    return {
+      priceDropAlertsEnabled: false,
+      weeklyDigestEnabled: false,
+      defaultCurrency: 'USD',
+    };
+  }
 }
 
 export async function updateUserSettings(userId: string, settings: Partial<UserSettings>): Promise<UserSettings> {
   console.log('[Supabase] Updating user settings for:', userId, settings);
   
-  // For now, just return the updated settings
-  // This can be extended when the backend adds user settings support
-  const currentSettings = await fetchUserSettings(userId);
-  return {
-    ...currentSettings,
-    ...settings,
-  };
+  try {
+    // Convert camelCase to snake_case for database
+    const dbUpdates: any = {};
+    if (settings.priceDropAlertsEnabled !== undefined) {
+      dbUpdates.price_drop_alerts_enabled = settings.priceDropAlertsEnabled;
+    }
+    if (settings.weeklyDigestEnabled !== undefined) {
+      dbUpdates.weekly_digest_enabled = settings.weeklyDigestEnabled;
+    }
+    if (settings.defaultCurrency !== undefined) {
+      dbUpdates.currency = settings.defaultCurrency;
+    }
+
+    // Try to update first
+    const { data: existingData } = await supabase
+      .from('user_settings')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingData) {
+      // Update existing record
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update(dbUpdates)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error updating user settings:', error);
+        throw error;
+      }
+
+      return {
+        priceDropAlertsEnabled: data.price_drop_alerts_enabled || false,
+        weeklyDigestEnabled: data.weekly_digest_enabled || false,
+        defaultCurrency: data.currency || 'USD',
+      };
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          ...dbUpdates,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error inserting user settings:', error);
+        throw error;
+      }
+
+      return {
+        priceDropAlertsEnabled: data.price_drop_alerts_enabled || false,
+        weeklyDigestEnabled: data.weekly_digest_enabled || false,
+        defaultCurrency: data.currency || 'USD',
+      };
+    }
+  } catch (error) {
+    console.error('[Supabase] Exception updating user settings:', error);
+    // Return current state on error
+    return await fetchUserSettings(userId);
+  }
 }
 
 // ============================================================================
@@ -532,26 +623,128 @@ export interface UserLocation {
 export async function fetchUserLocation(userId: string): Promise<UserLocation | null> {
   console.log('[Supabase] Fetching user location for:', userId);
   
-  // For now, return null since we don't have a user_locations table yet
-  // This can be extended when the backend adds location support
-  return null;
+  try {
+    // Fetch from user_settings table which stores country and city
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('country, city, updated_at')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching user location:', error);
+      return null;
+    }
+
+    if (!data || !data.country) {
+      console.log('[Supabase] No location data found for user');
+      return null;
+    }
+
+    return {
+      id: userId, // Use userId as ID since we don't have a separate locations table
+      userId,
+      countryCode: data.country,
+      countryName: data.country, // We don't store full country name, so use code
+      city: data.city || null,
+      region: null, // Not stored in user_settings
+      postalCode: null, // Not stored in user_settings
+      updatedAt: data.updated_at || new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error('[Supabase] Exception fetching user location:', error);
+    return null;
+  }
 }
 
 export async function updateUserLocation(userId: string, location: Partial<UserLocation>): Promise<UserLocation> {
   console.log('[Supabase] Updating user location for:', userId, location);
   
-  // For now, just return a mock location
-  // This can be extended when the backend adds location support
-  return {
-    id: 'mock-id',
-    userId,
-    countryCode: location.countryCode || 'US',
-    countryName: location.countryName || 'United States',
-    city: location.city || null,
-    region: location.region || null,
-    postalCode: location.postalCode || null,
-    updatedAt: new Date().toISOString(),
-  };
+  try {
+    // Update user_settings table with country and city
+    const dbUpdates: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (location.countryCode) {
+      dbUpdates.country = location.countryCode;
+    }
+    if (location.city !== undefined) {
+      dbUpdates.city = location.city;
+    }
+
+    // Try to update first
+    const { data: existingData } = await supabase
+      .from('user_settings')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingData) {
+      // Update existing record
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update(dbUpdates)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error updating user location:', error);
+        throw error;
+      }
+
+      return {
+        id: userId,
+        userId,
+        countryCode: data.country || location.countryCode || 'US',
+        countryName: data.country || location.countryCode || 'US',
+        city: data.city || null,
+        region: null,
+        postalCode: null,
+        updatedAt: data.updated_at || new Date().toISOString(),
+      };
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          ...dbUpdates,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error inserting user location:', error);
+        throw error;
+      }
+
+      return {
+        id: userId,
+        userId,
+        countryCode: data.country || location.countryCode || 'US',
+        countryName: data.country || location.countryCode || 'US',
+        city: data.city || null,
+        region: null,
+        postalCode: null,
+        updatedAt: data.updated_at || new Date().toISOString(),
+      };
+    }
+  } catch (error) {
+    console.error('[Supabase] Exception updating user location:', error);
+    // Return a fallback location on error
+    return {
+      id: userId,
+      userId,
+      countryCode: location.countryCode || 'US',
+      countryName: location.countryName || 'United States',
+      city: location.city || null,
+      region: location.region || null,
+      postalCode: location.postalCode || null,
+      updatedAt: new Date().toISOString(),
+    };
+  }
 }
 
 // ============================================================================

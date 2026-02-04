@@ -38,12 +38,15 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
 
   const refreshSettings = useCallback(async () => {
     if (!user) {
+      console.log('[SmartLocation] No user, resetting settings');
       setSettings(null);
       setLoading(false);
       return;
     }
 
     console.log('[SmartLocation] Refreshing settings from Supabase user profile');
+    setLoading(true);
+    
     try {
       // Read country from Supabase user location
       const locationData = await fetchUserLocation(user.id);
@@ -64,9 +67,9 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('[SmartLocation] Failed to refresh settings:', error);
-      // Set defaults on error
+      // Set defaults on error - don't crash the app
       setSettings({
-        activeSearchCountry: 'US', // Safe fallback
+        activeSearchCountry: null, // Don't assume US - let user set it
         currencyCode: null,
       });
     } finally {
@@ -79,17 +82,21 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
   }, [refreshSettings]);
 
   const updateActiveSearchCountry = useCallback(async (country: string) => {
+    if (!user?.id) {
+      console.error('[SmartLocation] Cannot update country without user');
+      return;
+    }
+
     console.log('[SmartLocation] Updating active search country:', country);
     try {
       // Update Supabase user location
       const { updateUserLocation } = await import('@/lib/supabase-helpers');
-      if (user?.id) {
-        await updateUserLocation(user.id, {
-          countryCode: country,
-          countryName: country, // You may want to map this to full country name
-        });
-        await refreshSettings();
-      }
+      await updateUserLocation(user.id, {
+        countryCode: country,
+        countryName: country, // You may want to map this to full country name
+      });
+      await refreshSettings();
+      console.log('[SmartLocation] Country updated successfully');
     } catch (error) {
       console.error('[SmartLocation] Failed to update active search country:', error);
       throw error;
