@@ -580,64 +580,63 @@ export default function ImportPreviewScreen() {
         });
       }
 
-      console.log('[ImportPreview] Calling identify-product-from-image Edge Function');
+      console.log('[ImportPreview] Calling identify-from-image Edge Function');
       console.log('[ImportPreview] Country:', effectiveCountryCode, 'Currency:', effectiveCurrencyCode);
       console.log('[ImportPreview] Image URL:', imageToIdentify);
       
-      // Call the new Supabase Edge Function
-      const response = await identifyProductFromImage(
+      // Call the NEW identify-from-image Edge Function
+      const { identifyFromImageNew } = await import('@/utils/supabase-edge-functions');
+      const response = await identifyFromImageNew(
         undefined, // imageBase64 - not using base64 for now
         imageToIdentify, // imageUrl (now guaranteed to be a public URL)
+        'image/jpeg', // mimeType
         effectiveCountryCode,
-        effectiveCurrencyCode,
-        'en' // languageCode - default to English for now
+        effectiveCurrencyCode
       );
 
       console.log('[ImportPreview] Edge Function response:', response);
-      console.log('[ImportPreview] Detected text:', response.query.detectedText);
-      console.log('[ImportPreview] Detected brand:', response.query.detectedBrand);
-      console.log('[ImportPreview] Found', response.matches.length, 'matches');
+      console.log('[ImportPreview] Identified item:', response.item.item_name);
+      console.log('[ImportPreview] Brand:', response.item.brand);
+      console.log('[ImportPreview] Confidence:', response.confidence);
 
-      // Convert ProductMatchResult to ProductMatch format
-      const convertedMatches: ProductMatch[] = response.matches.map((match: any) => ({
-        id: match.id,
-        name: match.name,
-        brand: match.brand || null,
-        category: match.category || null,
-        imageUrl: match.imageUrl,
-        topPrice: {
-          amount: 0, // Placeholder - will be filled by product-prices call
-          currency: effectiveCurrencyCode,
-        },
-        store: {
-          name: 'Unknown Store',
-          domain: '',
-          logoUrl: null,
-        },
-        priceRange: null,
-        storeSuggestions: [],
-        confidenceScore: match.confidence,
-      }));
-
-      setProductMatches(convertedMatches);
-
-      if (convertedMatches.length === 0) {
+      // Auto-fill form with identified data
+      if (response.item.item_name && response.item.item_name !== 'Unknown Product') {
+        setItemName(response.item.item_name);
+        if (response.item.brand) {
+          setBrand(response.item.brand);
+        }
+        
+        // Remove warnings since we now have data
+        setWarnings([]);
+        
+        // Auto-confirm as correct product if confidence is high
+        if (response.confidence >= 0.7) {
+          setIsCorrectProduct(true);
+        }
+        
+        Alert.alert(
+          'Product Identified',
+          `Found: ${response.item.item_name}${response.item.brand ? ` by ${response.item.brand}` : ''}\n\nConfidence: ${Math.round(response.confidence * 100)}%`,
+          [{ text: 'OK' }]
+        );
+      } else {
         // Show fallback options
         Alert.alert(
-          'No Matches Found',
-          response.error || 'We couldn\'t find any similar products.',
+          'Identification Failed',
+          'We couldn\'t identify the product from the image.',
           [
             { text: 'Try Another Photo', onPress: handleChangeImage },
             { text: 'Manual Entry', onPress: handleManualEntry },
           ]
         );
-        setShowProductMatches(false);
       }
+      
+      setShowProductMatches(false);
     } catch (error: any) {
-      console.error('[ImportPreview] Error finding similar products:', error);
+      console.error('[ImportPreview] Error identifying product:', error);
       Alert.alert(
-        'Search Failed',
-        error.message || 'Failed to find similar products.',
+        'Identification Failed',
+        error.message || 'Failed to identify product from image.',
         [
           { text: 'Try Another Photo', onPress: handleChangeImage },
           { text: 'Manual Entry', onPress: handleManualEntry },
@@ -998,7 +997,8 @@ export default function ImportPreviewScreen() {
       return;
     }
     
-    console.log('[ImportPreview] Loading AI Price Search results for country:', currentCountry);
+    console.log('[ImportPreview] Finding prices online for:', itemName);
+    console.log('[ImportPreview] Country:', currentCountry, 'Currency:', currentCurrency);
     setLoadingAlternatives(true);
     setSearchStage('finding_stores');
     
@@ -1008,36 +1008,54 @@ export default function ImportPreviewScreen() {
       setTimeout(() => setSearchStage('verifying_shipping'), 2000);
       setTimeout(() => setSearchStage('choosing_photo'), 3000);
       
-      // Call backend AI Price Search endpoint
-      const response = await authenticatedPost<{
-        offers: AlternativeStore[];
-        message?: string;
-      }>('/api/items/find-prices-online', {
-        productName: itemName,
-        imageUrl: selectedImage || null,
-        originalUrl: productData?.sourceUrl || null,
-        countryCode: currentCountry,
-        city: null, // City is no longer used
-      });
+      // Call the NEW get-prices Edge Function
+      const { getPricesNew } = await import('@/utils/supabase-edge-functions');
+      const response = await getPricesNew(
+        itemName,
+        brand || undefined,
+        currentCountry,
+        currentCurrency || 'USD'
+      );
       
       setSearchStage('complete');
-      console.log('[ImportPreview] AI Price Search results:', response.offers.length, 'offers');
+      console.log('[ImportPreview] Found', response.results.length, 'price results');
       
-      if (response.offers && response.offers.length > 0) {
-        setAlternativeStores(response.offers);
+      if (response.results && response.results.length > 0) {
+        // Convert to AlternativeStore format
+        const alternatives: AlternativeStore[] = response.results.map(result => ({
+          storeName: result.store,
+          storeDomain: new URL(result.url).hostname.replace('www.', ''),
+          price: result.price,
+          currency: result.currency,
+          url: result.url,
+          availability: 'in_stock',
+        }));
+        
+        // Sort by price (cheapest first)
+        alternatives.sort((a, b) => a.price - b.price);
+        
+        setAlternativeStores(alternatives);
+        setOffers(alternatives);
         setShowAlternatives(true);
+        
+        // Auto-fill price with cheapest option
+        if (alternatives.length > 0) {
+          setPrice(alternatives[0].price.toString());
+          setCurrency(alternatives[0].currency);
+          setStoreName(alternatives[0].storeName);
+          setStoreDomain(alternatives[0].storeDomain);
+        }
       } else {
-        const message = response.message || 'No offers found for this product in your location';
-        Alert.alert('No Results', message);
+        Alert.alert('No Results', 'No prices found for this product. Try a different search or add manually.');
       }
-    } catch (error) {
-      console.error('[ImportPreview] Error loading AI Price Search:', error);
-      Alert.alert('Error', 'Failed to search for prices. Please try again.');
+    } catch (error: any) {
+      console.error('[ImportPreview] Error finding prices:', error);
+      Alert.alert('Error', error.message || 'Failed to search for prices. Please try again.');
     } finally {
       setLoadingAlternatives(false);
       setSearchStage('idle');
     }
-  }, [itemName, currentCountry, selectedImage, productData, router]);
+  }, [itemName, brand, currentCountry, currentCurrency, router]);
 
   const getStageLabel = useCallback((stage: SearchStage): string => {
     switch (stage) {

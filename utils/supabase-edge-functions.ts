@@ -825,3 +825,188 @@ export async function getProductPrices(
     };
   }
 }
+
+/**
+ * NEW: Identify product from image using OpenAI Vision
+ * Analyzes image and extracts product information
+ * Caches results by image hash
+ * Requires valid JWT
+ */
+export interface IdentifyFromImageNewRequest {
+  imageBase64?: string;
+  imageUrl?: string;
+  mimeType?: string;
+  country?: string;
+  currency?: string;
+}
+
+export interface IdentifyFromImageNewResponse {
+  item: {
+    item_name: string;
+    brand?: string;
+    category?: string;
+    keywords?: string[];
+  };
+  confidence: number;
+  debug?: {
+    fromCache: boolean;
+    imageHash?: string;
+  };
+}
+
+export async function identifyFromImageNew(
+  imageBase64?: string,
+  imageUrl?: string,
+  mimeType?: string,
+  country?: string,
+  currency?: string
+): Promise<IdentifyFromImageNewResponse> {
+  try {
+    console.log('[identifyFromImageNew] Analyzing image');
+    console.log('[identifyFromImageNew] Country:', country, 'Currency:', currency);
+    
+    const response = await callEdgeFunction<IdentifyFromImageNewRequest, IdentifyFromImageNewResponse>(
+      'identify-from-image',
+      {
+        imageBase64,
+        imageUrl,
+        mimeType,
+        country,
+        currency,
+      },
+      { showErrorAlert: true }
+    );
+
+    console.log('[identifyFromImageNew] Identified:', response.item.item_name);
+    console.log('[identifyFromImageNew] Confidence:', response.confidence);
+    
+    return response;
+  } catch (error: any) {
+    console.error('[identifyFromImageNew] Failed:', error);
+    
+    // Return safe fallback
+    return {
+      item: {
+        item_name: 'Unknown Product',
+        brand: undefined,
+        category: undefined,
+        keywords: [],
+      },
+      confidence: 0,
+      debug: { fromCache: false },
+    };
+  }
+}
+
+/**
+ * NEW: Search for items by text query
+ * Uses OpenAI to structure search and returns store suggestions
+ * Caches results
+ * Requires valid JWT
+ */
+export interface SearchItemNewRequest {
+  query: string;
+  country?: string;
+  currency?: string;
+}
+
+export interface SearchItemNewResponse {
+  results: {
+    title: string;
+    price: number | null;
+    currency: string;
+    store: string;
+    url: string;
+    imageUrl?: string;
+  }[];
+}
+
+export async function searchItemNew(
+  query: string,
+  country?: string,
+  currency?: string
+): Promise<SearchItemNewResponse> {
+  try {
+    console.log('[searchItemNew] Searching for:', query);
+    console.log('[searchItemNew] Country:', country, 'Currency:', currency);
+    
+    const response = await callEdgeFunction<SearchItemNewRequest, SearchItemNewResponse>(
+      'search-item',
+      {
+        query,
+        country,
+        currency,
+      },
+      { showErrorAlert: true }
+    );
+
+    console.log('[searchItemNew] Found', response.results.length, 'results');
+    
+    return response;
+  } catch (error: any) {
+    console.error('[searchItemNew] Failed:', error);
+    
+    // Return safe fallback
+    return {
+      results: [],
+    };
+  }
+}
+
+/**
+ * NEW: Get prices for a specific item
+ * Uses OpenAI to generate realistic price estimates
+ * Returns store URLs for comparison
+ * Requires valid JWT
+ */
+export interface GetPricesNewRequest {
+  itemName: string;
+  brand?: string;
+  country?: string;
+  currency?: string;
+}
+
+export interface GetPricesNewResponse {
+  results: {
+    title: string;
+    price: number;
+    currency: string;
+    store: string;
+    url: string;
+    imageUrl?: string;
+  }[];
+}
+
+export async function getPricesNew(
+  itemName: string,
+  brand?: string,
+  country?: string,
+  currency?: string
+): Promise<GetPricesNewResponse> {
+  try {
+    console.log('[getPricesNew] Getting prices for:', itemName);
+    console.log('[getPricesNew] Brand:', brand, 'Country:', country, 'Currency:', currency);
+    
+    const response = await callEdgeFunction<GetPricesNewRequest, GetPricesNewResponse>(
+      'get-prices',
+      {
+        itemName,
+        brand,
+        country,
+        currency,
+      },
+      { showErrorAlert: true }
+    );
+
+    console.log('[getPricesNew] Found', response.results.length, 'price results');
+    
+    return response;
+  } catch (error: any) {
+    console.error('[getPricesNew] Failed:', error);
+    
+    // Return safe fallback
+    return {
+      results: [],
+    };
+  }
+}
