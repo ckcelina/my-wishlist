@@ -27,6 +27,7 @@ import { CityPicker } from '@/components/pickers/CityPicker';
 import { getCountryFlag } from '@/constants/countries';
 import { determineDefaultLocation, preloadCitiesForCountry } from '@/src/services/locationBootstrap';
 import { supabase } from '@/lib/supabase';
+import { StatusBar } from 'expo-status-bar';
 
 interface UserLocation {
   id: string;
@@ -113,6 +114,7 @@ export default function LocationScreen() {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+      backgroundColor: colors.background,
     },
     header: {
       marginBottom: spacing.lg,
@@ -438,11 +440,22 @@ export default function LocationScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
         <Stack.Screen
           options={{
             title: 'Shopping Location',
             headerShown: true,
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+            headerTitleStyle: {
+              color: colors.text,
+              fontWeight: '600',
+            },
+            headerBackTitleVisible: false,
+            headerBackTitle: '',
           }}
         />
         <View style={styles.loadingContainer}>
@@ -453,11 +466,22 @@ export default function LocationScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <Stack.Screen
         options={{
           title: 'Shopping Location',
           headerShown: true,
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            color: colors.text,
+            fontWeight: '600',
+          },
+          headerBackTitleVisible: false,
+          headerBackTitle: '',
         }}
       />
 

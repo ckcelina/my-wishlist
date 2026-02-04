@@ -11,7 +11,7 @@ export default function TabLayout() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
   const colors = createColors(theme);
 
   // Authentication guard - redirect to login if not authenticated
@@ -79,12 +79,46 @@ export default function TabLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          animation: 'fade', // Smooth transition animations
+          animation: 'fade',
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            color: colors.text,
+            fontWeight: '600',
+          },
+          headerBackTitleVisible: false,
+          headerBackTitle: '',
+          contentStyle: {
+            backgroundColor: colors.background,
+          },
         }}
       >
-        <Stack.Screen key="lists" name="lists" />
-        <Stack.Screen key="add" name="add" />
-        <Stack.Screen key="profile" name="profile" />
+        <Stack.Screen 
+          key="lists" 
+          name="lists" 
+          options={{
+            title: 'Wishlists',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen 
+          key="add" 
+          name="add" 
+          options={{
+            title: 'Add Item',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen 
+          key="profile" 
+          name="profile" 
+          options={{
+            title: 'Profile',
+            headerShown: false,
+          }}
+        />
       </Stack>
       <FloatingTabBar tabs={tabs} />
     </>

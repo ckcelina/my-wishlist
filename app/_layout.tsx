@@ -7,7 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
-import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
+import { ThemeProvider as AppThemeProvider, useAppTheme } from '@/contexts/ThemeContext';
 import { I18nProvider } from '@/contexts/I18nContext';
 import { SmartLocationProvider } from '@/contexts/SmartLocationContext';
 import { LocationProvider } from '@/contexts/LocationContext';
@@ -16,6 +16,7 @@ import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { validateEnv, logEnvironmentConfig, getConfigurationErrorMessage } from '@/src/config/env';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
+import { createColors } from '@/styles/designSystem';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -24,6 +25,8 @@ function RootLayoutNav() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const { theme, isDark } = useAppTheme();
+  const colors = createColors(theme);
 
   useEffect(() => {
     if (loading) {
@@ -76,14 +79,102 @@ function RootLayoutNav() {
 
   return (
     <>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="auth" options={{ headerShown: false }} />
-        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
-        <Stack.Screen name="auth-popup" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
+      <Stack
+        screenOptions={{
+          headerShown: true,
+          headerStyle: {
+            backgroundColor: colors.background,
+          },
+          headerTintColor: colors.text,
+          headerTitleStyle: {
+            color: colors.text,
+            fontWeight: '600',
+          },
+          headerBackTitleVisible: false,
+          headerBackTitle: '',
+          contentStyle: {
+            backgroundColor: colors.background,
+          },
+        }}
+      >
+        <Stack.Screen 
+          name="(tabs)" 
+          options={{ 
+            headerShown: false,
+            title: '',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth" 
+          options={{ 
+            headerShown: false,
+            title: '',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth-callback" 
+          options={{ 
+            headerShown: false,
+            title: '',
+          }} 
+        />
+        <Stack.Screen 
+          name="auth-popup" 
+          options={{ 
+            headerShown: false,
+            title: '',
+          }} 
+        />
+        <Stack.Screen 
+          name="+not-found" 
+          options={{
+            title: 'Not Found',
+          }}
+        />
+        <Stack.Screen 
+          name="location" 
+          options={{
+            title: 'Shopping Location',
+            headerShown: true,
+          }}
+        />
+        <Stack.Screen 
+          name="alerts" 
+          options={{
+            title: 'Price Alerts',
+            headerShown: true,
+          }}
+        />
+        <Stack.Screen 
+          name="wishlist/[id]" 
+          options={{
+            title: 'Wishlist',
+            headerShown: true,
+          }}
+        />
+        <Stack.Screen 
+          name="item/[id]" 
+          options={{
+            title: 'Item Details',
+            headerShown: true,
+          }}
+        />
+        <Stack.Screen 
+          name="import-preview" 
+          options={{
+            title: 'Import Preview',
+            headerShown: true,
+          }}
+        />
+        <Stack.Screen 
+          name="smart-search" 
+          options={{
+            title: 'Smart Search',
+            headerShown: true,
+          }}
+        />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
     </>
   );
 }

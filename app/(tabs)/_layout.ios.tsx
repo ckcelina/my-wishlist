@@ -1,6 +1,7 @@
 
 import React, { useEffect } from 'react';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
+import { Stack } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSegments } from 'expo-router';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -11,7 +12,7 @@ export default function TabLayout() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
   const colors = createColors(theme);
 
   // Authentication guard - redirect to login if not authenticated
@@ -53,14 +54,62 @@ export default function TabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger key="lists" name="lists">
+        <Stack.Screen
+          options={{
+            title: 'Wishlists',
+            headerShown: true,
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+            headerTitleStyle: {
+              color: colors.text,
+              fontWeight: '600',
+            },
+            headerBackTitleVisible: false,
+            headerBackTitle: '',
+          }}
+        />
         <Icon sf={{ default: 'heart', selected: 'heart.fill' }} />
         <Label>Wishlists</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="add" name="add">
+        <Stack.Screen
+          options={{
+            title: 'Add Item',
+            headerShown: true,
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+            headerTitleStyle: {
+              color: colors.text,
+              fontWeight: '600',
+            },
+            headerBackTitleVisible: false,
+            headerBackTitle: '',
+          }}
+        />
         <Icon sf={{ default: 'plus.app', selected: 'plus.app.fill' }} />
         <Label>Add</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger key="profile" name="profile">
+        <Stack.Screen
+          options={{
+            title: 'Profile',
+            headerShown: true,
+            headerStyle: {
+              backgroundColor: colors.background,
+            },
+            headerTintColor: colors.text,
+            headerTitleStyle: {
+              color: colors.text,
+              fontWeight: '600',
+            },
+            headerBackTitleVisible: false,
+            headerBackTitle: '',
+          }}
+        />
         <Icon sf={{ default: 'person', selected: 'person.fill' }} />
         <Label>Profile</Label>
       </NativeTabs.Trigger>
