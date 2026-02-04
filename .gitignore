@@ -1,3 +1,4 @@
+
 node_modules/
 
 .git/
@@ -36,4 +37,5 @@ pnpm-lock.yaml
 package-lock.json
 
 # Chat history contains presigned URLs that get flagged by GitHub
-chat_history.json
+# Renamed to .local.json to prevent git tracking issues
+chat_history.local.json
