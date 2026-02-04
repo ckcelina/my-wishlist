@@ -641,6 +641,7 @@ export async function fetchUserLocation(userId: string): Promise<UserLocation | 
       return null;
     }
 
+    // Return properly structured location data
     return {
       id: userId, // Use userId as ID since we don't have a separate locations table
       userId,

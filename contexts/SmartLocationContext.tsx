@@ -51,9 +51,9 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
       // Read country from Supabase user location
       const locationData = await fetchUserLocation(user.id);
       
-      if (locationData) {
+      if (locationData && locationData.countryCode) {
         setSettings({
-          activeSearchCountry: locationData.countryCode || null,
+          activeSearchCountry: locationData.countryCode,
           currencyCode: null, // Currency is managed separately in user settings
         });
         console.log('[SmartLocation] Settings loaded:', locationData.countryCode);
