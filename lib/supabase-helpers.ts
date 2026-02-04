@@ -526,32 +526,150 @@ export interface UserLocation {
   city: string | null;
   region: string | null;
   postalCode: string | null;
+  geonameId?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  area?: string | null;
+  addressLine?: string | null;
   updatedAt: string;
 }
 
 export async function fetchUserLocation(userId: string): Promise<UserLocation | null> {
   console.log('[Supabase] Fetching user location for:', userId);
   
-  // For now, return null since we don't have a user_locations table yet
-  // This can be extended when the backend adds location support
-  return null;
+  try {
+    const { data, error } = await supabase
+      .from('user_location')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Supabase] Error fetching user location:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.log('[Supabase] No location found for user:', userId);
+      return null;
+    }
+
+    console.log('[Supabase] User location found:', data.country_code, data.city);
+    
+    return {
+      id: data.id,
+      userId: data.user_id,
+      countryCode: data.country_code,
+      countryName: data.country_name,
+      city: data.city,
+      region: data.region,
+      postalCode: data.postal_code,
+      geonameId: data.geoname_id,
+      lat: data.lat ? parseFloat(data.lat) : null,
+      lng: data.lng ? parseFloat(data.lng) : null,
+      area: data.area,
+      addressLine: data.address_line,
+      updatedAt: data.updated_at,
+    };
+  } catch (err) {
+    console.error('[Supabase] Exception fetching user location:', err);
+    return null;
+  }
 }
 
-export async function updateUserLocation(userId: string, location: Partial<UserLocation>): Promise<UserLocation> {
+export async function updateUserLocation(userId: string, location: Partial<UserLocation>): Promise<UserLocation | null> {
   console.log('[Supabase] Updating user location for:', userId, location);
   
-  // For now, just return a mock location
-  // This can be extended when the backend adds location support
-  return {
-    id: 'mock-id',
-    userId,
-    countryCode: location.countryCode || 'US',
-    countryName: location.countryName || 'United States',
-    city: location.city || null,
-    region: location.region || null,
-    postalCode: location.postalCode || null,
-    updatedAt: new Date().toISOString(),
-  };
+  try {
+    // Convert camelCase to snake_case for database
+    const dbLocation: any = {
+      user_id: userId,
+    };
+    
+    if (location.countryCode !== undefined) dbLocation.country_code = location.countryCode;
+    if (location.countryName !== undefined) dbLocation.country_name = location.countryName;
+    if (location.city !== undefined) dbLocation.city = location.city;
+    if (location.region !== undefined) dbLocation.region = location.region;
+    if (location.postalCode !== undefined) dbLocation.postal_code = location.postalCode;
+    if (location.geonameId !== undefined) dbLocation.geoname_id = location.geonameId;
+    if (location.lat !== undefined) dbLocation.lat = location.lat;
+    if (location.lng !== undefined) dbLocation.lng = location.lng;
+    if (location.area !== undefined) dbLocation.area = location.area;
+    if (location.addressLine !== undefined) dbLocation.address_line = location.addressLine;
+
+    // Try to update first
+    const { data: existingData } = await supabase
+      .from('user_location')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingData) {
+      // Update existing record
+      const { data, error } = await supabase
+        .from('user_location')
+        .update(dbLocation)
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error updating user location:', error);
+        return null;
+      }
+
+      console.log('[Supabase] User location updated successfully');
+      
+      return {
+        id: data.id,
+        userId: data.user_id,
+        countryCode: data.country_code,
+        countryName: data.country_name,
+        city: data.city,
+        region: data.region,
+        postalCode: data.postal_code,
+        geonameId: data.geoname_id,
+        lat: data.lat ? parseFloat(data.lat) : null,
+        lng: data.lng ? parseFloat(data.lng) : null,
+        area: data.area,
+        addressLine: data.address_line,
+        updatedAt: data.updated_at,
+      };
+    } else {
+      // Insert new record
+      const { data, error } = await supabase
+        .from('user_location')
+        .insert(dbLocation)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error inserting user location:', error);
+        return null;
+      }
+
+      console.log('[Supabase] User location created successfully');
+      
+      return {
+        id: data.id,
+        userId: data.user_id,
+        countryCode: data.country_code,
+        countryName: data.country_name,
+        city: data.city,
+        region: data.region,
+        postalCode: data.postal_code,
+        geonameId: data.geoname_id,
+        lat: data.lat ? parseFloat(data.lat) : null,
+        lng: data.lng ? parseFloat(data.lng) : null,
+        area: data.area,
+        addressLine: data.address_line,
+        updatedAt: data.updated_at,
+      };
+    }
+  } catch (err) {
+    console.error('[Supabase] Exception updating user location:', err);
+    return null;
+  }
 }
 
 // ============================================================================
