@@ -17,7 +17,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { IconSymbol } from '@/components/IconSymbol';
 import { Button } from '@/components/design-system/Button';
 import { Toast } from '@/components/design-system/Toast';
-import { colors, typography, spacing, containerStyles } from '@/styles/designSystem';
+import { Card } from '@/components/design-system/Card';
+import { Divider } from '@/components/design-system/Divider';
+import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { authenticatedGet, authenticatedPost, authenticatedDelete } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
 import { useAppTheme } from '@/contexts/ThemeContext';
@@ -63,11 +65,12 @@ export default function LocationScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const haptics = useHaptics();
-  const { theme } = useAppTheme();
+  const { theme, isDark } = useAppTheme();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasLocation, setHasLocation] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [countryCode, setCountryCode] = useState('');
   const [countryName, setCountryName] = useState('');
@@ -90,6 +93,125 @@ export default function LocationScreen() {
   const [bootstrapComplete, setBootstrapComplete] = useState(false);
   
   const showAreaFields = COUNTRIES_WITH_AREA_SUPPORT.includes(countryCode);
+
+  const colors = createColors(theme);
+  const typography = createTypography(theme);
+
+  const styles = StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    header: {
+      marginBottom: spacing.lg,
+    },
+    title: {
+      ...typography.h2,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    description: {
+      ...typography.body,
+      color: colors.textSecondary,
+      lineHeight: 22,
+    },
+    section: {
+      marginBottom: spacing.lg,
+    },
+    sectionTitle: {
+      ...typography.h3,
+      color: colors.text,
+      marginBottom: spacing.md,
+    },
+    settingRow: {
+      paddingVertical: spacing.md,
+    },
+    label: {
+      ...typography.labelLarge,
+      color: colors.text,
+      marginBottom: spacing.xs,
+    },
+    required: {
+      color: colors.error,
+    },
+    hint: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginBottom: spacing.sm,
+    },
+    pickerButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      backgroundColor: colors.surface2,
+      borderColor: colors.border,
+    },
+    pickerButtonText: {
+      ...typography.bodyLarge,
+      flex: 1,
+    },
+    pickerButtonTextSelected: {
+      color: colors.text,
+    },
+    pickerButtonTextPlaceholder: {
+      color: colors.textSecondary,
+    },
+    selectedDetails: {
+      ...typography.caption,
+      color: colors.textSecondary,
+      marginTop: spacing.xs,
+      marginLeft: spacing.md,
+    },
+    textInput: {
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      borderRadius: 12,
+      borderWidth: 1.5,
+      backgroundColor: colors.surface2,
+      borderColor: colors.border,
+      color: colors.text,
+      ...typography.bodyLarge,
+    },
+    saveButtonContainer: {
+      marginTop: spacing.md,
+      marginBottom: spacing.lg,
+    },
+    deleteButtonContainer: {
+      marginTop: spacing.sm,
+    },
+    unsavedBadge: {
+      backgroundColor: colors.warningLight,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: 8,
+      alignSelf: 'flex-start',
+      marginBottom: spacing.md,
+    },
+    unsavedBadgeText: {
+      ...typography.labelSmall,
+      color: colors.warning,
+      fontWeight: '600',
+    },
+  });
 
   const fetchLocation = useCallback(async () => {
     console.log('[LocationScreen] Fetching user location');
@@ -127,6 +249,7 @@ export default function LocationScreen() {
           setCountryCode(bootstrap.countryCode);
           setCountryName(bootstrap.countryName);
           setPreloadedCities(bootstrap.topCities);
+          setHasUnsavedChanges(true);
           
           // Show toast to inform user
           setToastMessage(`Detected location: ${bootstrap.countryName}`);
@@ -153,6 +276,7 @@ export default function LocationScreen() {
             setCountryCode(bootstrap.countryCode);
             setCountryName(bootstrap.countryName);
             setPreloadedCities(bootstrap.topCities);
+            setHasUnsavedChanges(true);
             
             // Show toast to inform user
             setToastMessage(`Detected location: ${bootstrap.countryName}`);
@@ -183,13 +307,15 @@ export default function LocationScreen() {
     }
   }, [user, fetchLocation]);
 
-  const saveLocation = async (showToast: boolean = true) => {
+  const handleSaveLocation = async () => {
     if (!countryCode || !countryName) {
       console.log('[LocationScreen] Cannot save: missing country');
+      haptics.warning();
+      Alert.alert('Country Required', 'Please select a country before saving');
       return;
     }
 
-    console.log('[LocationScreen] Autosaving location:', {
+    console.log('[LocationScreen] Saving location:', {
       countryCode,
       countryName,
       city,
@@ -212,41 +338,24 @@ export default function LocationScreen() {
 
       console.log('[LocationScreen] Location saved successfully');
       setHasLocation(true);
+      setHasUnsavedChanges(false);
       
-      if (showToast) {
-        setToastMessage('Location saved');
-        setToastType('success');
-        setToastVisible(true);
-        haptics.success();
-      }
+      setToastMessage('Location saved successfully');
+      setToastType('success');
+      setToastVisible(true);
+      haptics.success();
     } catch (error: any) {
       console.error('[LocationScreen] Error saving location:', error);
       
-      if (showToast) {
-        const errorMessage = error.message || 'Failed to save location';
-        setToastMessage(errorMessage.includes('Backend URL') ? 'Unable to save location. Please try again later.' : 'Failed to save location');
-        setToastType('error');
-        setToastVisible(true);
-        haptics.error();
-      }
+      const errorMessage = error.message || 'Failed to save location';
+      setToastMessage(errorMessage.includes('Backend URL') ? 'Unable to save location. Please try again later.' : 'Failed to save location');
+      setToastType('error');
+      setToastVisible(true);
+      haptics.error();
     } finally {
       setSaving(false);
     }
   };
-
-  // Debounced autosave function
-  const debouncedSave = useRef(
-    debounce((showToast: boolean) => {
-      saveLocation(showToast);
-    }, 400)
-  ).current;
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => {
-      debouncedSave.cancel();
-    };
-  }, [debouncedSave]);
 
   const handleSelectCountry = async (country: { countryName: string; countryCode: string }) => {
     console.log('[LocationScreen] User selected country:', country.countryCode, country.countryName);
@@ -260,16 +369,12 @@ export default function LocationScreen() {
     setLng(null);
     setArea('');
     setAddressLine('');
+    setHasUnsavedChanges(true);
     
     // Preload cities for newly selected country
     console.log('[LocationScreen] Preloading cities for selected country:', country.countryCode);
     const cities = await preloadCitiesForCountry(country.countryCode);
     setPreloadedCities(cities);
-    
-    // Autosave after country selection
-    setTimeout(() => {
-      debouncedSave(true);
-    }, 100);
   };
 
   const handleSelectCity = (cityResult: CityResult) => {
@@ -280,11 +385,7 @@ export default function LocationScreen() {
     setGeonameId(cityResult.geonameId);
     setLat(cityResult.lat);
     setLng(cityResult.lng);
-    
-    // Autosave after city selection
-    setTimeout(() => {
-      debouncedSave(true);
-    }, 100);
+    setHasUnsavedChanges(true);
   };
 
   const handleDelete = async () => {
@@ -325,7 +426,7 @@ export default function LocationScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <SafeAreaView style={styles.safeArea} edges={['top']}>
         <Stack.Screen
           options={{
             title: 'Shopping Location',
@@ -333,14 +434,14 @@ export default function LocationScreen() {
           }}
         />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.colors.accent} />
+          <ActivityIndicator size="large" color={colors.accent} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Stack.Screen
         options={{
           title: 'Shopping Location',
@@ -355,122 +456,145 @@ export default function LocationScreen() {
         onHide={() => setToastVisible(false)}
       />
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Animated.View entering={FadeInDown.delay(0).springify()}>
-          <Text style={[styles.description, { color: theme.colors.textSecondary }]}>
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View entering={FadeInDown.delay(0)} style={styles.header}>
+          <Text style={styles.title}>Shopping Location</Text>
+          <Text style={styles.description}>
             Set your location to see stores that ship to your area and get accurate delivery options.
           </Text>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(100).springify()} style={styles.section}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>
-            Country
-            <Text style={styles.required}> *</Text>
-          </Text>
-          <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-            Required - Saves automatically
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.pickerButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={() => {
-              haptics.light();
-              setShowCountryPicker(true);
-            }}
-          >
-            <Text style={[styles.pickerButtonText, { color: countryName ? theme.colors.text : theme.colors.textSecondary }]}>
-              {countryDisplayText}
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color={theme.colors.textSecondary}
-            />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>City</Text>
-          <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-            Optional - Saves automatically
-          </Text>
-
-          <TouchableOpacity
-            style={[styles.pickerButton, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={() => {
-              if (!countryCode) {
-                haptics.warning();
-                Alert.alert('Select Country First', 'Please select a country before choosing a city');
-                return;
-              }
-              haptics.light();
-              setShowCityPicker(true);
-            }}
-            disabled={!countryCode}
-          >
-            <Text style={[styles.pickerButtonText, { color: city ? theme.colors.text : theme.colors.textSecondary }]}>
-              {cityDisplayText}
-            </Text>
-            <IconSymbol
-              ios_icon_name="chevron.right"
-              android_material_icon_name="arrow-forward"
-              size={20}
-              color={theme.colors.textSecondary}
-            />
-          </TouchableOpacity>
-
-          {city && region && (
-            <Text style={[styles.selectedDetails, { color: theme.colors.textSecondary }]}>
-              {region}
-            </Text>
-          )}
-        </Animated.View>
-
-        {showAreaFields && (
-          <>
-            <Animated.View entering={FadeInDown.delay(300).springify()} style={styles.section}>
-              <Text style={[styles.label, { color: theme.colors.text }]}>Area / District</Text>
-              <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-                Optional - Neighborhood or district for more accurate delivery
-              </Text>
-
-              <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
-                value={area}
-                onChangeText={(text) => {
-                  setArea(text);
-                  debouncedSave(false);
-                }}
-                placeholder="e.g., Downtown, Marina District"
-                placeholderTextColor={theme.colors.textSecondary}
-              />
-            </Animated.View>
-
-            <Animated.View entering={FadeInDown.delay(350).springify()} style={styles.section}>
-              <Text style={[styles.label, { color: theme.colors.text }]}>Address Line</Text>
-              <Text style={[styles.hint, { color: theme.colors.textSecondary }]}>
-                Optional - Street address or building details
-              </Text>
-
-              <TextInput
-                style={[styles.textInput, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, color: theme.colors.text }]}
-                value={addressLine}
-                onChangeText={(text) => {
-                  setAddressLine(text);
-                  debouncedSave(false);
-                }}
-                placeholder="e.g., 123 Main Street, Building A"
-                placeholderTextColor={theme.colors.textSecondary}
-                multiline
-                numberOfLines={2}
-              />
-            </Animated.View>
-          </>
+        {hasUnsavedChanges && (
+          <Animated.View entering={FadeInDown.delay(50)} style={styles.unsavedBadge}>
+            <Text style={styles.unsavedBadgeText}>Unsaved Changes</Text>
+          </Animated.View>
         )}
 
+        <Animated.View entering={FadeInDown.delay(100)} style={styles.section}>
+          <Text style={styles.sectionTitle}>Location Details</Text>
+          <Card>
+            <View style={styles.settingRow}>
+              <Text style={styles.label}>
+                Country
+                <Text style={styles.required}> *</Text>
+              </Text>
+              <Text style={styles.hint}>Required for store availability</Text>
+
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  haptics.light();
+                  setShowCountryPicker(true);
+                }}
+              >
+                <Text style={[styles.pickerButtonText, countryName ? styles.pickerButtonTextSelected : styles.pickerButtonTextPlaceholder]}>
+                  {countryDisplayText}
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <Divider />
+
+            <View style={styles.settingRow}>
+              <Text style={styles.label}>City</Text>
+              <Text style={styles.hint}>Optional - For more accurate results</Text>
+
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => {
+                  if (!countryCode) {
+                    haptics.warning();
+                    Alert.alert('Select Country First', 'Please select a country before choosing a city');
+                    return;
+                  }
+                  haptics.light();
+                  setShowCityPicker(true);
+                }}
+                disabled={!countryCode}
+              >
+                <Text style={[styles.pickerButtonText, city ? styles.pickerButtonTextSelected : styles.pickerButtonTextPlaceholder]}>
+                  {cityDisplayText}
+                </Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="arrow-forward"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </TouchableOpacity>
+
+              {city && region && (
+                <Text style={styles.selectedDetails}>
+                  {region}
+                </Text>
+              )}
+            </View>
+
+            {showAreaFields && (
+              <>
+                <Divider />
+
+                <View style={styles.settingRow}>
+                  <Text style={styles.label}>Area / District</Text>
+                  <Text style={styles.hint}>Optional - Neighborhood or district</Text>
+
+                  <TextInput
+                    style={styles.textInput}
+                    value={area}
+                    onChangeText={(text) => {
+                      setArea(text);
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="e.g., Downtown, Marina District"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+
+                <Divider />
+
+                <View style={styles.settingRow}>
+                  <Text style={styles.label}>Address Line</Text>
+                  <Text style={styles.hint}>Optional - Street address or building</Text>
+
+                  <TextInput
+                    style={styles.textInput}
+                    value={addressLine}
+                    onChangeText={(text) => {
+                      setAddressLine(text);
+                      setHasUnsavedChanges(true);
+                    }}
+                    placeholder="e.g., 123 Main Street, Building A"
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                    numberOfLines={2}
+                  />
+                </View>
+              </>
+            )}
+          </Card>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(200)} style={styles.saveButtonContainer}>
+          <Button
+            title={saving ? 'Saving...' : 'Save Location'}
+            onPress={handleSaveLocation}
+            variant="primary"
+            disabled={saving || !countryCode}
+          />
+        </Animated.View>
+
         {hasLocation && (
-          <Animated.View entering={FadeInDown.delay(400).springify()} style={styles.buttonContainer}>
+          <Animated.View entering={FadeInDown.delay(300)} style={styles.deleteButtonContainer}>
             <Button
               title="Remove Location"
               onPress={handleDelete}
@@ -478,8 +602,6 @@ export default function LocationScreen() {
             />
           </Animated.View>
         )}
-
-        <View style={styles.bottomPadding} />
       </ScrollView>
 
       <CountryPicker
@@ -499,71 +621,3 @@ export default function LocationScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    ...containerStyles.screen,
-    paddingTop: Platform.OS === 'android' ? 48 : 0,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  description: {
-    ...typography.bodyMedium,
-    marginBottom: spacing.lg,
-    lineHeight: 22,
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  label: {
-    ...typography.labelLarge,
-    marginBottom: spacing.xs,
-  },
-  required: {
-    color: colors.error,
-  },
-  hint: {
-    ...typography.bodySmall,
-    marginBottom: spacing.sm,
-  },
-  pickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  pickerButtonText: {
-    ...typography.bodyLarge,
-    flex: 1,
-  },
-  selectedDetails: {
-    ...typography.bodySmall,
-    marginTop: spacing.xs,
-    marginLeft: spacing.md,
-  },
-  textInput: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    ...typography.bodyLarge,
-  },
-  buttonContainer: {
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  bottomPadding: {
-    height: 100,
-  },
-});
