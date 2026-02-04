@@ -1,3 +1,4 @@
+
 // ═══════════════════════════════════════════════════════
 // 🎨 MY WISHLIST - GLOBAL THEME SYSTEM
 // Single source of truth for all colors and design tokens
@@ -124,8 +125,8 @@ export const darkTheme: Theme = {
   },
 
   fonts: {
-    display: 'PlayfairDisplay_400Regular',
-    body: 'Inter_400Regular',
+    display: 'System',
+    body: 'System',
   },
 
   shadows: {
@@ -193,8 +194,8 @@ export const lightTheme: Theme = {
   },
 
   fonts: {
-    display: 'PlayfairDisplay_400Regular',
-    body: 'Inter_400Regular',
+    display: 'System',
+    body: 'System',
   },
 
   shadows: {
@@ -208,182 +209,187 @@ export const lightTheme: Theme = {
 // 📐 TYPOGRAPHY STYLES
 // ═══════════════════════════════════════════════════════
 
-export const createTypography = (theme: Theme) => ({
-  // Display text - Large headings
-  displayLarge: {
-    fontFamily: theme.fonts.display,
-    fontSize: 32,
-    fontWeight: '400' as const,
-    lineHeight: 40,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.5,
-  },
+export const createTypography = (theme?: Theme) => {
+  // Provide safe defaults if theme is undefined
+  const safeTheme = theme || lightTheme;
+  
+  return {
+    // Display text - Large headings
+    displayLarge: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 32,
+      fontWeight: '400' as const,
+      lineHeight: 40,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.5,
+    },
 
-  displayMedium: {
-    fontFamily: theme.fonts.display,
-    fontSize: 28,
-    fontWeight: '400' as const,
-    lineHeight: 36,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.5,
-  },
+    displayMedium: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 28,
+      fontWeight: '400' as const,
+      lineHeight: 36,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.5,
+    },
 
-  // Titles - Section headings
-  titleLarge: {
-    fontFamily: theme.fonts.display,
-    fontSize: 24,
-    fontWeight: '400' as const,
-    lineHeight: 32,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.3,
-  },
+    // Titles - Section headings
+    titleLarge: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 24,
+      fontWeight: '400' as const,
+      lineHeight: 32,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.3,
+    },
 
-  titleMedium: {
-    fontFamily: theme.fonts.display,
-    fontSize: 20,
-    fontWeight: '400' as const,
-    lineHeight: 28,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.2,
-  },
+    titleMedium: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 20,
+      fontWeight: '400' as const,
+      lineHeight: 28,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.2,
+    },
 
-  titleSmall: {
-    fontFamily: theme.fonts.display,
-    fontSize: 18,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: theme.colors.textPrimary,
-  },
+    titleSmall: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 18,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: safeTheme.colors.textPrimary,
+    },
 
-  // Body text
-  bodyLarge: {
-    fontFamily: theme.fonts.body,
-    fontSize: 16,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: theme.colors.textPrimary,
-  },
+    // Body text
+    bodyLarge: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 16,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: safeTheme.colors.textPrimary,
+    },
 
-  bodyMedium: {
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    fontWeight: '400' as const,
-    lineHeight: 20,
-    color: theme.colors.textPrimary,
-  },
+    bodyMedium: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 14,
+      fontWeight: '400' as const,
+      lineHeight: 20,
+      color: safeTheme.colors.textPrimary,
+    },
 
-  bodySmall: {
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    fontWeight: '400' as const,
-    lineHeight: 16,
-    color: theme.colors.textSecondary,
-  },
+    bodySmall: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 12,
+      fontWeight: '400' as const,
+      lineHeight: 16,
+      color: safeTheme.colors.textSecondary,
+    },
 
-  // Labels
-  labelLarge: {
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    fontWeight: '500' as const,
-    lineHeight: 20,
-    color: theme.colors.textPrimary,
-  },
+    // Labels
+    labelLarge: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 14,
+      fontWeight: '500' as const,
+      lineHeight: 20,
+      color: safeTheme.colors.textPrimary,
+    },
 
-  labelMedium: {
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    fontWeight: '500' as const,
-    lineHeight: 16,
-    color: theme.colors.textSecondary,
-  },
+    labelMedium: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 12,
+      fontWeight: '500' as const,
+      lineHeight: 16,
+      color: safeTheme.colors.textSecondary,
+    },
 
-  labelSmall: {
-    fontFamily: theme.fonts.body,
-    fontSize: 10,
-    fontWeight: '500' as const,
-    lineHeight: 14,
-    color: theme.colors.textSecondary,
-  },
+    labelSmall: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 10,
+      fontWeight: '500' as const,
+      lineHeight: 14,
+      color: safeTheme.colors.textSecondary,
+    },
 
-  // Button text
-  buttonLarge: {
-    fontFamily: theme.fonts.body,
-    fontSize: 16,
-    fontWeight: '600' as const,
-    lineHeight: 24,
-    color: theme.mode === 'dark' ? '#2D1763' : '#FFFFFF',
-  },
+    // Button text
+    buttonLarge: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 16,
+      fontWeight: '600' as const,
+      lineHeight: 24,
+      color: safeTheme.mode === 'dark' ? '#2D1763' : '#FFFFFF',
+    },
 
-  buttonMedium: {
-    fontFamily: theme.fonts.body,
-    fontSize: 14,
-    fontWeight: '600' as const,
-    lineHeight: 20,
-    color: theme.mode === 'dark' ? '#2D1763' : '#FFFFFF',
-  },
+    buttonMedium: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 14,
+      fontWeight: '600' as const,
+      lineHeight: 20,
+      color: safeTheme.mode === 'dark' ? '#2D1763' : '#FFFFFF',
+    },
 
-  // Backward compatibility aliases
-  h1: {
-    fontFamily: theme.fonts.display,
-    fontSize: 32,
-    fontWeight: '400' as const,
-    lineHeight: 40,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.5,
-  },
+    // Backward compatibility aliases
+    h1: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 32,
+      fontWeight: '400' as const,
+      lineHeight: 40,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.5,
+    },
 
-  h2: {
-    fontFamily: theme.fonts.display,
-    fontSize: 24,
-    fontWeight: '400' as const,
-    lineHeight: 32,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.3,
-  },
+    h2: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 24,
+      fontWeight: '400' as const,
+      lineHeight: 32,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.3,
+    },
 
-  h3: {
-    fontFamily: theme.fonts.display,
-    fontSize: 20,
-    fontWeight: '400' as const,
-    lineHeight: 28,
-    color: theme.colors.textPrimary,
-    letterSpacing: -0.2,
-  },
+    h3: {
+      fontFamily: safeTheme.fonts.display,
+      fontSize: 20,
+      fontWeight: '400' as const,
+      lineHeight: 28,
+      color: safeTheme.colors.textPrimary,
+      letterSpacing: -0.2,
+    },
 
-  body: {
-    fontFamily: theme.fonts.body,
-    fontSize: 16,
-    fontWeight: '400' as const,
-    lineHeight: 24,
-    color: theme.colors.textPrimary,
-  },
+    body: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 16,
+      fontWeight: '400' as const,
+      lineHeight: 24,
+      color: safeTheme.colors.textPrimary,
+    },
 
-  caption: {
-    fontFamily: theme.fonts.body,
-    fontSize: 12,
-    fontWeight: '400' as const,
-    lineHeight: 16,
-    color: theme.colors.textSecondary,
-  },
+    caption: {
+      fontFamily: safeTheme.fonts.body,
+      fontSize: 12,
+      fontWeight: '400' as const,
+      lineHeight: 16,
+      color: safeTheme.colors.textSecondary,
+    },
 
-  // Typography sizes
-  sizes: {
-    xs: 10,
-    sm: 12,
-    md: 14,
-    lg: 16,
-    xl: 20,
-    xxl: 24,
-  },
+    // Typography sizes
+    sizes: {
+      xs: 10,
+      sm: 12,
+      md: 14,
+      lg: 16,
+      xl: 20,
+      xxl: 24,
+    },
 
-  // Typography weights
-  weights: {
-    regular: '400',
-    medium: '500',
-    semibold: '600',
-    bold: '700',
-  },
-});
+    // Typography weights
+    weights: {
+      regular: '400',
+      medium: '500',
+      semibold: '600',
+      bold: '700',
+    },
+  };
+};
 
 // ═══════════════════════════════════════════════════════
 // 🎨 COMPONENT STYLES
