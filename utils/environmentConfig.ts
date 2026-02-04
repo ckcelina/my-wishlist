@@ -88,10 +88,17 @@ function getEnvironment(): Environment {
 
 /**
  * Safely get environment variable with fallback
+ * Supports multiple naming conventions for maximum compatibility
  */
 function getEnvVar(key: string, fallback: string = ''): string {
   const extra = Constants.expoConfig?.extra || {};
-  const value = extra[key];
+  
+  // Try multiple naming conventions
+  const upperKey = key.toUpperCase();
+  const lowerKey = key.toLowerCase();
+  const camelKey = key.replace(/_/g, '');
+  
+  const value = extra[key] || extra[upperKey] || extra[lowerKey] || extra[camelKey];
   
   if (value && typeof value === 'string') {
     return value;
@@ -114,9 +121,9 @@ export const appConfig: AppConfig = {
   environment: getEnvironment(),
   
   // API Configuration - LOCKED from app.json with safe fallbacks
-  supabaseUrl: getEnvVar('supabaseUrl', ''),
-  supabaseAnonKey: getEnvVar('supabaseAnonKey', ''),
-  supabaseEdgeFunctionsUrl: getEnvVar('supabaseEdgeFunctionsUrl', getEnvVar('supabaseUrl', '')),
+  supabaseUrl: getEnvVar('SUPABASE_URL', 'https://dixgmnuayzblwpqyplsi.supabase.co'),
+  supabaseAnonKey: getEnvVar('SUPABASE_ANON_KEY', 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-'),
+  supabaseEdgeFunctionsUrl: getEnvVar('SUPABASE_EDGE_FUNCTIONS_URL', 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1'),
   backendUrl: getEnvVar('backendUrl', ''),
   
   // Feature Flags - ALL DISABLED FOR PARITY
@@ -175,7 +182,14 @@ export const ENV = {
  * Check if environment is properly configured
  */
 export function isEnvironmentConfigured(): boolean {
-  return !!(appConfig.supabaseUrl && appConfig.supabaseAnonKey);
+  const hasUrl = !!(appConfig.supabaseUrl && appConfig.supabaseUrl !== '');
+  const hasKey = !!(appConfig.supabaseAnonKey && appConfig.supabaseAnonKey !== '');
+  
+  console.log('[Environment] Configuration check:');
+  console.log('[Environment] - Supabase URL:', hasUrl ? 'configured' : 'MISSING');
+  console.log('[Environment] - Supabase Anon Key:', hasKey ? 'configured' : 'MISSING');
+  
+  return hasUrl && hasKey;
 }
 
 /**
@@ -192,6 +206,27 @@ export function getConfigurationErrorMessage(): string {
     return 'Authentication is not configured. Please contact support.';
   }
   return 'Configuration error. Please contact support.';
+}
+
+/**
+ * Get list of missing configuration keys
+ */
+export function getMissingConfigurationKeys(): string[] {
+  const missing: string[] = [];
+  
+  if (!appConfig.supabaseUrl || appConfig.supabaseUrl === '') {
+    missing.push('SUPABASE_URL');
+  }
+  
+  if (!appConfig.supabaseAnonKey || appConfig.supabaseAnonKey === '') {
+    missing.push('SUPABASE_ANON_KEY');
+  }
+  
+  if (!appConfig.supabaseEdgeFunctionsUrl || appConfig.supabaseEdgeFunctionsUrl === '') {
+    missing.push('SUPABASE_EDGE_FUNCTIONS_URL');
+  }
+  
+  return missing;
 }
 
 /**

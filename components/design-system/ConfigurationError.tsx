@@ -4,14 +4,19 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors, typography, spacing } from '@/styles/designSystem';
+import { getMissingConfigurationKeys } from '@/utils/environmentConfig';
 
 interface ConfigurationErrorProps {
-  missingKeys: string[];
+  message?: string;
+  missingKeys?: string[];
   onRetry: () => void;
 }
 
-export function ConfigurationError({ missingKeys, onRetry }: ConfigurationErrorProps) {
+export function ConfigurationError({ message, missingKeys, onRetry }: ConfigurationErrorProps) {
   const isDev = __DEV__;
+  
+  // If missingKeys not provided, get them from the environment config
+  const keys = missingKeys || getMissingConfigurationKeys();
   
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -28,15 +33,15 @@ export function ConfigurationError({ missingKeys, onRetry }: ConfigurationErrorP
         <Text style={styles.title}>Configuration Error</Text>
         
         <Text style={styles.message}>
-          {isDev 
+          {message || (isDev 
             ? 'The app is missing required environment variables. Please check your configuration.'
-            : 'The app configuration is incomplete. Please reinstall the app or contact support.'}
+            : 'The app configuration is incomplete. Please reinstall the app or contact support.')}
         </Text>
         
-        {isDev && missingKeys.length > 0 && (
+        {isDev && keys.length > 0 && (
           <View style={styles.detailsContainer}>
             <Text style={styles.detailsTitle}>Missing Variables:</Text>
-            {missingKeys.map((key, index) => (
+            {keys.map((key, index) => (
               <View key={index} style={styles.keyItem}>
                 <IconSymbol
                   ios_icon_name="xmark.circle"

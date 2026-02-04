@@ -2,829 +2,213 @@
 import Constants from 'expo-constants';
 import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
 
-// Types for Edge Function requests and responses
-export interface SearchItemRequest {
-  query: string;
-  country: string;
-  city?: string;
-}
+// Get Supabase configuration from app.config.js extra section
+// Support both naming conventions for maximum compatibility
+const getEnvVar = (key: string, fallback: string = ''): string => {
+  const extra = Constants.expoConfig?.extra || {};
+  
+  // Try multiple naming conventions
+  const value = extra[key] || extra[key.toLowerCase()] || extra[key.replace(/_/g, '')];
+  
+  if (value && typeof value === 'string') {
+    return value;
+  }
+  
+  return fallback;
+};
 
-export interface Offer {
-  storeName: string;
-  storeDomain: string;
-  productUrl: string;
-  price: number;
-  currency: string;
-  availability: 'in_stock' | 'out_of_stock' | 'limited_stock' | 'pre_order' | 'unknown';
-  shippingSupported: boolean;
-  shippingCountry: string;
-  estimatedDelivery?: string | null;
-  originalPrice?: number | null;
-  originalCurrency?: string | null;
-  shippingCost?: number | null;
-  confidenceScore?: number | null;
-}
+const SUPABASE_URL = getEnvVar('SUPABASE_URL', 'https://dixgmnuayzblwpqyplsi.supabase.co');
+const SUPABASE_ANON_KEY = getEnvVar('SUPABASE_ANON_KEY', 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-');
 
-export interface SearchItemResponse {
-  canonical: string;
-  offers: Offer[];
-  images: string[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-    cached: boolean;
-  };
-  error?: string;
-}
+console.log('[Supabase Edge Functions] Configuration loaded');
+console.log('[Supabase Edge Functions] URL:', SUPABASE_URL);
+console.log('[Supabase Edge Functions] Anon Key configured:', !!SUPABASE_ANON_KEY);
 
-export interface ExtractItemRequest {
-  url: string;
-  country: string;
-}
-
-export interface ExtractItemResponse {
-  title: string | null;
-  price: number | null;
-  currency: string | null;
-  availability: 'in_stock' | 'out_of_stock' | 'pre_order' | 'unknown';
-  images: string[];
-  shippingSupported: boolean;
-  sourceDomain: string | null;
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
-  error?: string;
-}
-
-export interface FindAlternativesRequest {
-  title: string;
-  originalUrl?: string;
-  countryCode?: string;
-  city?: string;
-}
-
-export interface Alternative {
-  storeName: string;
-  domain: string;
-  price: number;
-  currency: string;
-  url: string;
-}
-
-export interface FindAlternativesResponse {
-  alternatives: Alternative[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
-  error?: string;
-}
-
-export interface ImportWishlistRequest {
-  wishlistUrl: string;
-}
-
-export interface ImportedItem {
-  title: string;
-  imageUrl: string | null;
-  price: number | null;
-  currency: string | null;
-  productUrl: string;
-}
-
-export interface ImportWishlistResponse {
-  storeName: string | null;
-  items: ImportedItem[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
-  error?: string;
-}
-
-export interface IdentifyFromImageRequest {
-  imageUrl?: string;
-  imageBase64?: string;
-}
-
-export interface SuggestedProduct {
-  title: string;
-  imageUrl: string | null;
-  likelyUrl: string | null;
-}
-
-export interface IdentifyFromImageResponse {
-  bestGuessTitle: string | null;
-  bestGuessCategory: string | null;
-  keywords: string[];
-  confidence: number;
-  suggestedProducts: SuggestedProduct[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
-  error?: string;
-}
-
-export interface SearchByNameRequest {
-  query: string;
-  countryCode?: string;
-  city?: string;
-  currency?: string;
-  limit?: number;
-}
-
-export interface SearchResult {
-  title: string;
-  imageUrl: string | null;
-  productUrl: string;
-  storeDomain: string;
-  price: number | null;
-  currency: string | null;
-  confidence: number;
-}
-
-export interface SearchByNameResponse {
-  results: SearchResult[];
-  meta: {
-    requestId: string;
-  };
-  error?: string;
-}
-
-// Get Supabase configuration from appConfig with safe fallbacks
-const SUPABASE_URL = appConfig.supabaseUrl || '';
-const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
-
-// List of expected Edge Functions (case-sensitive)
+// Expected Edge Functions for this app
 const EXPECTED_EDGE_FUNCTIONS = [
-  'search-item',
-  'identify-from-image',
-  'identify-product-from-image',
   'extract-item',
+  'identify-from-image',
+  'search-by-name',
   'find-alternatives',
   'import-wishlist',
-  'search-by-name',
-  'price-check',
-  'product-prices',
+  'location-smart-settings',
 ];
 
-// Log configuration status on module load
-if (!isEnvironmentConfigured()) {
-  console.warn('[Supabase Edge Functions] Configuration missing - check app.json');
-  console.warn('[Supabase Edge Functions] SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Missing');
-  console.warn('[Supabase Edge Functions] SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? 'Set' : 'Missing');
-}
+console.log('[Supabase Edge Functions] Expected functions:', EXPECTED_EDGE_FUNCTIONS.join(', '));
 
 /**
- * Get the authorization token for Edge Function calls
- * Returns the user's access_token if logged in, null otherwise
- * 
- * CRITICAL FIX: Gracefully handles all error cases to prevent crashes
+ * Get authentication token from Supabase session
  */
 async function getAuthToken(): Promise<string | null> {
   try {
-    // Try to get the current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    
-    if (error) {
-      console.warn('[Edge Function Auth] Error getting session:', error.message);
-      console.log('[Edge Function Auth] No session available');
-      return null;
-    }
-    
-    if (session?.access_token) {
-      console.log('[Edge Function Auth] ✅ User session found - using access_token');
-      return session.access_token;
-    }
-    
-    console.log('[Edge Function Auth] No session found - user not logged in');
-    return null;
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token || null;
   } catch (error) {
-    console.error('[Edge Function Auth] Unexpected error getting auth token:', error);
+    console.error('[Supabase Edge Functions] Error getting auth token:', error);
     return null;
   }
 }
 
 /**
- * Call a Supabase Edge Function with proper authentication and error handling
- * 
- * CRITICAL AUTH RULES:
- * - ALWAYS send apikey header with SUPABASE_ANON_KEY
- * - If user is logged in, ALSO send Authorization header with Bearer <access_token>
- * - NEVER put anon key in Authorization header
- * 
- * Works identically in ALL environments (Expo Go, TestFlight, App Store)
+ * Call a Supabase Edge Function
  */
-async function callEdgeFunction<TRequest, TResponse>(
+async function callEdgeFunction<TRequest = any, TResponse = any>(
   functionName: string,
-  request: TRequest,
-  options?: { showErrorAlert?: boolean }
+  request: TRequest
 ): Promise<TResponse> {
-  const showErrorAlert = options?.showErrorAlert !== false; // Default to true
-
-  // Check if environment is configured
-  if (!isEnvironmentConfigured()) {
-    const errorMessage = getConfigurationErrorMessage();
-    console.error(`[Edge Function] ${errorMessage}`);
-    
-    if (showErrorAlert) {
-      Alert.alert(
-        'Configuration Error',
-        'The app is not properly configured. Please contact support.',
-        [{ text: 'OK' }]
-      );
-    }
-    
-    throw new Error(errorMessage);
-  }
-
-  // Verify function name is expected (case-sensitive)
-  if (!EXPECTED_EDGE_FUNCTIONS.includes(functionName)) {
-    console.warn(`[Edge Function] Unknown function '${functionName}' - returning safe fallback`);
-    throw new Error(`Edge Function '${functionName}' is not recognized`);
-  }
-
-  const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
-  console.log(`[Edge Function] Calling ${functionName}:`, request);
-  console.log(`[Edge Function] Environment: ${appConfig.environment}`);
+  console.log(`[Supabase Edge Functions] Calling ${functionName} with request:`, request);
 
   try {
-    // CRITICAL FIX: Get the user's access token (null if not logged in)
-    // This ensures every Edge Function call includes a valid JWT if user is logged in
-    const accessToken = await getAuthToken();
-    
-    // Build headers - CRITICAL: apikey is ALWAYS required
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY, // ✅ ALWAYS send anon key as apikey header
-    };
+    // Get auth token
+    const token = await getAuthToken();
+    console.log(`[Supabase Edge Functions] Auth token available:`, !!token);
 
-    // If user is logged in, ALSO send Authorization header with access_token
-    if (accessToken) {
-      headers['Authorization'] = `Bearer ${accessToken}`; // ✅ Send user JWT for protected functions
-      console.log('[Edge Function Auth] ✅ Sending authenticated request (session exists)');
-    } else {
-      console.log('[Edge Function Auth] ⚠️ Sending unauthenticated request (no session)');
-    }
-
-    // Log headers for debugging (but never log token values)
-    console.log('[Edge Function Auth] Headers:', {
-      'Content-Type': 'application/json',
-      'apikey': '[ANON_KEY_EXISTS]',
-      'Authorization': accessToken ? 'Bearer [ACCESS_TOKEN_EXISTS]' : '[NO_TOKEN]',
-    });
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(request),
+    // Call the Edge Function using Supabase client
+    const { data, error } = await supabase.functions.invoke(functionName, {
+      body: request,
     });
 
-    // Handle 401 Unauthorized
-    if (response.status === 401) {
-      const errorText = await response.text();
-      console.error(`[Edge Function] ${functionName} unauthorized (401):`, errorText);
-      console.error('[Edge Function Auth] ❌ Invalid JWT - user session may be expired');
-      
-      if (showErrorAlert) {
-        Alert.alert(
-          'Authentication Error',
-          'Your session may have expired. Please try signing out and back in.',
-          [{ text: 'OK' }]
-        );
-      }
-      
-      throw new Error(`Unauthorized: ${errorText}`);
+    if (error) {
+      console.error(`[Supabase Edge Functions] Error calling ${functionName}:`, error);
+      throw new Error(error.message || `Failed to call ${functionName}`);
     }
 
-    // Handle 404 - function not deployed
-    if (response.status === 404) {
-      console.warn(`[Edge Function] ${functionName} not found (404) - function may not be deployed`);
-      
-      if (showErrorAlert) {
-        Alert.alert(
-          'Feature Unavailable',
-          'This feature is temporarily unavailable. Please try again later.',
-          [{ text: 'OK' }]
-        );
-      }
-      
-      throw new Error(`Edge Function '${functionName}' not found (404)`);
-    }
-
-    // Handle other error status codes
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Edge Function] ${functionName} failed:`, response.status, errorText);
-      
-      if (showErrorAlert) {
-        Alert.alert(
-          'Request Failed',
-          `Unable to complete the request. Please try again. (Error ${response.status})`,
-          [{ text: 'OK' }]
-        );
-      }
-      
-      throw new Error(`Edge function failed: ${response.status} ${errorText}`);
-    }
-
-    const data = await response.json();
-    console.log(`[Edge Function] ${functionName} response:`, data);
-
+    console.log(`[Supabase Edge Functions] ${functionName} response:`, data);
     return data as TResponse;
   } catch (error: any) {
-    console.error(`[Edge Function] ${functionName} error:`, error);
-    
-    // Only show alert if we haven't already shown one
-    if (showErrorAlert && !error.message.includes('Unauthorized') && !error.message.includes('not found')) {
-      Alert.alert(
-        'Network Error',
-        'Unable to connect to the service. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
-    }
-    
+    console.error(`[Supabase Edge Functions] Exception calling ${functionName}:`, error);
     throw error;
   }
 }
 
 /**
- * Search for items across multiple stores using AI
- * Returns canonical product URL, offers, and images
- * Works identically in all environments
+ * Search for items by query
  */
-export async function searchItem(
-  query: string,
-  country: string,
-  city?: string
-): Promise<SearchItemResponse> {
-  try {
-    const response = await callEdgeFunction<SearchItemRequest, SearchItemResponse>(
-      'search-item',
-      { query, country, city },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[searchItem] Partial result returned:', response.error);
-    }
-
-    // Log cache status
-    if (response.meta.cached) {
-      console.log('[searchItem] Result served from cache');
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[searchItem] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[searchItem] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      canonical: '',
-      offers: [],
-      images: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-        cached: false,
-      },
-      error: error.message || 'Failed to search for item',
-    };
-  }
+export async function searchItem(query: string, country: string): Promise<any> {
+  console.log('[Supabase Edge Functions] searchItem called with query:', query, 'country:', country);
+  
+  return callEdgeFunction('search-by-name', {
+    query,
+    countryCode: country,
+  });
 }
 
 /**
- * Extract item details from a URL
- * Returns partial data even if extraction fails
- * Works identically in all environments
+ * Extract item details from URL
  */
-export async function extractItem(url: string, country: string): Promise<ExtractItemResponse> {
-  try {
-    const response = await callEdgeFunction<ExtractItemRequest, ExtractItemResponse>(
-      'extract-item',
-      { url, country },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[extractItem] Partial result returned:', response.error);
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[extractItem] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[extractItem] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      title: null,
-      price: null,
-      currency: null,
-      availability: 'unknown',
-      images: [],
-      shippingSupported: false,
-      sourceDomain: null,
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-      },
-      error: error.message || 'Failed to extract item',
-    };
-  }
+export async function extractItem(url: string, country: string): Promise<any> {
+  console.log('[Supabase Edge Functions] extractItem called with url:', url, 'country:', country);
+  
+  return callEdgeFunction('extract-item', {
+    url,
+    countryCode: country,
+  });
 }
 
 /**
  * Find alternative stores for a product
- * Filters by user location if provided
- * Works identically in all environments
  */
-export async function findAlternatives(
-  title: string,
-  options?: {
-    originalUrl?: string;
-    countryCode?: string;
-    city?: string;
-  }
-): Promise<FindAlternativesResponse> {
-  try {
-    const response = await callEdgeFunction<FindAlternativesRequest, FindAlternativesResponse>(
-      'find-alternatives',
-      {
-        title,
-        originalUrl: options?.originalUrl,
-        countryCode: options?.countryCode,
-        city: options?.city,
-      },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[findAlternatives] Partial result returned:', response.error);
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[findAlternatives] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[findAlternatives] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      alternatives: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-      },
-      error: error.message || 'Failed to find alternatives',
-    };
-  }
+export async function findAlternatives(title: string): Promise<any> {
+  console.log('[Supabase Edge Functions] findAlternatives called with title:', title);
+  
+  return callEdgeFunction('find-alternatives', {
+    title,
+  });
 }
 
 /**
- * Import a wishlist from a store URL
- * Returns as many items as possible even if some fail
- * Works identically in all environments
+ * Import wishlist from URL
  */
-export async function importWishlist(wishlistUrl: string): Promise<ImportWishlistResponse> {
-  try {
-    const response = await callEdgeFunction<ImportWishlistRequest, ImportWishlistResponse>(
-      'import-wishlist',
-      { wishlistUrl },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[importWishlist] Partial result returned:', response.error);
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[importWishlist] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[importWishlist] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      storeName: null,
-      items: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-      },
-      error: error.message || 'Failed to import wishlist',
-    };
-  }
+export async function importWishlist(wishlistUrl: string): Promise<any> {
+  console.log('[Supabase Edge Functions] importWishlist called with url:', wishlistUrl);
+  
+  return callEdgeFunction('import-wishlist', {
+    url: wishlistUrl,
+  });
 }
 
 /**
- * Identify a product from an image
- * Returns best-effort results with confidence score
- * Works identically in all environments
+ * Identify product from image (base64 or URL)
  */
 export async function identifyFromImage(
   imageUrl?: string,
   imageBase64?: string
-): Promise<IdentifyFromImageResponse> {
-  try {
-    const response = await callEdgeFunction<IdentifyFromImageRequest, IdentifyFromImageResponse>(
-      'identify-from-image',
-      { imageUrl, imageBase64 },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[identifyFromImage] Partial result returned:', response.error);
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[identifyFromImage] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[identifyFromImage] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      bestGuessTitle: null,
-      bestGuessCategory: null,
-      keywords: [],
-      confidence: 0,
-      suggestedProducts: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-      },
-      error: error.message || 'Failed to identify product',
-    };
-  }
+): Promise<any> {
+  console.log('[Supabase Edge Functions] identifyFromImage called');
+  console.log('[Supabase Edge Functions] imageUrl provided:', !!imageUrl);
+  console.log('[Supabase Edge Functions] imageBase64 provided:', !!imageBase64);
+  
+  return callEdgeFunction('identify-from-image', {
+    imageUrl,
+    imageBase64,
+  });
 }
 
 /**
- * Search for products by name across multiple stores
- * Filters by user location if provided
- * Returns products with confidence scores
- * Works identically in all environments
+ * Search by product name
  */
 export async function searchByName(
   query: string,
   options?: {
     countryCode?: string;
-    city?: string;
-    currency?: string;
-    limit?: number;
+    brand?: string;
+    model?: string;
   }
-): Promise<SearchByNameResponse> {
-  try {
-    const response = await callEdgeFunction<SearchByNameRequest, SearchByNameResponse>(
-      'search-by-name',
-      {
-        query,
-        countryCode: options?.countryCode,
-        city: options?.city,
-        currency: options?.currency,
-        limit: options?.limit,
-      },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for errors
-    if (response.error) {
-      console.warn('[searchByName] Error returned:', response.error);
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[searchByName] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[searchByName] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      results: [],
-      meta: {
-        requestId: 'error',
-      },
-      error: error.message || 'Failed to search for products',
-    };
-  }
+): Promise<any> {
+  console.log('[Supabase Edge Functions] searchByName called with query:', query, 'options:', options);
+  
+  return callEdgeFunction('search-by-name', {
+    query,
+    countryCode: options?.countryCode,
+    brand: options?.brand,
+    model: options?.model,
+  });
 }
 
 /**
- * NEW: Identify product from image using multi-step AI approach
- * Performs OCR, brand detection, query normalization, product search, and visual fallback
- * Returns product matches with confidence scores
- * Works identically in all environments
+ * Identify product from image with full context
+ * This is the main function used by the app for image-based product identification
  */
-export interface IdentifyProductFromImageRequest {
-  imageBase64?: string;
-  imageUrl?: string;
-  countryCode: string;
-  currencyCode: string;
-  languageCode: string;
-}
-
-export interface ProductMatchResult {
-  id: string;
-  name: string;
-  brand: string | null;
-  category: string | null;
-  imageUrl: string;
-  confidence: number;
-  signals?: {
-    logo?: string;
-    text?: string;
-    visual?: string;
-  };
-}
-
-export interface IdentifyProductFromImageResponse {
-  matches: ProductMatchResult[];
-  query: {
-    detectedText: string;
-    detectedBrand: string;
-    guessedCategory: string;
-  };
-  error?: string;
-}
-
 export async function identifyProductFromImage(
   imageBase64: string | undefined,
   imageUrl: string | undefined,
   countryCode: string,
   currencyCode: string,
   languageCode: string
-): Promise<IdentifyProductFromImageResponse> {
-  try {
-    console.log('[identifyProductFromImage] Starting multi-step product identification...');
-    console.log('[identifyProductFromImage] Country:', countryCode, 'Currency:', currencyCode);
-    
-    const response = await callEdgeFunction<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
-      'identify-product-from-image',
-      {
-        imageBase64,
-        imageUrl,
-        countryCode,
-        currencyCode,
-        languageCode,
-      },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for errors
-    if (response.error) {
-      console.warn('[identifyProductFromImage] Error returned:', response.error);
-    }
-
-    console.log('[identifyProductFromImage] Found', response.matches.length, 'matches');
-    return response;
-  } catch (error: any) {
-    console.error('[identifyProductFromImage] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[identifyProductFromImage] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback - must never crash
-    return {
-      matches: [],
-      query: {
-        detectedText: '',
-        detectedBrand: '',
-        guessedCategory: '',
-      },
-      error: error.message || 'Failed to identify product from image',
-    };
-  }
+): Promise<any> {
+  console.log('[Supabase Edge Functions] identifyProductFromImage called');
+  console.log('[Supabase Edge Functions] imageBase64 provided:', !!imageBase64);
+  console.log('[Supabase Edge Functions] imageUrl provided:', !!imageUrl);
+  console.log('[Supabase Edge Functions] countryCode:', countryCode);
+  console.log('[Supabase Edge Functions] currencyCode:', currencyCode);
+  console.log('[Supabase Edge Functions] languageCode:', languageCode);
+  
+  return callEdgeFunction('identify-from-image', {
+    imageBase64,
+    imageUrl,
+    countryCode,
+    currencyCode,
+    languageCode,
+  });
 }
 
 /**
- * NEW: Get product prices from multiple stores with caching
- * Fetches offers for a specific product across stores
- * Returns normalized prices in requested currency
- * Caches results for 24 hours
- * Works identically in all environments
+ * Get product prices from multiple stores
  */
-export interface ProductPricesRequest {
-  productId: string;
-  countryCode: string;
-  currencyCode: string;
-}
-
-export interface ProductOffer {
-  storeName: string;
-  storeUrl: string;
-  price: number;
-  currencyCode: string;
-  availability: 'in_stock' | 'out_of_stock' | 'unknown';
-  updatedAt: string;
-}
-
-export interface ProductInfo {
-  id: string;
-  name: string;
-  brand: string;
-  imageUrl: string;
-}
-
-export interface ProductSummary {
-  minPrice: number;
-  maxPrice: number;
-  medianPrice: number;
-  bestOffer: ProductOffer | null;
-}
-
-export interface ProductPricesResponse {
-  product: ProductInfo;
-  offers: ProductOffer[];
-  summary: ProductSummary;
-}
-
 export async function getProductPrices(
   productId: string,
   countryCode: string,
   currencyCode: string
-): Promise<ProductPricesResponse> {
-  try {
-    console.log('[getProductPrices] Fetching prices for product:', productId);
-    console.log('[getProductPrices] Country:', countryCode, 'Currency:', currencyCode);
-    
-    const response = await callEdgeFunction<ProductPricesRequest, ProductPricesResponse>(
-      'product-prices',
-      {
-        productId,
-        countryCode,
-        currencyCode,
-      },
-      { showErrorAlert: true }
-    );
-
-    console.log('[getProductPrices] Found', response.offers.length, 'offers');
-    console.log('[getProductPrices] Price range:', response.summary.minPrice, '-', response.summary.maxPrice, currencyCode);
-    
-    return response;
-  } catch (error: any) {
-    console.error('[getProductPrices] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[getProductPrices] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback - must never crash
-    return {
-      product: {
-        id: productId,
-        name: 'Unknown Product',
-        brand: '',
-        imageUrl: '',
-      },
-      offers: [],
-      summary: {
-        minPrice: 0,
-        maxPrice: 0,
-        medianPrice: 0,
-        bestOffer: null,
-      },
-    };
-  }
+): Promise<any> {
+  console.log('[Supabase Edge Functions] getProductPrices called');
+  console.log('[Supabase Edge Functions] productId:', productId);
+  console.log('[Supabase Edge Functions] countryCode:', countryCode);
+  console.log('[Supabase Edge Functions] currencyCode:', currencyCode);
+  
+  return callEdgeFunction('find-alternatives', {
+    productId,
+    countryCode,
+    currencyCode,
+  });
 }

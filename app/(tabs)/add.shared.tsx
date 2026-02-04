@@ -41,7 +41,7 @@ import { fetchWishlists } from '@/lib/supabase-helpers';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import * as FileSystem from 'expo-file-system/legacy';
-import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
+import { isEnvironmentConfigured } from '@/utils/environmentConfig';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 
 console.log('[AddItemScreen] Module loaded successfully');
@@ -99,7 +99,7 @@ export default function AddItemScreen() {
   const { settings: smartLocationSettings } = useSmartLocation();
 
   // Check environment configuration
-  const [configError, setConfigError] = useState<string | null>(null);
+  const [showConfigError, setShowConfigError] = useState(false);
 
   // Mode selection
   const [selectedMode, setSelectedMode] = useState<ModeType>('share');
@@ -157,9 +157,8 @@ export default function AddItemScreen() {
   useEffect(() => {
     // Check environment configuration on mount
     if (!isEnvironmentConfigured()) {
-      const errorMessage = getConfigurationErrorMessage();
-      console.error('[AddItem] Environment not configured:', errorMessage);
-      setConfigError(errorMessage);
+      console.error('[AddItem] Environment not configured');
+      setShowConfigError(true);
     }
   }, []);
 
@@ -206,10 +205,9 @@ export default function AddItemScreen() {
     console.log('[AddItem] User tapped Retry Configuration');
     // Check configuration again
     if (isEnvironmentConfigured()) {
-      setConfigError(null);
+      setShowConfigError(false);
     } else {
-      const errorMessage = getConfigurationErrorMessage();
-      setConfigError(errorMessage);
+      setShowConfigError(true);
     }
   };
 
@@ -247,7 +245,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        setShowConfigError(true);
         return;
       }
 
@@ -394,7 +392,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        setShowConfigError(true);
         return;
       }
 
@@ -547,7 +545,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        setShowConfigError(true);
         return;
       }
 
@@ -651,7 +649,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
+        setShowConfigError(true);
         return;
       }
 
@@ -812,11 +810,11 @@ export default function AddItemScreen() {
   };
 
   // Show configuration error UI if environment is not configured
-  if (configError) {
+  if (showConfigError) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        <ConfigurationError message={configError} onRetry={handleRetryConfiguration} />
+        <ConfigurationError onRetry={handleRetryConfiguration} />
       </View>
     );
   }

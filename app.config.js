@@ -74,10 +74,14 @@ export default {
     eas: {
       projectId: 'b6c4964e-ea64-479d-8bce-b38e8e9b3ee5',
     },
-    // CRITICAL FIX: Add Supabase configuration
-    // These values are read by utils/environmentConfig.ts and lib/supabase.ts
+    // CRITICAL FIX: Add ALL required Supabase environment variables
+    // These are read by utils/environmentConfig.ts and lib/supabase.ts
+    // Using both naming conventions for maximum compatibility
+    SUPABASE_URL: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co',
+    SUPABASE_ANON_KEY: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-',
+    SUPABASE_EDGE_FUNCTIONS_URL: process.env.EXPO_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
     supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co',
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpeGdtbnVheXpibHdwcXlwbHNpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxOTQyMTcsImV4cCI6MjA4NDc3MDIxN30.cxsYejM4zik3AvUEVlQBkUbMqdZ6X2Q4kZ9ISyXrIz4',
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-',
     supabaseEdgeFunctionsUrl: process.env.EXPO_PUBLIC_SUPABASE_EDGE_FUNCTIONS_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
   },
   notification: {
