@@ -534,13 +534,16 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings> {
     const settings = data[0];
     console.log('[Supabase] User settings found:', settings);
     
+    // Map database columns to frontend interface
+    // Database has: notification_enabled, country, city, currency
+    // Frontend expects: priceDropAlertsEnabled, weeklyDigestEnabled, defaultCurrency, country, city, currency
     return {
       userId: settings.user_id,
-      priceDropAlertsEnabled: settings.price_drop_alerts_enabled ?? false,
-      weeklyDigestEnabled: settings.weekly_digest_enabled ?? false,
+      priceDropAlertsEnabled: settings.notification_enabled ?? false,
+      weeklyDigestEnabled: false, // Not stored in database yet
       defaultCurrency: settings.currency ?? 'USD',
-      country: settings.country,
-      city: settings.city,
+      country: settings.country ?? null,
+      city: settings.city ?? null,
       currency: settings.currency ?? 'USD',
       updatedAt: settings.updated_at,
     };
