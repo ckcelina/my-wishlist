@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { fetchUserLocation } from '@/lib/supabase-helpers';
+import { AppState, AppStateStatus } from 'react-native';
 
 /**
  * Smart Location Context - SETTINGS-BASED ONLY
@@ -15,6 +16,7 @@ import { fetchUserLocation } from '@/lib/supabase-helpers';
  * - No automatic IP-based detection
  * - No "Select delivery address" UI
  * - activeSearchCountry comes from Settings only
+ * - Auto-refreshes when app comes to foreground
  */
 
 export interface SmartLocationSettings {
@@ -74,8 +76,25 @@ export function SmartLocationProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // Initial load
   useEffect(() => {
     refreshSettings();
+  }, [refreshSettings]);
+
+  // CRITICAL FIX: Auto-refresh when app comes to foreground
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[SmartLocation] App became active, refreshing settings');
+        refreshSettings();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
   }, [refreshSettings]);
 
   const updateActiveSearchCountry = useCallback(async (country: string) => {

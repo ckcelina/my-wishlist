@@ -37,7 +37,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '@/contexts/AuthContext';
 import Constants from 'expo-constants';
 import { fetchWishlists } from '@/lib/supabase-helpers';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import * as FileSystem from 'expo-file-system/legacy';
 import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
@@ -95,7 +95,7 @@ export default function AddItemScreen() {
   const typography = createTypography(theme);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settings: smartLocationSettings } = useSmartLocation();
+  const { settings: smartLocationSettings, refreshSettings } = useSmartLocation();
 
   // Check environment configuration
   const [configError, setConfigError] = useState<string | null>(null);
@@ -161,6 +161,14 @@ export default function AddItemScreen() {
       setConfigError(errorMessage);
     }
   }, []);
+
+  // CRITICAL FIX: Refresh location settings when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('[AddItem] Screen focused, refreshing location settings');
+      refreshSettings();
+    }, [refreshSettings])
+  );
 
   useEffect(() => {
     if (user) {
