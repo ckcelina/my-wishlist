@@ -88,11 +88,16 @@ export default function ProfileScreen() {
       const data = await fetchUserSettings(user.id);
       
       console.log('[ProfileScreen] Settings fetched:', data);
-      setPriceDropAlerts(data.priceDropAlertsEnabled || false);
-      setWeeklyDigest(data.weeklyDigestEnabled || false);
-      setDefaultCurrency(data.defaultCurrency || 'USD');
+      // Defensive: Always use nullish coalescing to provide defaults
+      setPriceDropAlerts(data?.priceDropAlertsEnabled ?? false);
+      setWeeklyDigest(data?.weeklyDigestEnabled ?? false);
+      setDefaultCurrency(data?.defaultCurrency ?? 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
+      // Set defaults on error
+      setPriceDropAlerts(false);
+      setWeeklyDigest(false);
+      setDefaultCurrency('USD');
     }
   }, [user]);
 
@@ -133,14 +138,16 @@ export default function ProfileScreen() {
       const data = await updateUserSettings(user.id, updates);
       
       console.log('[ProfileScreen] Settings updated:', data);
-      setPriceDropAlerts(data.priceDropAlertsEnabled || false);
-      setWeeklyDigest(data.weeklyDigestEnabled || false);
-      setDefaultCurrency(data.defaultCurrency || 'USD');
+      // Defensive: Always use nullish coalescing to provide defaults
+      setPriceDropAlerts(data?.priceDropAlertsEnabled ?? false);
+      setWeeklyDigest(data?.weeklyDigestEnabled ?? false);
+      setDefaultCurrency(data?.defaultCurrency ?? 'USD');
       haptics.success();
     } catch (error) {
       console.error('[ProfileScreen] Error updating settings:', error);
       haptics.error();
       Alert.alert('Error', 'Failed to update settings');
+      // Revert to current state on error (no change needed, state already set)
     }
   };
 

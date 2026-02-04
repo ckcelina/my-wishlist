@@ -486,13 +486,26 @@ export function generateShareSlug(): string {
 
 export interface UserSettings {
   userId: string;
+  priceDropAlertsEnabled: boolean;
+  weeklyDigestEnabled: boolean;
+  defaultCurrency: string;
   country: string | null;
   city: string | null;
   currency: string | null;
   updatedAt: string;
 }
 
-export async function fetchUserSettings(userId: string): Promise<UserSettings | null> {
+// Default settings to return when no user_settings row exists
+const DEFAULT_USER_SETTINGS: Omit<UserSettings, 'userId' | 'updatedAt'> = {
+  priceDropAlertsEnabled: false,
+  weeklyDigestEnabled: false,
+  defaultCurrency: 'USD',
+  country: null,
+  city: null,
+  currency: 'USD',
+};
+
+export async function fetchUserSettings(userId: string): Promise<UserSettings> {
   console.log('[Supabase] Fetching user settings via RPC for:', userId);
   
   try {
@@ -500,12 +513,22 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings | 
 
     if (error) {
       console.error('[Supabase] Error fetching user settings:', error);
-      return null;
+      console.warn('[Supabase] Returning default settings due to error');
+      return {
+        userId,
+        ...DEFAULT_USER_SETTINGS,
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     if (!data || data.length === 0) {
       console.log('[Supabase] No user settings found for:', userId);
-      return null;
+      console.log('[Supabase] Returning default settings');
+      return {
+        userId,
+        ...DEFAULT_USER_SETTINGS,
+        updatedAt: new Date().toISOString(),
+      };
     }
 
     const settings = data[0];
@@ -513,29 +536,48 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings | 
     
     return {
       userId: settings.user_id,
+      priceDropAlertsEnabled: settings.price_drop_alerts_enabled ?? false,
+      weeklyDigestEnabled: settings.weekly_digest_enabled ?? false,
+      defaultCurrency: settings.currency ?? 'USD',
       country: settings.country,
       city: settings.city,
-      currency: settings.currency,
+      currency: settings.currency ?? 'USD',
       updatedAt: settings.updated_at,
     };
   } catch (err) {
     console.error('[Supabase] Exception fetching user settings:', err);
-    return null;
+    console.warn('[Supabase] Returning default settings due to exception');
+    return {
+      userId,
+      ...DEFAULT_USER_SETTINGS,
+      updatedAt: new Date().toISOString(),
+    };
   }
 }
 
 export async function updateUserSettings(
-  country: string | null,
-  city: string | null,
-  currency: string | null
-): Promise<void> {
-  console.log('[Supabase] Updating user settings via RPC:', { country, city, currency });
+  userId: string,
+  updates: {
+    priceDropAlertsEnabled?: boolean;
+    weeklyDigestEnabled?: boolean;
+    defaultCurrency?: string;
+    country?: string | null;
+    city?: string | null;
+    currency?: string | null;
+  }
+): Promise<UserSettings> {
+  console.log('[Supabase] Updating user settings via RPC:', updates);
   
   try {
+    // Map frontend field names to database field names
+    const _country = updates.country !== undefined ? updates.country : undefined;
+    const _city = updates.city !== undefined ? updates.city : undefined;
+    const _currency = updates.defaultCurrency || updates.currency || undefined;
+    
     const { error } = await supabase.rpc('upsert_user_settings', {
-      _country: country,
-      _city: city,
-      _currency: currency,
+      _country,
+      _city,
+      _currency,
     });
 
     if (error) {
@@ -544,6 +586,9 @@ export async function updateUserSettings(
     }
 
     console.log('[Supabase] User settings updated successfully');
+    
+    // Fetch and return the updated settings
+    return await fetchUserSettings(userId);
   } catch (err) {
     console.error('[Supabase] Exception updating user settings:', err);
     throw err;

@@ -260,11 +260,16 @@ export default function ProfileScreen() {
       const data = await fetchUserSettings(user.id);
       console.log('[ProfileScreen] Settings fetched:', data);
       
-      setPriceDropAlertsEnabled(data.priceDropAlertsEnabled ?? false);
-      setWeeklyDigestEnabled(data.weeklyDigestEnabled ?? false);
-      setDefaultCurrency(data.defaultCurrency ?? 'USD');
+      // Defensive: Always use nullish coalescing to provide defaults
+      setPriceDropAlertsEnabled(data?.priceDropAlertsEnabled ?? false);
+      setWeeklyDigestEnabled(data?.weeklyDigestEnabled ?? false);
+      setDefaultCurrency(data?.defaultCurrency ?? 'USD');
     } catch (error) {
       console.error('[ProfileScreen] Error fetching settings:', error);
+      // Set defaults on error
+      setPriceDropAlertsEnabled(false);
+      setWeeklyDigestEnabled(false);
+      setDefaultCurrency('USD');
     } finally {
       setLoading(false);
     }
@@ -309,9 +314,22 @@ export default function ProfileScreen() {
       }
       
       const { updateUserSettings } = await import('@/lib/supabase-helpers');
-      await updateUserSettings(user.id, updates);
+      const updatedSettings = await updateUserSettings(user.id, updates);
       
-      console.log('[ProfileScreen] Settings updated successfully');
+      console.log('[ProfileScreen] Settings updated successfully:', updatedSettings);
+      
+      // Update local state with returned values (defensive)
+      if (updatedSettings) {
+        if (updates.priceDropAlertsEnabled !== undefined) {
+          setPriceDropAlertsEnabled(updatedSettings.priceDropAlertsEnabled ?? false);
+        }
+        if (updates.weeklyDigestEnabled !== undefined) {
+          setWeeklyDigestEnabled(updatedSettings.weeklyDigestEnabled ?? false);
+        }
+        if (updates.defaultCurrency !== undefined) {
+          setDefaultCurrency(updatedSettings.defaultCurrency ?? 'USD');
+        }
+      }
     } catch (error) {
       console.error('[ProfileScreen] Error updating settings:', error);
       Alert.alert('Error', 'Failed to update settings');
