@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -25,7 +25,6 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { CountryPicker } from '@/components/pickers/CountryPicker';
 import { CityPicker } from '@/components/pickers/CityPicker';
 import { getCountryFlag } from '@/constants/countries';
-import debounce from 'lodash.debounce';
 import { determineDefaultLocation, preloadCitiesForCountry } from '@/src/services/locationBootstrap';
 
 interface UserLocation {
@@ -88,7 +87,6 @@ export default function LocationScreen() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success');
   
   const [preloadedCities, setPreloadedCities] = useState<CityResult[]>([]);
-  const [bootstrapComplete, setBootstrapComplete] = useState(false);
   
   const showAreaFields = COUNTRIES_WITH_AREA_SUPPORT.includes(countryCode);
 
@@ -295,7 +293,6 @@ export default function LocationScreen() {
       }
     } finally {
       setLoading(false);
-      setBootstrapComplete(true);
     }
   }, []);
 
