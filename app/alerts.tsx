@@ -48,9 +48,10 @@ interface ItemsWithTargetsResponse {
   items: {
     id: string;
     title: string;
-    alertPrice: number;
     currentPrice: number | null;
+    alertPrice: number | null;
     currency: string;
+    wishlistName?: string;
   }[];
 }
 
@@ -303,7 +304,7 @@ export default function AlertsScreen() {
   const debouncedSaveRef = useRef<ReturnType<typeof debounce> | null>(null);
 
   const fetchSettings = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching alert settings from backend API');
+    console.log('[AlertsScreen] Fetching alert settings from Supabase Edge Function');
     try {
       setError(null);
       const data = await authenticatedGet<AlertSettings>('/api/alert-settings');
@@ -324,13 +325,15 @@ export default function AlertsScreen() {
   }, [user]);
 
   const fetchItemsWithTargets = useCallback(async () => {
-    console.log('[AlertsScreen] Fetching items with target prices from backend API');
+    console.log('[AlertsScreen] Fetching items with target prices from Supabase Edge Function');
     try {
       const data = await authenticatedGet<ItemsWithTargetsResponse>('/api/alert-settings/items-with-targets');
       setItemsWithTargets(data);
       console.log('[AlertsScreen] Items with targets:', data.count);
     } catch (err) {
       console.error('[AlertsScreen] Failed to fetch items with targets:', err);
+      // Don't show error for items with targets - it's not critical
+      setItemsWithTargets({ count: 0, items: [] });
     }
   }, []);
 
@@ -357,7 +360,7 @@ export default function AlertsScreen() {
   }, [user, authLoading, fetchSettings, fetchItemsWithTargets, checkNotificationPermissionStatus, router]);
 
   const saveSettings = useCallback(async (updates: Partial<AlertSettings>) => {
-    console.log('[AlertsScreen] Saving settings to backend API:', updates);
+    console.log('[AlertsScreen] Saving settings to Supabase Edge Function:', updates);
     setSaving(true);
     try {
       const response = await authenticatedPut<{ success: boolean } & AlertSettings>('/api/alert-settings', updates);
@@ -397,6 +400,7 @@ export default function AlertsScreen() {
     console.log('[AlertsScreen] Retrying fetch');
     setLoading(true);
     fetchSettings();
+    fetchItemsWithTargets();
   };
 
   if (authLoading || loading) {
