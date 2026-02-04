@@ -5,28 +5,9 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type { Database } from './supabase-types';
 
-// Get Supabase configuration from app.json with fallback
-// CRITICAL FIX: Handle case where Constants.expoConfig is null/undefined
-const getSupabaseUrl = () => {
-  const fromConfig = Constants.expoConfig?.extra?.supabaseUrl;
-  const fromManifest = Constants.manifest?.extra?.supabaseUrl;
-  const fromManifest2 = Constants.manifest2?.extra?.expoClient?.extra?.supabaseUrl;
-  const hardcoded = 'https://dixgmnuayzblwpqyplsi.supabase.co';
-  
-  return fromConfig || fromManifest || fromManifest2 || hardcoded;
-};
-
-const getSupabaseAnonKey = () => {
-  const fromConfig = Constants.expoConfig?.extra?.supabaseAnonKey;
-  const fromManifest = Constants.manifest?.extra?.supabaseAnonKey;
-  const fromManifest2 = Constants.manifest2?.extra?.expoClient?.extra?.supabaseAnonKey;
-  const hardcoded = 'sb_publishable_YouNJ6jKsZgKgdWMpWUL4w_gPqrMNT-';
-  
-  return fromConfig || fromManifest || fromManifest2 || hardcoded;
-};
-
-const SUPABASE_URL = getSupabaseUrl();
-const SUPABASE_ANON_KEY = getSupabaseAnonKey();
+// Get Supabase configuration from app.json
+const SUPABASE_URL = Constants.expoConfig?.extra?.supabaseUrl || '';
+const SUPABASE_ANON_KEY = Constants.expoConfig?.extra?.supabaseAnonKey || '';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔌 NATIVELY.DEV SUPABASE CONNECTION MARKERS - ENHANCED

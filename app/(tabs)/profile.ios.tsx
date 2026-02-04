@@ -614,7 +614,7 @@ export default function ProfileScreen() {
                 style={styles.menuItem}
                 onPress={() => {
                   haptics.light();
-                  router.push('/diagnostics-enhanced');
+                  router.push('/diagnostics');
                 }}
                 hapticFeedback="light"
               >
@@ -625,61 +625,7 @@ export default function ProfileScreen() {
                     size={24}
                     color={theme.colors.textSecondary}
                   />
-                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>System Diagnostics</Text>
-                </View>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={theme.colors.textSecondary}
-                />
-              </PressableScale>
-
-              <Divider />
-
-              <PressableScale
-                style={styles.menuItem}
-                onPress={() => {
-                  haptics.light();
-                  router.push('/e2e-test');
-                }}
-                hapticFeedback="light"
-              >
-                <View style={styles.menuItemLeft}>
-                  <IconSymbol
-                    ios_icon_name="checkmark.seal.fill"
-                    android_material_icon_name="verified"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>End-to-End Tests</Text>
-                </View>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={theme.colors.textSecondary}
-                />
-              </PressableScale>
-
-              <Divider />
-
-              <PressableScale
-                style={styles.menuItem}
-                onPress={() => {
-                  haptics.light();
-                  router.push('/permissions-settings');
-                }}
-                hapticFeedback="light"
-              >
-                <View style={styles.menuItemLeft}>
-                  <IconSymbol
-                    ios_icon_name="lock.shield.fill"
-                    android_material_icon_name="security"
-                    size={24}
-                    color={theme.colors.textSecondary}
-                  />
-                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Manage Permissions</Text>
+                  <Text style={[styles.menuItemText, { color: theme.colors.text }]}>Diagnostics</Text>
                 </View>
                 <IconSymbol
                   ios_icon_name="chevron.right"

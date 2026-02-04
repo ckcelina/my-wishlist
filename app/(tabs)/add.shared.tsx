@@ -1,4 +1,11 @@
 
+// Guard against circular imports
+if (typeof global.__ADD_SCREEN_LOADED !== 'undefined') {
+  console.error('[CRITICAL] Circular import detected in add.shared.tsx! This file is being loaded multiple times.');
+  throw new Error('Circular import detected in AddItemScreen');
+}
+global.__ADD_SCREEN_LOADED = true;
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
@@ -33,7 +40,7 @@ import { fetchWishlists } from '@/lib/supabase-helpers';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import * as FileSystem from 'expo-file-system/legacy';
-import { isEnvironmentConfigured } from '@/utils/environmentConfig';
+import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 
 console.log('[AddItemScreen] Module loaded successfully');
@@ -91,7 +98,7 @@ export default function AddItemScreen() {
   const { settings: smartLocationSettings } = useSmartLocation();
 
   // Check environment configuration
-  const [showConfigError, setShowConfigError] = useState(false);
+  const [configError, setConfigError] = useState<string | null>(null);
 
   // Mode selection
   const [selectedMode, setSelectedMode] = useState<ModeType>('share');
@@ -149,17 +156,17 @@ export default function AddItemScreen() {
   useEffect(() => {
     // Check environment configuration on mount
     if (!isEnvironmentConfigured()) {
-      console.error('[AddItem] Environment not configured');
-      setShowConfigError(true);
+      const errorMessage = getConfigurationErrorMessage();
+      console.error('[AddItem] Environment not configured:', errorMessage);
+      setConfigError(errorMessage);
     }
   }, []);
 
-  // CRITICAL FIX: Only run once when user changes, not when callback changes
   useEffect(() => {
     if (user) {
       fetchUserWishlists();
     }
-  }, [user?.id]); // Use user.id instead of user object to prevent infinite loop
+  }, [user, fetchUserWishlists]);
 
   useEffect(() => {
     // Handle shared URL from other apps
@@ -197,9 +204,10 @@ export default function AddItemScreen() {
     console.log('[AddItem] User tapped Retry Configuration');
     // Check configuration again
     if (isEnvironmentConfigured()) {
-      setShowConfigError(false);
+      setConfigError(null);
     } else {
-      setShowConfigError(true);
+      const errorMessage = getConfigurationErrorMessage();
+      setConfigError(errorMessage);
     }
   };
 
@@ -237,7 +245,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        setShowConfigError(true);
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
         return;
       }
 
@@ -384,7 +392,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        setShowConfigError(true);
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
         return;
       }
 
@@ -537,7 +545,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        setShowConfigError(true);
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
         return;
       }
 
@@ -641,7 +649,7 @@ export default function AddItemScreen() {
       // Check configuration before making API call
       if (!isEnvironmentConfigured()) {
         console.error('[AddItem] Environment not configured');
-        setShowConfigError(true);
+        Alert.alert('Configuration Error', getConfigurationErrorMessage());
         return;
       }
 
@@ -802,11 +810,11 @@ export default function AddItemScreen() {
   };
 
   // Show configuration error UI if environment is not configured
-  if (showConfigError) {
+  if (configError) {
     return (
       <View style={{ flex: 1 }}>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        <ConfigurationError onRetry={handleRetryConfiguration} />
+        <ConfigurationError message={configError} onRetry={handleRetryConfiguration} />
       </View>
     );
   }
