@@ -203,6 +203,7 @@ export default function ImportPreviewScreen() {
     if (!dataParam) {
       console.log('[ImportPreview] No data param, skipping initialization');
       setLoading(false);
+      initializationDone.current = true; // Mark as done to prevent infinite loop
       return;
     }
 
@@ -290,7 +291,7 @@ export default function ImportPreviewScreen() {
       console.error('[ImportPreview] Error fetching wishlists:', error);
       wishlistsFetched.current = false; // Allow retry on error
     }
-  }, [user]);
+  }, [user?.id]); // CRITICAL FIX: Use user.id instead of user object to prevent infinite loop
 
   // Fetch wishlists ONCE when user changes
   useEffect(() => {

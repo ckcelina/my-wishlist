@@ -146,12 +146,20 @@ module.exports = function ({ types: t }) {
         const openingName = path.node.name;
         const filename = state.file.opts.filename || "unknown";
 
-        if (!openingName || openingName.type !== "JSXIdentifier") return;
+        // CRITICAL FIX: Skip if no opening name (malformed JSX)
+        if (!openingName) return;
         if (!_isEditableFile(filename)) return;
 
         // 🚨 CRITICAL FIX: Skip Fragment nodes - they cannot receive custom props
         // Fragments can ONLY have 'key' and 'children' props
+        // Check BEFORE checking JSXIdentifier type to catch all Fragment cases
         if (isFragment(path, t)) {
+          return;
+        }
+        
+        // Now check if it's a JSXIdentifier (after Fragment check)
+        if (openingName.type !== "JSXIdentifier") {
+          // Could be JSXMemberExpression (e.g., React.Fragment) - already handled by isFragment
           return;
         }
         

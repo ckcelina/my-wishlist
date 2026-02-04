@@ -1,10 +1,11 @@
 
-// Guard against circular imports
-if (typeof global.__ADD_SCREEN_LOADED !== 'undefined') {
+// CRITICAL FIX: Guard against circular imports
+// This prevents "Maximum call stack size exceeded" errors
+if (typeof (global as any).__ADD_SCREEN_LOADED !== 'undefined') {
   console.error('[CRITICAL] Circular import detected in add.shared.tsx! This file is being loaded multiple times.');
   throw new Error('Circular import detected in AddItemScreen');
 }
-global.__ADD_SCREEN_LOADED = true;
+(global as any).__ADD_SCREEN_LOADED = true;
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
@@ -162,11 +163,12 @@ export default function AddItemScreen() {
     }
   }, []);
 
+  // CRITICAL FIX: Only run once when user changes, not when callback changes
   useEffect(() => {
     if (user) {
       fetchUserWishlists();
     }
-  }, [user, fetchUserWishlists]);
+  }, [user?.id]); // Use user.id instead of user object to prevent infinite loop
 
   useEffect(() => {
     // Handle shared URL from other apps

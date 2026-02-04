@@ -187,6 +187,8 @@ if (!isEnvironmentConfigured()) {
 /**
  * Get the authorization token for Edge Function calls
  * Returns the user's access_token if logged in, null otherwise
+ * 
+ * CRITICAL FIX: Gracefully handles all error cases to prevent crashes
  */
 async function getAuthToken(): Promise<string | null> {
   try {
@@ -256,7 +258,8 @@ async function callEdgeFunction<TRequest, TResponse>(
   console.log(`[Edge Function] Environment: ${appConfig.environment}`);
 
   try {
-    // Get the user's access token (null if not logged in)
+    // CRITICAL FIX: Get the user's access token (null if not logged in)
+    // This ensures every Edge Function call includes a valid JWT if user is logged in
     const accessToken = await getAuthToken();
     
     // Build headers - CRITICAL: apikey is ALWAYS required

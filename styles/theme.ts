@@ -210,7 +210,8 @@ export const lightTheme: Theme = {
 // ═══════════════════════════════════════════════════════
 
 export const createTypography = (theme?: Theme) => {
-  // Provide safe defaults if theme is undefined
+  // CRITICAL FIX: Provide safe defaults if theme is undefined
+  // This prevents "Cannot read property 'fonts' of undefined" crashes
   const safeTheme = theme || lightTheme;
   
   return {
