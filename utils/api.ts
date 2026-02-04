@@ -58,8 +58,8 @@ function mapApiPathToEdgeFunction(path: string): RouteMapping {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
   // Map specific paths to Edge Functions
+  // NOTE: /api/users/location is handled by backend API, not Edge Functions
   const edgeFunctionMappings: Record<string, string> = {
-    '/api/users/location': 'users-location',
     '/api/location/search-cities': 'location-search-cities',
     '/api/location/smart-settings': 'location-smart-settings',
     '/api/location/detect-ip': 'location-detect-ip',
