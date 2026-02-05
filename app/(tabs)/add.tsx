@@ -350,10 +350,11 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching camera');
+      // CRITICAL FIX: Remove allowsEditing and aspect to prevent cropping UI
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // ✅ FIXED: Disable cropping UI
+        quality: 1, // ✅ FIXED: Use highest quality
         base64: true,
       });
 
@@ -582,10 +583,11 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching image picker');
+      // CRITICAL FIX: Remove allowsEditing and aspect to prevent cropping UI
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // ✅ FIXED: Disable cropping UI
+        quality: 1, // ✅ FIXED: Use highest quality
         base64: true,
       });
 
@@ -933,10 +935,11 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching image picker for manual entry');
+      // CRITICAL FIX: Remove allowsEditing to prevent cropping UI
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.8,
+        allowsEditing: false, // ✅ FIXED: Disable cropping UI
+        quality: 1, // ✅ FIXED: Use highest quality
       });
 
       if (!result.canceled && result.assets[0]) {
