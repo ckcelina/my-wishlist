@@ -1,11 +1,4 @@
 
-// Guard against circular imports
-if (typeof global.__ADD_SCREEN_LOADED !== 'undefined') {
-  console.error('[CRITICAL] Circular import detected in add.shared.tsx! This file is being loaded multiple times.');
-  throw new Error('Circular import detected in AddItemScreen');
-}
-global.__ADD_SCREEN_LOADED = true;
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
@@ -170,23 +163,6 @@ export default function AddItemScreen() {
     }, [refreshSettings])
   );
 
-  useEffect(() => {
-    if (user) {
-      fetchUserWishlists();
-    }
-  }, [user, fetchUserWishlists]);
-
-  useEffect(() => {
-    // Handle shared URL from other apps
-    if (sharedUrl) {
-      console.log('[AddItem] Received shared URL:', sharedUrl);
-      setUrlInput(sharedUrl);
-      setSelectedMode('url');
-    }
-  }, [sharedUrl]);
-
-  const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
-
   const fetchUserWishlists = useCallback(async () => {
     if (!user) return;
 
@@ -207,6 +183,23 @@ export default function AddItemScreen() {
       Alert.alert('Error', 'Failed to load wishlists. Please try again.');
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserWishlists();
+    }
+  }, [user, fetchUserWishlists]);
+
+  useEffect(() => {
+    // Handle shared URL from other apps
+    if (sharedUrl) {
+      console.log('[AddItem] Received shared URL:', sharedUrl);
+      setUrlInput(sharedUrl);
+      setSelectedMode('url');
+    }
+  }, [sharedUrl]);
+
+  const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
 
   const handleRetryConfiguration = () => {
     console.log('[AddItem] User tapped Retry Configuration');
