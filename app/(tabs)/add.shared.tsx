@@ -669,13 +669,45 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Search results:', result);
 
+      // Check for configuration errors
+      if (result.error && result.error.includes('OpenAI API key not configured')) {
+        console.error('[AddItem] OpenAI API key not configured');
+        Alert.alert(
+          'Feature Not Available',
+          'Product search is temporarily unavailable due to server configuration. Please try adding the item manually or contact support.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after configuration error');
+                setSelectedMode('manual');
+                setManualName(searchQuery.trim());
+              },
+            },
+          ]
+        );
+        return;
+      }
+
       if (result.results && result.results.length > 0) {
         console.log('[AddItem] Found', result.results.length, 'results');
         setSearchResults(result.results);
         setShowSearchResults(true);
       } else {
         console.log('[AddItem] No search results found');
-        Alert.alert('No Results', 'No products found. Try a different search or add manually.');
+        const errorMessage = result.error || 'No products found. Try a different search or add manually.';
+        Alert.alert('No Results', errorMessage, [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after no results');
+              setSelectedMode('manual');
+              setManualName(searchQuery.trim());
+            },
+          },
+        ]);
       }
     } catch (error: any) {
       console.error('[AddItem] Error in handleSearchByName:', error);
