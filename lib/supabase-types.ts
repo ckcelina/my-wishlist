@@ -8,6 +8,10 @@ export interface Database {
           id: string;
           user_id: string;
           name: string;
+          is_default: boolean;
+          list_type: 'WISHLIST' | 'TODO';
+          smart_plan_enabled: boolean;
+          smart_plan_template: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -15,6 +19,10 @@ export interface Database {
           id?: string;
           user_id: string;
           name: string;
+          is_default?: boolean;
+          list_type?: 'WISHLIST' | 'TODO';
+          smart_plan_enabled?: boolean;
+          smart_plan_template?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -22,6 +30,10 @@ export interface Database {
           id?: string;
           user_id?: string;
           name?: string;
+          is_default?: boolean;
+          list_type?: 'WISHLIST' | 'TODO';
+          smart_plan_enabled?: boolean;
+          smart_plan_template?: string | null;
           created_at?: string;
           updated_at?: string;
         };
