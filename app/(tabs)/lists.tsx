@@ -438,14 +438,14 @@ export default function ListsScreen() {
     try {
       console.log('[ListsScreen] Creating new list:', trimmedName, 'type:', createListType, 'setAsDefault:', setAsDefault);
       
-      // CRITICAL FIX: Only pass is_default if user explicitly checked the box
-      // Do NOT pass is_default: false, let the backend handle the default logic
+      // CRITICAL FIX: Always send list_type to prevent schema cache issues
+      // The list_type field is REQUIRED and must be explicitly set
       const insertData: any = {
         user_id: user.id,
         name: trimmedName,
-        list_type: createListType,
-        smart_plan_enabled: smartPlanEnabled,
-        smart_plan_template: selectedTemplate,
+        list_type: createListType, // ALWAYS include list_type (wishlist or todo)
+        smart_plan_enabled: smartPlanEnabled || false,
+        smart_plan_template: smartPlanEnabled ? selectedTemplate : null,
       };
 
       // Only include is_default if user explicitly wants to set it as default
@@ -453,26 +453,77 @@ export default function ListsScreen() {
         insertData.is_default = true;
       }
 
-      const { data, error } = await supabase
-        .from('wishlists')
-        .insert(insertData)
-        .select()
-        .single();
+      console.log('[ListsScreen] Insert data:', JSON.stringify(insertData, null, 2));
 
-      if (error) throw error;
+      // Retry logic for schema cache issues
+      let retryCount = 0;
+      const maxRetries = 3;
+      let lastError: any = null;
 
-      console.log('[ListsScreen] Created list:', data.id, 'is_default:', data.is_default);
+      while (retryCount < maxRetries) {
+        try {
+          const { data, error } = await supabase
+            .from('wishlists')
+            .insert(insertData)
+            .select()
+            .single();
 
-      setCreateModalVisible(false);
-      setNewListName('');
-      setSetAsDefault(false);
-      setSmartPlanEnabled(false);
-      setSelectedTemplate(null);
-      handleRefresh();
-      Alert.alert('Success', 'List created successfully');
+          if (error) {
+            // Check if it's a schema cache error (PostgREST schema cache issue)
+            if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+              console.warn('[ListsScreen] Schema cache error detected, retrying...', error.message);
+              lastError = error;
+              retryCount++;
+              
+              // Wait before retrying (exponential backoff)
+              await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+              continue;
+            }
+            
+            // If it's not a schema cache error, throw immediately
+            throw error;
+          }
+
+          // Success!
+          console.log('[ListsScreen] Created list:', data.id, 'is_default:', data.is_default, 'list_type:', data.list_type);
+
+          setCreateModalVisible(false);
+          setNewListName('');
+          setSetAsDefault(false);
+          setSmartPlanEnabled(false);
+          setSelectedTemplate(null);
+          handleRefresh();
+          Alert.alert('Success', 'List created successfully');
+          return;
+
+        } catch (retryError) {
+          lastError = retryError;
+          retryCount++;
+          
+          if (retryCount < maxRetries) {
+            console.warn(`[ListsScreen] Retry ${retryCount}/${maxRetries} failed, retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 500 * retryCount));
+          }
+        }
+      }
+
+      // If we exhausted all retries, throw the last error
+      throw lastError;
+
     } catch (err) {
       console.error('[ListsScreen] Error creating list:', err);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create list');
+      
+      // Provide user-friendly error message
+      let errorMessage = 'Failed to create list';
+      if (err instanceof Error) {
+        if (err.message?.includes('column') && err.message?.includes('does not exist')) {
+          errorMessage = 'Database schema issue detected. Please try again in a moment.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      Alert.alert('Error', errorMessage);
     }
   };
 
