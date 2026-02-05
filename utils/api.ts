@@ -2,7 +2,7 @@
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { logError } from './observability';
-import { ENV, validateEnv } from '@/src/config/env';
+import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
 import Constants from 'expo-constants';
 
 /**
@@ -14,7 +14,7 @@ import Constants from 'expo-constants';
  * 2. Supabase Edge Functions - for location, alerts, and health endpoints
  * 
  * Features:
- * - Centralized base URL configuration from src/config/env.ts
+ * - Centralized base URL configuration from utils/environmentConfig.ts
  * - Runtime validation of environment variables
  * - Proper URL construction (no relative paths)
  * - Comprehensive error logging
@@ -32,7 +32,7 @@ if (__DEV__) {
   console.log('[API] 🔌 API CLIENT INITIALIZATION');
   console.log('[API] ═══════════════════════════════════════════════════');
   console.log('[API] Backend URL:', BACKEND_URL || '❌ NOT CONFIGURED');
-  console.log('[API] Supabase Edge Functions URL:', ENV.SUPABASE_EDGE_FUNCTIONS_URL || '❌ NOT CONFIGURED');
+  console.log('[API] Supabase Edge Functions URL:', appConfig.supabaseEdgeFunctionsUrl || '❌ NOT CONFIGURED');
   console.log('[API] Platform:', Platform.OS);
   console.log('[API] Build Type:', __DEV__ ? 'Development' : 'Production');
   console.log('[API] ═══════════════════════════════════════════════════');
@@ -251,26 +251,25 @@ async function callEdgeFunction<T>(
   options: RequestInit = {}
 ): Promise<T> {
   // Validate environment configuration
-  const missingKeys = validateEnv();
-  if (missingKeys.length > 0) {
-    const error = new Error(`API base URL missing or invalid. Check env.ts and app config. Missing: ${missingKeys.join(', ')}`);
+  if (!isEnvironmentConfigured()) {
+    const error = new Error(getConfigurationErrorMessage());
     console.error('[API] ❌', error.message);
     throw error;
   }
 
-  if (!ENV.SUPABASE_EDGE_FUNCTIONS_URL) {
+  if (!appConfig.supabaseEdgeFunctionsUrl) {
     const error = new Error('API base URL missing or invalid. Check env.ts and app config.');
     console.error('[API] ❌', error.message);
     throw error;
   }
 
-  const url = `${ENV.SUPABASE_EDGE_FUNCTIONS_URL}/${functionName}`;
+  const url = `${appConfig.supabaseEdgeFunctionsUrl}/${functionName}`;
   const token = await getBearerToken();
   const method = options.method || 'GET';
 
   const headers: HeadersInit = {
     ...options.headers,
-    'apikey': ENV.SUPABASE_ANON_KEY,
+    'apikey': appConfig.supabaseAnonKey,
   };
 
   // Only add Content-Type for requests with a body

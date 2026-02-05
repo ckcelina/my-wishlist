@@ -14,7 +14,7 @@ import { LocationProvider } from '@/contexts/LocationContext';
 import { runParityVerification } from '@/utils/parityVerification';
 import { trackAppVersion } from '@/utils/versionTracking';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { validateEnv, logEnvironmentConfig, getConfigurationErrorMessage } from '@/src/config/env';
+import { verifyConfiguration, logConfiguration, getConfigurationErrorMessage } from '@/utils/environmentConfig';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 import { createColors } from '@/styles/designSystem';
 
@@ -199,13 +199,13 @@ export default function RootLayout() {
     console.log('🚀 APP STARTING - SUPABASE EDGE FUNCTIONS');
     console.log('═══════════════════════════════════════════════════');
     
-    // Validate environment configuration (from src/config/env.ts)
-    const missingKeys = validateEnv();
-    if (missingKeys.length > 0) {
+    // Validate environment configuration (from utils/environmentConfig.ts)
+    const verification = verifyConfiguration();
+    if (!verification.valid) {
       console.error('❌ ENVIRONMENT CONFIGURATION ERROR:');
-      missingKeys.forEach(key => console.error(`  • ${key}`));
+      verification.errors.forEach(error => console.error(`  • ${error}`));
       console.error('❌ App cannot start without required configuration');
-      setEnvErrors(missingKeys);
+      setEnvErrors(verification.errors);
     } else {
       console.log('✅ Environment configuration validated successfully');
     }
@@ -213,7 +213,7 @@ export default function RootLayout() {
     setEnvChecked(true);
     
     // Log full environment config
-    logEnvironmentConfig();
+    logConfiguration();
     
     // Run parity verification
     runParityVerification().then(report => {
@@ -236,8 +236,8 @@ export default function RootLayout() {
       <ConfigurationError 
         missingKeys={envErrors} 
         onRetry={() => {
-          const missingKeys = validateEnv();
-          setEnvErrors(missingKeys);
+          const verification = verifyConfiguration();
+          setEnvErrors(verification.errors);
         }} 
       />
     );

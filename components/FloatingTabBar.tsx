@@ -172,8 +172,8 @@ export default function FloatingTabBar({
               const iconColor = isActive ? colors.textPrimary : colors.textSecondary;
 
               return (
-                <React.Fragment key={`tab-${tab.name}-${index}`}>
                 <TouchableOpacity
+                  key={`tab-${tab.name}-${index}`}
                   style={styles.tab}
                   onPress={() => handleTabPress(tab.route)}
                   activeOpacity={0.7}
@@ -196,7 +196,6 @@ export default function FloatingTabBar({
                     </Text>
                   </View>
                 </TouchableOpacity>
-                </React.Fragment>
               );
             })}
           </View>
