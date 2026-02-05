@@ -1,5 +1,6 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,27 +8,15 @@ const corsHeaders = {
 };
 
 interface IdentifyFromImageRequest {
-  imageUrl?: string;
-  imageBase64?: string;
-}
-
-interface SuggestedProduct {
-  title: string;
-  imageUrl: string | null;
-  likelyUrl: string | null;
+  imageUrl: string; // Signed URL from Supabase Storage
 }
 
 interface IdentifyFromImageResponse {
-  bestGuessTitle: string | null;
-  bestGuessCategory: string | null;
-  keywords: string[];
-  confidence: number;
-  suggestedProducts: SuggestedProduct[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
+  itemName: string | null;
+  brand: string | null;
+  confidence: number; // 0.0 - 1.0
+  extractedText: string;
+  suggestedQueries: string[];
   error?: string;
 }
 
@@ -41,7 +30,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Validate input JSON
+    console.log(`[${requestId}] identify-from-image: Request received`);
+
+    // Validate JWT and get user ID
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error(`[${requestId}] Missing Authorization header`);
+      return new Response(
+        JSON.stringify({ error: 'Missing Authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Validate JWT
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error(`[${requestId}] Invalid JWT:`, authError?.message);
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`[${requestId}] User authenticated: ${user.id}`);
+
+    // Parse request body
     let body: IdentifyFromImageRequest;
     try {
       body = await req.json();
@@ -52,262 +71,215 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { imageUrl, imageBase64 } = body;
+    const { imageUrl } = body;
 
-    if (!imageUrl && !imageBase64) {
+    if (!imageUrl) {
       return new Response(
-        JSON.stringify({ error: 'Either imageUrl or imageBase64 is required' }),
+        JSON.stringify({ error: 'imageUrl is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[${requestId}] Identifying product from image`);
+    console.log(`[${requestId}] Fetching image from signed URL`);
 
-    // Get OpenAI API key from environment
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openaiApiKey) {
-      console.error(`[${requestId}] OPENAI_API_KEY not configured`);
-      const durationMs = Date.now() - startTime;
+    // Fetch image bytes from signed URL
+    let imageBytes: Uint8Array;
+    try {
+      const imageResponse = await fetch(imageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+      }
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      imageBytes = new Uint8Array(arrayBuffer);
+      console.log(`[${requestId}] Image fetched: ${imageBytes.length} bytes`);
+    } catch (error: any) {
+      console.error(`[${requestId}] Error fetching image:`, error.message);
       return new Response(
         JSON.stringify({
-          bestGuessTitle: null,
-          bestGuessCategory: null,
-          keywords: [],
+          itemName: null,
+          brand: null,
           confidence: 0,
-          suggestedProducts: [],
-          meta: { requestId, durationMs, partial: true },
-          error: 'OpenAI API key not configured. Please contact support to enable image identification.',
+          extractedText: '',
+          suggestedQueries: [],
+          error: 'Failed to fetch image from URL. Please ensure the URL is valid and accessible.',
         } as IdentifyFromImageResponse),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Prepare image content for OpenAI Vision API
-    // CRITICAL: Use "input_image" type for GPT-4o multimodal support (per OpenAI docs)
-    let imageContent: any;
-    if (imageUrl) {
-      imageContent = {
-        type: 'input_image',
-        image_url: { url: imageUrl },
-      };
-    } else if (imageBase64) {
-      // Ensure base64 has proper data URI format
-      const base64Data = imageBase64.startsWith('data:') 
-        ? imageBase64 
-        : `data:image/jpeg;base64,${imageBase64}`;
-      imageContent = {
-        type: 'input_image',
-        image_url: { url: base64Data },
-      };
+    // Get OpenAI API key
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    if (!openaiApiKey) {
+      console.error(`[${requestId}] OPENAI_API_KEY not configured`);
+      return new Response(
+        JSON.stringify({
+          itemName: null,
+          brand: null,
+          confidence: 0,
+          extractedText: '',
+          suggestedQueries: [],
+          error: 'OpenAI API key not configured. Please contact support.',
+        } as IdentifyFromImageResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Enhanced system prompt for better OCR and product identification
-    const systemPrompt = `You are an expert product identification assistant with OCR capabilities. Analyze the image and identify the product.
+    // Convert image bytes to base64 data URL
+    const base64Image = btoa(String.fromCharCode(...imageBytes));
+    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
 
-Your task:
-1. Extract ALL visible text from the image (product names, brand names, model numbers, labels)
-2. Identify logos and brand marks
-3. Determine the product category
-4. Generate relevant search keywords
-5. Suggest similar products
+    console.log(`[${requestId}] Calling OpenAI Vision API (gpt-4o-mini)`);
 
-Return ONLY a valid JSON object with this exact structure:
-{
-  "bestGuessTitle": "Product Name",
-  "bestGuessCategory": "Category",
-  "keywords": ["keyword1", "keyword2", "keyword3"],
-  "confidence": 0.85,
-  "suggestedProducts": [
-    {
-      "title": "Similar Product Name",
-      "imageUrl": null,
-      "likelyUrl": null
-    }
-  ]
-}
+    // Call OpenAI Vision API
+    const visionResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini', // Cost-effective vision model
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: `Analyze this product image. Extract the following information:
+1. Item Name: The primary name of the product.
+2. Brand: The brand name, if clearly visible.
+3. Extracted Text: ALL visible text on the packaging, labels, or product itself.
+4. Confidence: A score from 0.0 to 1.0 indicating certainty of identification.
+5. Suggested Queries: A list of 3-5 alternative search terms for this product.
 
-Rules:
-- bestGuessTitle: Your best guess for the product name based on visible text and visual analysis (string or null)
-- bestGuessCategory: Product category like "Electronics", "Clothing", "Home & Garden", "Food & Beverage" (string or null)
-- keywords: Array of 3-7 relevant search keywords extracted from text and visual analysis (array of strings)
-- confidence: Your confidence level from 0 to 1 (number between 0 and 1)
-  - 0.8-1.0: Clear text visible, brand/product name identified
-  - 0.5-0.8: Some text visible, product type clear
-  - 0.3-0.5: Limited text, product category identifiable
-  - 0.0-0.3: No clear text, generic product
-- suggestedProducts: 2-5 similar or matching products (array)
-- If you cannot identify the product clearly, return low confidence (< 0.5) and generic keywords
-- Return valid JSON object only, no additional text`;
+Prioritize accuracy for item name and brand. For Extracted Text, be exhaustive.
+If no clear item name or brand is found, return null for those fields.
+If no text is visible, return an empty string for Extracted Text.
+Confidence should be high (0.8-1.0) if item name and brand are clear,
+moderate (0.4-0.7) if some info is present but ambiguous,
+and low (0.0-0.3) if nothing useful is identified.
 
-    // Use OpenAI Vision to identify product with timeout
-    let identificationData: any = {};
-    let identificationError: string | null = null;
-    try {
-      console.log(`[${requestId}] Calling OpenAI Vision API (gpt-4o-mini for cost efficiency)...`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout (increased for Vision API)
-
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini', // Cost-effective vision-capable model
-          response_format: { type: 'json_object' },
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt,
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Identify this product. Extract ALL visible text (brand names, product names, model numbers, labels). Look for logos and brand marks. Determine the product category and suggest similar products where it can be purchased.',
+Return the response as a JSON object with keys:
+itemName: string | null
+brand: string | null
+confidence: number (0.0-1.0)
+extractedText: string
+suggestedQueries: string[]`,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl,
+                  detail: 'high', // High detail for better OCR
                 },
-                imageContent,
-              ],
-            },
-          ],
-          temperature: 0.2, // Lower temperature for more consistent, factual results
-          max_tokens: 1500, // Increased for detailed responses
-        }),
-        signal: controller.signal,
-      });
+              },
+            ],
+          },
+        ],
+        max_tokens: 1000,
+        temperature: 0.2, // Low temperature for consistent results
+      }),
+    });
 
-      clearTimeout(timeoutId);
+    if (!visionResponse.ok) {
+      const errorText = await visionResponse.text();
+      console.error(`[${requestId}] OpenAI API error (${visionResponse.status}):`, errorText);
 
-      if (!openaiResponse.ok) {
-        const errorText = await openaiResponse.text();
-        console.error(`[${requestId}] OpenAI API error (${openaiResponse.status}):`, errorText);
-        
-        // Provide specific error messages based on status code
-        if (openaiResponse.status === 401) {
-          throw new Error('OpenAI API authentication failed. The API key is invalid or expired. Please contact support.');
-        } else if (openaiResponse.status === 429) {
-          throw new Error('OpenAI API rate limit exceeded. Please try again in a moment.');
-        } else if (openaiResponse.status === 400) {
-          // Parse error details for better user feedback
-          try {
-            const errorData = JSON.parse(errorText);
-            if (errorData.error?.message?.includes('image')) {
-              throw new Error('Invalid image format or size. Please try a different image (max 20MB, JPG/PNG).');
-            }
-          } catch {
-            // Fallback to generic error
-          }
-          throw new Error('Invalid image format. Please try a different image.');
-        } else if (openaiResponse.status === 500 || openaiResponse.status === 503) {
-          throw new Error('OpenAI service is temporarily unavailable. Please try again in a moment.');
-        } else {
-          throw new Error(`OpenAI API request failed (${openaiResponse.status}). Please try again.`);
-        }
+      let errorMessage = 'Failed to analyze image. Please try again.';
+      if (visionResponse.status === 401) {
+        errorMessage = 'OpenAI API authentication failed. Please contact support.';
+      } else if (visionResponse.status === 429) {
+        errorMessage = 'Rate limit exceeded. Please try again in a moment.';
+      } else if (visionResponse.status === 400) {
+        errorMessage = 'Invalid image format. Please try a different image.';
       }
 
-      const openaiData = await openaiResponse.json();
-      const content = openaiData.choices[0]?.message?.content || '{}';
-      console.log(`[${requestId}] OpenAI Vision response received`);
-      console.log(`[${requestId}] Raw response:`, content.substring(0, 300));
-
-      // Robust JSON parsing with fallback
-      try {
-        identificationData = JSON.parse(content);
-        console.log(`[${requestId}] Parsed identification data:`, {
-          title: identificationData.bestGuessTitle,
-          category: identificationData.bestGuessCategory,
-          confidence: identificationData.confidence,
-          keywordsCount: identificationData.keywords?.length || 0,
-          suggestedProductsCount: identificationData.suggestedProducts?.length || 0,
-        });
-      } catch (e) {
-        console.error(`[${requestId}] Failed to parse OpenAI response:`, e);
-        console.error(`[${requestId}] Raw content:`, content);
-        identificationError = 'Failed to parse identification results. The AI response was malformed.';
-      }
-    } catch (error: any) {
-      console.error(`[${requestId}] OpenAI identification error:`, error.message);
-      identificationError = error.name === 'AbortError' 
-        ? 'Request timeout. Please try again with a smaller image (max 5MB recommended).' 
-        : error.message || 'Failed to identify product. Please try again.';
+      return new Response(
+        JSON.stringify({
+          itemName: null,
+          brand: null,
+          confidence: 0,
+          extractedText: '',
+          suggestedQueries: [],
+          error: errorMessage,
+        } as IdentifyFromImageResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Validate and sanitize suggested products
-    const suggestedProducts = (identificationData.suggestedProducts || [])
-      .filter((product: any) => product && product.title && typeof product.title === 'string')
-      .slice(0, 5) // Limit to 5 suggestions
-      .map((product: any) => ({
-        title: product.title,
-        imageUrl: product.imageUrl || null,
-        likelyUrl: product.likelyUrl || null,
-      }));
+    const visionData = await visionResponse.json();
+    const content = visionData.choices[0]?.message?.content || '{}';
 
-    // Validate and sanitize keywords
-    const keywords = Array.isArray(identificationData.keywords) 
-      ? identificationData.keywords
-          .filter((k: any) => typeof k === 'string' && k.trim().length > 0)
-          .map((k: string) => k.trim())
-          .slice(0, 10)
-      : [];
+    console.log(`[${requestId}] OpenAI response received`);
 
-    // Validate confidence score (must be between 0 and 1)
-    let confidence = typeof identificationData.confidence === 'number' 
-      ? Math.max(0, Math.min(1, identificationData.confidence))
+    // Parse OpenAI response
+    let parsedData: any = {};
+    try {
+      parsedData = JSON.parse(content);
+    } catch (e) {
+      console.error(`[${requestId}] Failed to parse OpenAI response:`, e);
+      return new Response(
+        JSON.stringify({
+          itemName: null,
+          brand: null,
+          confidence: 0,
+          extractedText: '',
+          suggestedQueries: [],
+          error: 'Failed to parse AI response. Please try again.',
+        } as IdentifyFromImageResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate and sanitize response
+    const itemName = parsedData.itemName && typeof parsedData.itemName === 'string'
+      ? parsedData.itemName.trim()
+      : null;
+
+    const brand = parsedData.brand && typeof parsedData.brand === 'string'
+      ? parsedData.brand.trim()
+      : null;
+
+    const confidence = typeof parsedData.confidence === 'number'
+      ? Math.max(0, Math.min(1, parsedData.confidence))
       : 0;
 
-    // If we have an error but got some data, reduce confidence
-    if (identificationError && confidence > 0.3) {
-      confidence = Math.min(confidence, 0.3);
-    }
+    const extractedText = parsedData.extractedText && typeof parsedData.extractedText === 'string'
+      ? parsedData.extractedText.trim()
+      : '';
 
-    // Validate title and category
-    const bestGuessTitle = identificationData.bestGuessTitle && typeof identificationData.bestGuessTitle === 'string'
-      ? identificationData.bestGuessTitle.trim()
-      : null;
-    
-    const bestGuessCategory = identificationData.bestGuessCategory && typeof identificationData.bestGuessCategory === 'string'
-      ? identificationData.bestGuessCategory.trim()
-      : null;
+    const suggestedQueries = Array.isArray(parsedData.suggestedQueries)
+      ? parsedData.suggestedQueries
+          .filter((q: any) => typeof q === 'string' && q.trim().length > 0)
+          .map((q: string) => q.trim())
+          .slice(0, 5)
+      : [];
 
     const durationMs = Date.now() - startTime;
-    const partial = !!identificationError;
 
-    console.log(`[${requestId}] Identification complete in ${durationMs}ms (partial: ${partial})`);
-    console.log(`[${requestId}] Final result:`, {
-      title: bestGuessTitle,
-      category: bestGuessCategory,
-      confidence,
-      keywordsCount: keywords.length,
-      suggestedProductsCount: suggestedProducts.length,
-      partial,
-    });
+    console.log(`[${requestId}] Identification complete in ${durationMs}ms`);
+    console.log(`[${requestId}] Result: itemName="${itemName}", brand="${brand}", confidence=${confidence}`);
 
     return new Response(
       JSON.stringify({
-        bestGuessTitle,
-        bestGuessCategory,
-        keywords,
+        itemName,
+        brand,
         confidence,
-        suggestedProducts,
-        meta: { requestId, durationMs, partial },
-        ...(identificationError && { error: identificationError }),
+        extractedText,
+        suggestedQueries,
       } as IdentifyFromImageResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
     console.error(`[${requestId}] Unexpected error:`, error);
-    const durationMs = Date.now() - startTime;
     return new Response(
       JSON.stringify({
-        bestGuessTitle: null,
-        bestGuessCategory: null,
-        keywords: [],
+        itemName: null,
+        brand: null,
         confidence: 0,
-        suggestedProducts: [],
-        meta: { requestId, durationMs, partial: true },
+        extractedText: '',
+        suggestedQueries: [],
         error: error.message || 'Internal server error. Please try again.',
       } as IdentifyFromImageResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

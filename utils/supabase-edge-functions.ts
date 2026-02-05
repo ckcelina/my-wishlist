@@ -110,27 +110,15 @@ export interface ImportWishlistResponse {
 }
 
 export interface IdentifyFromImageRequest {
-  imageUrl?: string;
-  imageBase64?: string;
-}
-
-export interface SuggestedProduct {
-  title: string;
-  imageUrl: string | null;
-  likelyUrl: string | null;
+  imageUrl: string; // Signed URL from Supabase Storage
 }
 
 export interface IdentifyFromImageResponse {
-  bestGuessTitle: string | null;
-  bestGuessCategory: string | null;
-  keywords: string[];
-  confidence: number;
-  suggestedProducts: SuggestedProduct[];
-  meta: {
-    requestId: string;
-    durationMs: number;
-    partial: boolean;
-  };
+  itemName: string | null;
+  brand: string | null;
+  confidence: number; // 0.0 - 1.0
+  extractedText: string;
+  suggestedQueries: string[];
   error?: string;
 }
 
@@ -353,6 +341,55 @@ async function callEdgeFunction<TRequest, TResponse>(
 }
 
 /**
+ * Upload image to Supabase Storage and generate a signed URL
+ * Returns the signed URL with 5-minute expiry
+ */
+async function uploadImageAndGetSignedUrl(imageBase64: string, userId: string): Promise<string> {
+  console.log('[uploadImageAndGetSignedUrl] Starting upload for user:', userId);
+  
+  // Convert base64 to Uint8Array
+  const binaryString = atob(imageBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Generate unique filename
+  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
+  const filePath = `${userId}/${fileName}`;
+
+  console.log('[uploadImageAndGetSignedUrl] Uploading to path:', filePath);
+
+  // Upload to Supabase Storage (private bucket)
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from('product-images')
+    .upload(filePath, bytes, {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+
+  if (uploadError) {
+    console.error('[uploadImageAndGetSignedUrl] Upload error:', uploadError);
+    throw new Error(`Failed to upload image: ${uploadError.message}`);
+  }
+
+  console.log('[uploadImageAndGetSignedUrl] Upload successful:', uploadData.path);
+
+  // Generate signed URL with 5-minute expiry
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from('product-images')
+    .createSignedUrl(uploadData.path, 300); // 300 seconds = 5 minutes
+
+  if (signedUrlError) {
+    console.error('[uploadImageAndGetSignedUrl] Signed URL error:', signedUrlError);
+    throw new Error(`Failed to generate signed URL: ${signedUrlError.message}`);
+  }
+
+  console.log('[uploadImageAndGetSignedUrl] Signed URL generated successfully');
+  return signedUrlData.signedUrl;
+}
+
+/**
  * Search for items across multiple stores using AI
  * Returns canonical product URL, offers, and images
  * Works identically in all environments
@@ -545,7 +582,14 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
 
 /**
  * Identify a product from an image
- * Returns best-effort results with confidence score
+ * 
+ * NEW FLOW:
+ * 1. Upload image to Supabase Storage (private bucket)
+ * 2. Generate signed URL (5-minute expiry)
+ * 3. Send signed URL to Edge Function
+ * 4. Edge Function validates JWT, fetches image, calls OpenAI Vision
+ * 5. Returns structured JSON with item name, brand, extracted text, confidence
+ * 
  * Works identically in all environments
  */
 export async function identifyFromImage(
@@ -553,16 +597,39 @@ export async function identifyFromImage(
   imageBase64?: string
 ): Promise<IdentifyFromImageResponse> {
   try {
+    console.log('[identifyFromImage] Starting image identification');
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('[identifyFromImage] User not authenticated');
+      throw new Error('You must be logged in to identify images');
+    }
+
+    let signedUrl: string;
+
+    // If base64 is provided, upload to Supabase Storage and get signed URL
+    if (imageBase64) {
+      console.log('[identifyFromImage] Uploading image to Supabase Storage');
+      signedUrl = await uploadImageAndGetSignedUrl(imageBase64, user.id);
+    } else if (imageUrl) {
+      // If URL is provided, use it directly (assuming it's already a signed URL)
+      signedUrl = imageUrl;
+    } else {
+      throw new Error('Either imageUrl or imageBase64 must be provided');
+    }
+
+    console.log('[identifyFromImage] Calling Edge Function with signed URL');
+
+    // Call Edge Function with signed URL
     const response = await callEdgeFunction<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
-      { imageUrl, imageBase64 },
+      { imageUrl: signedUrl },
       { showErrorAlert: true }
     );
 
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[identifyFromImage] Partial result returned:', response.error);
-    }
+    console.log('[identifyFromImage] Identification complete');
+    console.log('[identifyFromImage] Item:', response.itemName, 'Brand:', response.brand, 'Confidence:', response.confidence);
 
     return response;
   } catch (error: any) {
@@ -575,16 +642,11 @@ export async function identifyFromImage(
     
     // Return safe fallback
     return {
-      bestGuessTitle: null,
-      bestGuessCategory: null,
-      keywords: [],
+      itemName: null,
+      brand: null,
       confidence: 0,
-      suggestedProducts: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-      },
+      extractedText: '',
+      suggestedQueries: [],
       error: error.message || 'Failed to identify product',
     };
   }
@@ -640,372 +702,6 @@ export async function searchByName(
     return {
       results: [],
       error: error.message || 'Failed to search for products',
-    };
-  }
-}
-
-/**
- * NEW: Identify product from image using multi-step AI approach
- * Performs OCR, brand detection, query normalization, product search, and visual fallback
- * Returns product matches with confidence scores
- * Works identically in all environments
- */
-export interface IdentifyProductFromImageRequest {
-  imageBase64?: string;
-  imageUrl?: string;
-  countryCode: string;
-  currencyCode: string;
-  languageCode: string;
-}
-
-export interface ProductMatchResult {
-  id: string;
-  name: string;
-  brand: string | null;
-  category: string | null;
-  imageUrl: string;
-  confidence: number;
-  signals?: {
-    logo?: string;
-    text?: string;
-    visual?: string;
-  };
-}
-
-export interface IdentifyProductFromImageResponse {
-  matches: ProductMatchResult[];
-  query: {
-    detectedText: string;
-    detectedBrand: string;
-    guessedCategory: string;
-  };
-  error?: string;
-}
-
-export async function identifyProductFromImage(
-  imageBase64: string | undefined,
-  imageUrl: string | undefined,
-  countryCode: string,
-  currencyCode: string,
-  languageCode: string
-): Promise<IdentifyProductFromImageResponse> {
-  try {
-    console.log('[identifyProductFromImage] Starting multi-step product identification...');
-    console.log('[identifyProductFromImage] Country:', countryCode, 'Currency:', currencyCode);
-    
-    const response = await callEdgeFunction<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
-      'identify-product-from-image',
-      {
-        imageBase64,
-        imageUrl,
-        countryCode,
-        currencyCode,
-        languageCode,
-      },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for errors
-    if (response.error) {
-      console.warn('[identifyProductFromImage] Error returned:', response.error);
-    }
-
-    console.log('[identifyProductFromImage] Found', response.matches.length, 'matches');
-    return response;
-  } catch (error: any) {
-    console.error('[identifyProductFromImage] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[identifyProductFromImage] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback - must never crash
-    return {
-      matches: [],
-      query: {
-        detectedText: '',
-        detectedBrand: '',
-        guessedCategory: '',
-      },
-      error: error.message || 'Failed to identify product from image',
-    };
-  }
-}
-
-/**
- * NEW: Get product prices from multiple stores with caching
- * Fetches offers for a specific product across stores
- * Returns normalized prices in requested currency
- * Caches results for 24 hours
- * Works identically in all environments
- */
-export interface ProductPricesRequest {
-  productId: string;
-  countryCode: string;
-  currencyCode: string;
-}
-
-export interface ProductOffer {
-  storeName: string;
-  storeUrl: string;
-  price: number;
-  currencyCode: string;
-  availability: 'in_stock' | 'out_of_stock' | 'unknown';
-  updatedAt: string;
-}
-
-export interface ProductInfo {
-  id: string;
-  name: string;
-  brand: string;
-  imageUrl: string;
-}
-
-export interface ProductSummary {
-  minPrice: number;
-  maxPrice: number;
-  medianPrice: number;
-  bestOffer: ProductOffer | null;
-}
-
-export interface ProductPricesResponse {
-  product: ProductInfo;
-  offers: ProductOffer[];
-  summary: ProductSummary;
-}
-
-export async function getProductPrices(
-  productId: string,
-  countryCode: string,
-  currencyCode: string
-): Promise<ProductPricesResponse> {
-  try {
-    console.log('[getProductPrices] Fetching prices for product:', productId);
-    console.log('[getProductPrices] Country:', countryCode, 'Currency:', currencyCode);
-    
-    const response = await callEdgeFunction<ProductPricesRequest, ProductPricesResponse>(
-      'product-prices',
-      {
-        productId,
-        countryCode,
-        currencyCode,
-      },
-      { showErrorAlert: true }
-    );
-
-    console.log('[getProductPrices] Found', response.offers.length, 'offers');
-    console.log('[getProductPrices] Price range:', response.summary.minPrice, '-', response.summary.maxPrice, currencyCode);
-    
-    return response;
-  } catch (error: any) {
-    console.error('[getProductPrices] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[getProductPrices] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback - must never crash
-    return {
-      product: {
-        id: productId,
-        name: 'Unknown Product',
-        brand: '',
-        imageUrl: '',
-      },
-      offers: [],
-      summary: {
-        minPrice: 0,
-        maxPrice: 0,
-        medianPrice: 0,
-        bestOffer: null,
-      },
-    };
-  }
-}
-
-/**
- * NEW: Identify product from image using OpenAI Vision
- * Analyzes image and extracts product information
- * Caches results by image hash
- * Requires valid JWT
- */
-export interface IdentifyFromImageNewRequest {
-  imageBase64?: string;
-  imageUrl?: string;
-  mimeType?: string;
-  country?: string;
-  currency?: string;
-}
-
-export interface IdentifyFromImageNewResponse {
-  item: {
-    item_name: string;
-    brand?: string;
-    category?: string;
-    keywords?: string[];
-  };
-  confidence: number;
-  debug?: {
-    fromCache: boolean;
-    imageHash?: string;
-  };
-}
-
-export async function identifyFromImageNew(
-  imageBase64?: string,
-  imageUrl?: string,
-  mimeType?: string,
-  country?: string,
-  currency?: string
-): Promise<IdentifyFromImageNewResponse> {
-  try {
-    console.log('[identifyFromImageNew] Analyzing image');
-    console.log('[identifyFromImageNew] Country:', country, 'Currency:', currency);
-    
-    const response = await callEdgeFunction<IdentifyFromImageNewRequest, IdentifyFromImageNewResponse>(
-      'identify-from-image',
-      {
-        imageBase64,
-        imageUrl,
-        mimeType,
-        country,
-        currency,
-      },
-      { showErrorAlert: true }
-    );
-
-    console.log('[identifyFromImageNew] Identified:', response.item.item_name);
-    console.log('[identifyFromImageNew] Confidence:', response.confidence);
-    
-    return response;
-  } catch (error: any) {
-    console.error('[identifyFromImageNew] Failed:', error);
-    
-    // Return safe fallback
-    return {
-      item: {
-        item_name: 'Unknown Product',
-        brand: undefined,
-        category: undefined,
-        keywords: [],
-      },
-      confidence: 0,
-      debug: { fromCache: false },
-    };
-  }
-}
-
-/**
- * NEW: Search for items by text query
- * Uses OpenAI to structure search and returns store suggestions
- * Caches results
- * Requires valid JWT
- */
-export interface SearchItemNewRequest {
-  query: string;
-  country?: string;
-  currency?: string;
-}
-
-export interface SearchItemNewResponse {
-  results: {
-    title: string;
-    price: number | null;
-    currency: string;
-    store: string;
-    url: string;
-    imageUrl?: string;
-  }[];
-}
-
-export async function searchItemNew(
-  query: string,
-  country?: string,
-  currency?: string
-): Promise<SearchItemNewResponse> {
-  try {
-    console.log('[searchItemNew] Searching for:', query);
-    console.log('[searchItemNew] Country:', country, 'Currency:', currency);
-    
-    const response = await callEdgeFunction<SearchItemNewRequest, SearchItemNewResponse>(
-      'search-item',
-      {
-        query,
-        country,
-        currency,
-      },
-      { showErrorAlert: true }
-    );
-
-    console.log('[searchItemNew] Found', response.results.length, 'results');
-    
-    return response;
-  } catch (error: any) {
-    console.error('[searchItemNew] Failed:', error);
-    
-    // Return safe fallback
-    return {
-      results: [],
-    };
-  }
-}
-
-/**
- * NEW: Get prices for a specific item
- * Uses OpenAI to generate realistic price estimates
- * Returns store URLs for comparison
- * Requires valid JWT
- */
-export interface GetPricesNewRequest {
-  itemName: string;
-  brand?: string;
-  country?: string;
-  currency?: string;
-}
-
-export interface GetPricesNewResponse {
-  results: {
-    title: string;
-    price: number;
-    currency: string;
-    store: string;
-    url: string;
-    imageUrl?: string;
-  }[];
-}
-
-export async function getPricesNew(
-  itemName: string,
-  brand?: string,
-  country?: string,
-  currency?: string
-): Promise<GetPricesNewResponse> {
-  try {
-    console.log('[getPricesNew] Getting prices for:', itemName);
-    console.log('[getPricesNew] Brand:', brand, 'Country:', country, 'Currency:', currency);
-    
-    const response = await callEdgeFunction<GetPricesNewRequest, GetPricesNewResponse>(
-      'get-prices',
-      {
-        itemName,
-        brand,
-        country,
-        currency,
-      },
-      { showErrorAlert: true }
-    );
-
-    console.log('[getPricesNew] Found', response.results.length, 'price results');
-    
-    return response;
-  } catch (error: any) {
-    console.error('[getPricesNew] Failed:', error);
-    
-    // Return safe fallback
-    return {
-      results: [],
     };
   }
 }

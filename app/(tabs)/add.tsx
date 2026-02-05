@@ -463,7 +463,7 @@ export default function AddItemScreen() {
                 onPress: () => {
                   console.log('[AddItem] User chose to add manually after low confidence');
                   const fallbackData = {
-                    itemName: result.bestGuessTitle || '',
+                    itemName: result.itemName || '',
                     imageUrl: cameraImage,
                     extractedImages: [cameraImage],
                     storeName: '',
@@ -491,7 +491,7 @@ export default function AddItemScreen() {
 
       // Navigate to import-preview with identified data (even if partial)
       const productData = {
-        itemName: result.bestGuessTitle || '',
+        itemName: result.itemName || '',
         imageUrl: cameraImage,
         extractedImages: [cameraImage],
         storeName: '',
@@ -696,7 +696,7 @@ export default function AddItemScreen() {
                 onPress: () => {
                   console.log('[AddItem] User chose to add manually after low confidence');
                   const fallbackData = {
-                    itemName: result.bestGuessTitle || '',
+                    itemName: result.itemName || '',
                     imageUrl: uploadImage,
                     extractedImages: [uploadImage],
                     storeName: '',
@@ -724,7 +724,7 @@ export default function AddItemScreen() {
 
       // Navigate to import-preview with identified data (even if partial)
       const productData = {
-        itemName: result.bestGuessTitle || '',
+        itemName: result.itemName || '',
         imageUrl: uploadImage,
         extractedImages: [uploadImage],
         storeName: '',
