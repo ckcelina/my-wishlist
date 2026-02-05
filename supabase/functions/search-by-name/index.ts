@@ -27,10 +27,7 @@ interface SearchResult {
 
 interface SearchByNameResponse {
   results: SearchResult[];
-  meta: {
-    requestId: string;
-  };
-  error?: string;
+  error: string | null;
 }
 
 serve(async (req) => {
@@ -42,41 +39,44 @@ serve(async (req) => {
   }
 
   try {
+    console.log(`[search-by-name] Request ${requestId}: Received request`);
+
     // Validate input JSON
     let body: SearchByNameRequest;
     try {
       body = await req.json();
-    } catch {
+    } catch (e) {
+      console.error(`[search-by-name] Request ${requestId}: Invalid JSON payload: ${e.message}`);
       return new Response(
-        JSON.stringify({ error: 'Invalid JSON payload' }),
+        JSON.stringify({ results: [], error: 'Invalid JSON payload' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const { query, countryCode, city, currency, limit = 10 } = body;
 
+    // 2) Add logging for request input
+    console.log(`[search-by-name] Request ${requestId}: Input query: "${query}", countryCode: "${countryCode || 'N/A'}", city: "${city || 'N/A'}", currency: "${currency || 'N/A'}", limit: ${limit}`);
+
     if (!query || typeof query !== 'string' || query.trim() === '') {
+      console.warn(`[search-by-name] Request ${requestId}: Missing or empty query`);
       return new Response(
-        JSON.stringify({ error: 'Query is required and must be a non-empty string' }),
+        JSON.stringify({ results: [], error: 'Query is required and must be a non-empty string' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[${requestId}] Searching for products: "${query}"`);
-    console.log(`[${requestId}] User location: ${countryCode || 'N/A'}, ${city || 'N/A'}`);
-    console.log(`[${requestId}] Currency: ${currency || 'N/A'}, Limit: ${limit}`);
-
-    // Get OpenAI API key from environment
+    // 1) Validate environment variables exist: OPENAI_API_KEY must be present
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      console.error(`[${requestId}] OPENAI_API_KEY not configured`);
+      console.error(`[search-by-name] Request ${requestId}: OPENAI_API_KEY is not configured`);
+      // 4) On missing key, return 500 with a clear message
       return new Response(
-        JSON.stringify({
-          results: [],
-          meta: { requestId },
-          error: 'Server configuration error',
-        } as SearchByNameResponse),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ 
+          results: [], 
+          error: 'Server configuration error: OpenAI API key is missing. Please contact support.' 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -87,6 +87,9 @@ serve(async (req) => {
 
     if (supabaseUrl && supabaseServiceKey) {
       supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+      console.log(`[search-by-name] Request ${requestId}: Supabase client initialized`);
+    } else {
+      console.warn(`[search-by-name] Request ${requestId}: Supabase credentials not available, location filtering disabled`);
     }
 
     // Use OpenAI to search for products with timeout
@@ -94,7 +97,7 @@ serve(async (req) => {
     let aiError: string | null = null;
     
     try {
-      console.log(`[${requestId}] Calling OpenAI API for product search`);
+      console.log(`[search-by-name] Request ${requestId}: Calling OpenAI API for product search`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
@@ -155,29 +158,33 @@ Rules:
 
       if (!openaiResponse.ok) {
         const errorText = await openaiResponse.text();
-        console.error(`[${requestId}] OpenAI API error:`, errorText);
-        throw new Error('OpenAI API request failed');
+        console.error(`[search-by-name] Request ${requestId}: OpenAI API error (${openaiResponse.status}): ${errorText}`);
+        throw new Error(`OpenAI API request failed with status ${openaiResponse.status}`);
       }
 
       const openaiData = await openaiResponse.json();
       const content = openaiData.choices[0]?.message?.content || '{"results":[]}';
-      console.log(`[${requestId}] OpenAI response received`);
+      console.log(`[search-by-name] Request ${requestId}: OpenAI response received, parsing results`);
 
       // Robust JSON parsing
       try {
         const parsed = JSON.parse(content);
         searchResults = parsed.results || [];
+        
+        // 2) Add logging for generated query terms (extracted from results)
+        const generatedTerms = searchResults.map(r => r.title).join(', ');
+        console.log(`[search-by-name] Request ${requestId}: Generated query terms/products: ${generatedTerms || 'none'}`);
       } catch (e) {
-        console.error(`[${requestId}] Failed to parse OpenAI response:`, e);
+        console.error(`[search-by-name] Request ${requestId}: Failed to parse OpenAI response: ${e.message}`);
         aiError = 'Failed to parse AI response';
       }
     } catch (error: any) {
-      console.error(`[${requestId}] OpenAI error:`, error.message);
+      console.error(`[search-by-name] Request ${requestId}: OpenAI error: ${error.message}`);
       aiError = error.name === 'AbortError' ? 'Search request timeout' : 'Failed to search for products';
       
       // Return partial results if timeout
       if (error.name === 'AbortError' && searchResults.length > 0) {
-        console.log(`[${requestId}] Returning partial results due to timeout`);
+        console.log(`[search-by-name] Request ${requestId}: Returning partial results due to timeout`);
       }
     }
 
@@ -189,13 +196,13 @@ Rules:
              typeof result.confidence === 'number';
     });
 
-    console.log(`[${requestId}] Found ${validResults.length} valid results before filtering`);
+    console.log(`[search-by-name] Request ${requestId}: Found ${validResults.length} valid results before filtering`);
 
     // Filter by location using Supabase tables if available
     let filteredResults = validResults;
     if (supabaseClient && countryCode) {
       try {
-        console.log(`[${requestId}] Filtering by location: ${countryCode}, ${city || 'N/A'}`);
+        console.log(`[search-by-name] Request ${requestId}: Filtering by location: ${countryCode}, ${city || 'N/A'}`);
         
         const locationFilteredResults: SearchResult[] = [];
         
@@ -209,7 +216,7 @@ Rules:
 
           if (storeError || !storeData) {
             // Store not in database, include as unverified
-            console.log(`[${requestId}] Store ${result.storeDomain} not in database, including as unverified`);
+            console.log(`[search-by-name] Request ${requestId}: Store ${result.storeDomain} not in database, including as unverified`);
             locationFilteredResults.push(result);
             continue;
           }
@@ -217,7 +224,7 @@ Rules:
           // Check if store ships to user's country
           const countriesSupported = storeData.countries_supported || [];
           if (!countriesSupported.includes(countryCode)) {
-            console.log(`[${requestId}] Store ${result.storeDomain} does not ship to ${countryCode}`);
+            console.log(`[search-by-name] Request ${requestId}: Store ${result.storeDomain} does not ship to ${countryCode}`);
             continue;
           }
 
@@ -230,7 +237,7 @@ Rules:
               .eq('country_code', countryCode);
 
             if (rulesError) {
-              console.error(`[${requestId}] Error fetching shipping rules:`, rulesError);
+              console.error(`[search-by-name] Request ${requestId}: Error fetching shipping rules: ${rulesError.message}`);
               locationFilteredResults.push(result);
               continue;
             }
@@ -240,21 +247,21 @@ Rules:
               
               // Check city blacklist
               if (rule.city_blacklist && rule.city_blacklist.includes(city)) {
-                console.log(`[${requestId}] City ${city} is blacklisted for ${result.storeDomain}`);
+                console.log(`[search-by-name] Request ${requestId}: City ${city} is blacklisted for ${result.storeDomain}`);
                 continue;
               }
 
               // Check city whitelist
               if (rule.city_whitelist && rule.city_whitelist.length > 0) {
                 if (!rule.city_whitelist.includes(city)) {
-                  console.log(`[${requestId}] City ${city} not in whitelist for ${result.storeDomain}`);
+                  console.log(`[search-by-name] Request ${requestId}: City ${city} not in whitelist for ${result.storeDomain}`);
                   continue;
                 }
               }
 
               // Check ships_to_city flag
               if (rule.ships_to_city === false) {
-                console.log(`[${requestId}] Store ${result.storeDomain} does not ship to city ${city}`);
+                console.log(`[search-by-name] Request ${requestId}: Store ${result.storeDomain} does not ship to city ${city}`);
                 continue;
               }
             }
@@ -265,9 +272,9 @@ Rules:
         }
 
         filteredResults = locationFilteredResults;
-        console.log(`[${requestId}] After location filtering: ${filteredResults.length} results`);
+        console.log(`[search-by-name] Request ${requestId}: After location filtering: ${filteredResults.length} results`);
       } catch (filterError: any) {
-        console.error(`[${requestId}] Error during location filtering:`, filterError);
+        console.error(`[search-by-name] Request ${requestId}: Error during location filtering: ${filterError.message}`);
         // Continue with unfiltered results on error
       }
     }
@@ -278,26 +285,27 @@ Rules:
     // Apply limit
     const limitedResults = filteredResults.slice(0, limit);
 
-    console.log(`[${requestId}] Returning ${limitedResults.length} results`);
+    // 3) Ensure the function returns: { results: [...], error: null }
+    // 2) Add logging for final results count
+    console.log(`[search-by-name] Request ${requestId}: Final results count: ${limitedResults.length}`);
 
     return new Response(
       JSON.stringify({
         results: limitedResults,
-        meta: { requestId },
-        ...(aiError && { error: aiError }),
+        error: aiError,
       } as SearchByNameResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
-    console.error(`[${requestId}] Unexpected error:`, error);
+    console.error(`[search-by-name] Request ${requestId}: Unexpected error: ${error.message}`);
+    // 3) Never silently return an empty array on configuration errors
     return new Response(
       JSON.stringify({
         results: [],
-        meta: { requestId },
-        error: error.message || 'Internal server error',
+        error: `Internal server error: ${error.message}`,
       } as SearchByNameResponse),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

@@ -152,12 +152,10 @@ export interface SearchResult {
   confidence: number;
 }
 
+// Updated to match the new Edge Function response format
 export interface SearchByNameResponse {
   results: SearchResult[];
-  meta: {
-    requestId: string;
-  };
-  error?: string;
+  error: string | null;
 }
 
 // Get Supabase configuration from appConfig with safe fallbacks
@@ -608,6 +606,9 @@ export async function searchByName(
   }
 ): Promise<SearchByNameResponse> {
   try {
+    console.log('[searchByName] Searching for:', query);
+    console.log('[searchByName] Options:', options);
+    
     const response = await callEdgeFunction<SearchByNameRequest, SearchByNameResponse>(
       'search-by-name',
       {
@@ -625,6 +626,7 @@ export async function searchByName(
       console.warn('[searchByName] Error returned:', response.error);
     }
 
+    console.log('[searchByName] Found', response.results.length, 'results');
     return response;
   } catch (error: any) {
     console.error('[searchByName] Failed:', error);
@@ -634,12 +636,9 @@ export async function searchByName(
       console.warn('[searchByName] Edge Function not deployed - returning safe fallback');
     }
     
-    // Return safe fallback
+    // Return safe fallback with error message
     return {
       results: [],
-      meta: {
-        requestId: 'error',
-      },
       error: error.message || 'Failed to search for products',
     };
   }
