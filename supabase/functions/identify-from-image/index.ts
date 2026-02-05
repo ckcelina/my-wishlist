@@ -1,5 +1,5 @@
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,7 +31,7 @@ interface IdentifyFromImageResponse {
   error?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   const startTime = Date.now();
   const requestId = crypto.randomUUID();
 
@@ -83,7 +83,7 @@ serve(async (req) => {
     }
 
     // Prepare image content for OpenAI Vision API
-    // CRITICAL: Use "input_image" type for GPT-4o multimodal support
+    // CRITICAL: Use "input_image" type for GPT-4o multimodal support (per OpenAI docs)
     let imageContent: any;
     if (imageUrl) {
       imageContent = {
@@ -101,27 +101,15 @@ serve(async (req) => {
       };
     }
 
-    // Use OpenAI Vision to identify product with timeout
-    let identificationData: any = {};
-    let identificationError: string | null = null;
-    try {
-      console.log(`[${requestId}] Calling OpenAI Vision API (gpt-4o)...`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout (increased for Vision API)
+    // Enhanced system prompt for better OCR and product identification
+    const systemPrompt = `You are an expert product identification assistant with OCR capabilities. Analyze the image and identify the product.
 
-      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o', // Vision-capable model
-          response_format: { type: 'json_object' },
-          messages: [
-            {
-              role: 'system',
-              content: `You are a product identification assistant. Analyze the image and identify the product.
+Your task:
+1. Extract ALL visible text from the image (product names, brand names, model numbers, labels)
+2. Identify logos and brand marks
+3. Determine the product category
+4. Generate relevant search keywords
+5. Suggest similar products
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -139,27 +127,53 @@ Return ONLY a valid JSON object with this exact structure:
 }
 
 Rules:
-- bestGuessTitle: Your best guess for the product name (string or null)
-- bestGuessCategory: Product category like "Electronics", "Clothing", "Home & Garden" (string or null)
-- keywords: Array of 3-5 relevant search keywords (array of strings)
+- bestGuessTitle: Your best guess for the product name based on visible text and visual analysis (string or null)
+- bestGuessCategory: Product category like "Electronics", "Clothing", "Home & Garden", "Food & Beverage" (string or null)
+- keywords: Array of 3-7 relevant search keywords extracted from text and visual analysis (array of strings)
 - confidence: Your confidence level from 0 to 1 (number between 0 and 1)
+  - 0.8-1.0: Clear text visible, brand/product name identified
+  - 0.5-0.8: Some text visible, product type clear
+  - 0.3-0.5: Limited text, product category identifiable
+  - 0.0-0.3: No clear text, generic product
 - suggestedProducts: 2-5 similar or matching products (array)
-- If you cannot identify the product clearly, return low confidence (< 0.5) and empty suggestions
-- Return valid JSON object only, no additional text`,
+- If you cannot identify the product clearly, return low confidence (< 0.5) and generic keywords
+- Return valid JSON object only, no additional text`;
+
+    // Use OpenAI Vision to identify product with timeout
+    let identificationData: any = {};
+    let identificationError: string | null = null;
+    try {
+      console.log(`[${requestId}] Calling OpenAI Vision API (gpt-4o-mini for cost efficiency)...`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout (increased for Vision API)
+
+      const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini', // Cost-effective vision-capable model
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt,
             },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: 'Identify this product. Look for brand names, product names, model numbers, or any text visible in the image. Suggest similar products where it can be purchased.',
+                  text: 'Identify this product. Extract ALL visible text (brand names, product names, model numbers, labels). Look for logos and brand marks. Determine the product category and suggest similar products where it can be purchased.',
                 },
                 imageContent,
               ],
             },
           ],
-          temperature: 0.3, // Lower temperature for more consistent results
-          max_tokens: 1000,
+          temperature: 0.2, // Lower temperature for more consistent, factual results
+          max_tokens: 1500, // Increased for detailed responses
         }),
         signal: controller.signal,
       });
@@ -172,22 +186,33 @@ Rules:
         
         // Provide specific error messages based on status code
         if (openaiResponse.status === 401) {
-          throw new Error('OpenAI API authentication failed. Please contact support.');
+          throw new Error('OpenAI API authentication failed. The API key is invalid or expired. Please contact support.');
         } else if (openaiResponse.status === 429) {
           throw new Error('OpenAI API rate limit exceeded. Please try again in a moment.');
         } else if (openaiResponse.status === 400) {
+          // Parse error details for better user feedback
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.error?.message?.includes('image')) {
+              throw new Error('Invalid image format or size. Please try a different image (max 20MB, JPG/PNG).');
+            }
+          } catch {
+            // Fallback to generic error
+          }
           throw new Error('Invalid image format. Please try a different image.');
+        } else if (openaiResponse.status === 500 || openaiResponse.status === 503) {
+          throw new Error('OpenAI service is temporarily unavailable. Please try again in a moment.');
         } else {
-          throw new Error('OpenAI API request failed. Please try again.');
+          throw new Error(`OpenAI API request failed (${openaiResponse.status}). Please try again.`);
         }
       }
 
       const openaiData = await openaiResponse.json();
       const content = openaiData.choices[0]?.message?.content || '{}';
       console.log(`[${requestId}] OpenAI Vision response received`);
-      console.log(`[${requestId}] Raw response:`, content.substring(0, 200));
+      console.log(`[${requestId}] Raw response:`, content.substring(0, 300));
 
-      // Robust JSON parsing
+      // Robust JSON parsing with fallback
       try {
         identificationData = JSON.parse(content);
         console.log(`[${requestId}] Parsed identification data:`, {
@@ -199,39 +224,70 @@ Rules:
         });
       } catch (e) {
         console.error(`[${requestId}] Failed to parse OpenAI response:`, e);
-        identificationError = 'Failed to parse identification results';
+        console.error(`[${requestId}] Raw content:`, content);
+        identificationError = 'Failed to parse identification results. The AI response was malformed.';
       }
     } catch (error: any) {
       console.error(`[${requestId}] OpenAI identification error:`, error.message);
       identificationError = error.name === 'AbortError' 
-        ? 'Request timeout. Please try again with a smaller image.' 
-        : error.message || 'Failed to identify product';
+        ? 'Request timeout. Please try again with a smaller image (max 5MB recommended).' 
+        : error.message || 'Failed to identify product. Please try again.';
     }
 
     // Validate and sanitize suggested products
     const suggestedProducts = (identificationData.suggestedProducts || [])
-      .filter((product: any) => product && product.title)
-      .slice(0, 5); // Limit to 5 suggestions
+      .filter((product: any) => product && product.title && typeof product.title === 'string')
+      .slice(0, 5) // Limit to 5 suggestions
+      .map((product: any) => ({
+        title: product.title,
+        imageUrl: product.imageUrl || null,
+        likelyUrl: product.likelyUrl || null,
+      }));
 
     // Validate and sanitize keywords
     const keywords = Array.isArray(identificationData.keywords) 
-      ? identificationData.keywords.filter((k: any) => typeof k === 'string').slice(0, 10)
+      ? identificationData.keywords
+          .filter((k: any) => typeof k === 'string' && k.trim().length > 0)
+          .map((k: string) => k.trim())
+          .slice(0, 10)
       : [];
 
-    // Validate confidence score
-    const confidence = typeof identificationData.confidence === 'number' 
+    // Validate confidence score (must be between 0 and 1)
+    let confidence = typeof identificationData.confidence === 'number' 
       ? Math.max(0, Math.min(1, identificationData.confidence))
       : 0;
+
+    // If we have an error but got some data, reduce confidence
+    if (identificationError && confidence > 0.3) {
+      confidence = Math.min(confidence, 0.3);
+    }
+
+    // Validate title and category
+    const bestGuessTitle = identificationData.bestGuessTitle && typeof identificationData.bestGuessTitle === 'string'
+      ? identificationData.bestGuessTitle.trim()
+      : null;
+    
+    const bestGuessCategory = identificationData.bestGuessCategory && typeof identificationData.bestGuessCategory === 'string'
+      ? identificationData.bestGuessCategory.trim()
+      : null;
 
     const durationMs = Date.now() - startTime;
     const partial = !!identificationError;
 
     console.log(`[${requestId}] Identification complete in ${durationMs}ms (partial: ${partial})`);
+    console.log(`[${requestId}] Final result:`, {
+      title: bestGuessTitle,
+      category: bestGuessCategory,
+      confidence,
+      keywordsCount: keywords.length,
+      suggestedProductsCount: suggestedProducts.length,
+      partial,
+    });
 
     return new Response(
       JSON.stringify({
-        bestGuessTitle: identificationData.bestGuessTitle || null,
-        bestGuessCategory: identificationData.bestGuessCategory || null,
+        bestGuessTitle,
+        bestGuessCategory,
         keywords,
         confidence,
         suggestedProducts,
@@ -252,7 +308,7 @@ Rules:
         confidence: 0,
         suggestedProducts: [],
         meta: { requestId, durationMs, partial: true },
-        error: error.message || 'Internal server error',
+        error: error.message || 'Internal server error. Please try again.',
       } as IdentifyFromImageResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
