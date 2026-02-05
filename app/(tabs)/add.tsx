@@ -409,6 +409,85 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
+      // Check for specific errors
+      if (result.error) {
+        console.warn('[AddItem] Identification returned error:', result.error);
+        
+        // Check if it's a configuration error (OpenAI API key missing)
+        if (result.error.includes('OpenAI API key not configured')) {
+          Alert.alert(
+            'Feature Not Available',
+            'Image identification is temporarily unavailable. The server needs to be configured with an OpenAI API key. You can still add the item manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after configuration error');
+                  const fallbackData = {
+                    itemName: '',
+                    imageUrl: cameraImage,
+                    extractedImages: [cameraImage],
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: 'USD',
+                    countryAvailability: searchCountry ? [searchCountry] : [],
+                    sourceUrl: '',
+                    inputType: 'camera',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      data: JSON.stringify(fallbackData),
+                    },
+                  });
+                },
+              },
+            ]
+          );
+          return;
+        }
+        
+        // Check for low confidence
+        if (result.confidence < 0.3) {
+          Alert.alert(
+            'Low Confidence',
+            'Could not identify the product with high confidence. You can still add it manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after low confidence');
+                  const fallbackData = {
+                    itemName: result.bestGuessTitle || '',
+                    imageUrl: cameraImage,
+                    extractedImages: [cameraImage],
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: 'USD',
+                    countryAvailability: searchCountry ? [searchCountry] : [],
+                    sourceUrl: '',
+                    inputType: 'camera',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      data: JSON.stringify(fallbackData),
+                    },
+                  });
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
+
       // Navigate to import-preview with identified data (even if partial)
       const productData = {
         itemName: result.bestGuessTitle || '',
@@ -561,6 +640,85 @@ export default function AddItemScreen() {
 
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
+
+      // Check for specific errors
+      if (result.error) {
+        console.warn('[AddItem] Identification returned error:', result.error);
+        
+        // Check if it's a configuration error (OpenAI API key missing)
+        if (result.error.includes('OpenAI API key not configured')) {
+          Alert.alert(
+            'Feature Not Available',
+            'Image identification is temporarily unavailable. The server needs to be configured with an OpenAI API key. You can still add the item manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after configuration error');
+                  const fallbackData = {
+                    itemName: '',
+                    imageUrl: uploadImage,
+                    extractedImages: [uploadImage],
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: 'USD',
+                    countryAvailability: searchCountry ? [searchCountry] : [],
+                    sourceUrl: '',
+                    inputType: 'image',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      data: JSON.stringify(fallbackData),
+                    },
+                  });
+                },
+              },
+            ]
+          );
+          return;
+        }
+        
+        // Check for low confidence
+        if (result.confidence < 0.3) {
+          Alert.alert(
+            'Low Confidence',
+            'Could not identify the product with high confidence. You can still add it manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after low confidence');
+                  const fallbackData = {
+                    itemName: result.bestGuessTitle || '',
+                    imageUrl: uploadImage,
+                    extractedImages: [uploadImage],
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: 'USD',
+                    countryAvailability: searchCountry ? [searchCountry] : [],
+                    sourceUrl: '',
+                    inputType: 'image',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      data: JSON.stringify(fallbackData),
+                    },
+                  });
+                },
+              },
+            ]
+          );
+          return;
+        }
+      }
 
       // Navigate to import-preview with identified data (even if partial)
       const productData = {

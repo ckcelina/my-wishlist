@@ -1,3 +1,3 @@
 
-// iOS version uses the same implementation as the base file
+// iOS-specific version re-exports the base implementation
 export { default } from './add';
