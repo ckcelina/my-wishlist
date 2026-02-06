@@ -113,13 +113,25 @@ export interface IdentifyFromImageRequest {
   imageUrl: string; // Signed URL from Supabase Storage
 }
 
-export interface IdentifyFromImageResponse {
-  itemName: string | null;
+export interface ProductCandidate {
+  title: string;
   brand: string | null;
+  model: string | null;
+  category: string | null;
+  imageUrl: string;
+  url: string;
+  price: number | null;
+  currency: string | null;
+  store: string | null;
+}
+
+export interface IdentifyFromImageResponse {
+  status: 'ok' | 'no_results' | 'error';
+  providerUsed: 'openai_vision' | 'serpapi_google_lens' | 'bing_visual_search' | 'none';
   confidence: number; // 0.0 - 1.0
-  extractedText: string;
-  suggestedQueries: string[];
-  error?: string;
+  query: string;
+  items: ProductCandidate[];
+  message?: string;
 }
 
 export interface SearchByNameRequest {
@@ -630,16 +642,20 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
 }
 
 /**
- * Identify a product from an image
+ * Identify a product from an image using a robust Google Lens-style pipeline
  * 
- * NEW FLOW:
+ * PIPELINE:
  * 1. Upload image to Supabase Storage (private bucket)
  * 2. Generate signed URL (5-minute expiry)
  * 3. Send signed URL to Edge Function
- * 4. Edge Function validates JWT, fetches image, calls OpenAI Vision
- * 5. Returns structured JSON with item name, brand, extracted text, confidence
+ * 4. Edge Function runs pipeline:
+ *    a) FIRST TRY (optional): OpenAI Vision for high-confidence identification
+ *    b) FALLBACK: Visual search provider (SerpAPI Google Lens / Bing Visual Search)
+ *    c) Fetch product pages and extract schema.org / OpenGraph data
+ *    d) Score, dedupe, and return top 5-8 candidates
+ * 5. Returns structured JSON with status, items, and metadata
  * 
- * Works identically in all environments
+ * ALWAYS returns a response - never silently fails
  */
 export async function identifyFromImage(
   imageUrl?: string,
@@ -652,7 +668,14 @@ export async function identifyFromImage(
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       console.error('[identifyFromImage] User not authenticated');
-      throw new Error('You must be logged in to identify images');
+      return {
+        status: 'error',
+        message: 'You must be logged in to identify images',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
     }
 
     let signedUrl: string;
@@ -665,7 +688,14 @@ export async function identifyFromImage(
       // If URL is provided, use it directly (assuming it's already a signed URL)
       signedUrl = imageUrl;
     } else {
-      throw new Error('Either imageUrl or imageBase64 must be provided');
+      return {
+        status: 'error',
+        message: 'Either imageUrl or imageBase64 must be provided',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
     }
 
     console.log('[identifyFromImage] Calling Edge Function with signed URL');
@@ -674,29 +704,36 @@ export async function identifyFromImage(
     const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
       { imageUrl: signedUrl },
-      { showErrorAlert: true }
+      { showErrorAlert: false } // We'll handle errors ourselves
     );
 
     console.log('[identifyFromImage] Identification complete');
-    console.log('[identifyFromImage] Item:', response.itemName, 'Brand:', response.brand, 'Confidence:', response.confidence);
+    console.log('[identifyFromImage] Status:', response.status, 'Provider:', response.providerUsed, 'Items:', response.items.length);
 
     return response;
   } catch (error: any) {
     console.error('[identifyFromImage] Failed:', error);
     
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[identifyFromImage] Edge Function not deployed - returning safe fallback');
+    // Check for AUTH_REQUIRED
+    if (error.message === 'AUTH_REQUIRED') {
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
     }
     
     // Return safe fallback
     return {
-      itemName: null,
-      brand: null,
+      status: 'error',
+      message: error.message || 'Failed to identify product',
+      providerUsed: 'none',
       confidence: 0,
-      extractedText: '',
-      suggestedQueries: [],
-      error: error.message || 'Failed to identify product',
+      query: '',
+      items: [],
     };
   }
 }

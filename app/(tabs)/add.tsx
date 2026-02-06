@@ -410,106 +410,139 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Check for specific errors
-      if (result.error) {
-        console.warn('[AddItem] Identification returned error:', result.error);
-        
-        // Check if it's a configuration error (OpenAI API key missing)
-        if (result.error.includes('OpenAI API key not configured')) {
-          Alert.alert(
-            'Feature Not Available',
-            'Image identification is temporarily unavailable. The server needs to be configured with an OpenAI API key. You can still add the item manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after configuration error');
-                  const fallbackData = {
-                    itemName: '',
-                    imageUrl: cameraImage,
-                    extractedImages: [cameraImage],
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: 'USD',
-                    countryAvailability: searchCountry ? [searchCountry] : [],
-                    sourceUrl: '',
-                    inputType: 'camera',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      data: JSON.stringify(fallbackData),
-                    },
-                  });
-                },
-              },
-            ]
-          );
-          return;
-        }
-        
-        // Check for low confidence
-        if (result.confidence < 0.3) {
-          Alert.alert(
-            'Low Confidence',
-            'Could not identify the product with high confidence. You can still add it manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after low confidence');
-                  const fallbackData = {
-                    itemName: result.itemName || '',
-                    imageUrl: cameraImage,
-                    extractedImages: [cameraImage],
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: 'USD',
-                    countryAvailability: searchCountry ? [searchCountry] : [],
-                    sourceUrl: '',
-                    inputType: 'camera',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      data: JSON.stringify(fallbackData),
-                    },
-                  });
-                },
-              },
-            ]
-          );
-          return;
-        }
+      // Handle AUTH_REQUIRED
+      if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
+        console.log('[AddItem] Auth required, redirecting to login');
+        Alert.alert('Session Expired', 'Please sign in again to continue', [
+          { text: 'OK', onPress: () => router.push('/auth') },
+        ]);
+        return;
       }
 
-      // Navigate to import-preview with identified data (even if partial)
-      const productData = {
-        itemName: result.itemName || '',
-        imageUrl: cameraImage,
-        extractedImages: [cameraImage],
-        storeName: '',
-        storeDomain: '',
-        price: null,
-        currency: 'USD',
-        countryAvailability: [searchCountry],
-        sourceUrl: '',
-        inputType: 'camera',
-      };
+      // Handle no_results
+      if (result.status === 'no_results') {
+        console.log('[AddItem] No results found');
+        Alert.alert(
+          'No Products Found',
+          result.message || 'Could not find any matching products online. Try a different image or add manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after no results');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: cameraImage,
+                  extractedImages: [cameraImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'camera',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
 
-      console.log('[AddItem] Navigating to import-preview with camera data');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          data: JSON.stringify(productData),
-        },
-      });
+      // Handle error
+      if (result.status === 'error') {
+        console.error('[AddItem] Identification error:', result.message);
+        Alert.alert(
+          'Identification Failed',
+          result.message || 'Could not identify the product. You can still add it manually with the photo.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after error');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: cameraImage,
+                  extractedImages: [cameraImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'camera',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // Success - navigate to import-preview with candidates
+      if (result.status === 'ok' && result.items.length > 0) {
+        console.log('[AddItem] Found', result.items.length, 'product candidates');
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            imageUri: cameraImage,
+            identifiedItems: JSON.stringify(result.items),
+            providerUsed: result.providerUsed,
+            confidence: result.confidence.toString(),
+            query: result.query,
+          },
+        });
+      } else {
+        // Unexpected case - no items but status is ok
+        console.warn('[AddItem] Status ok but no items');
+        Alert.alert(
+          'No Products Found',
+          'Could not find any matching products. Try a different image or add manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: cameraImage,
+                  extractedImages: [cameraImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'camera',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+      }
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromCamera:', error);
       
@@ -523,7 +556,6 @@ export default function AddItemScreen() {
             text: 'Add Manually',
             onPress: () => {
               console.log('[AddItem] User chose to add manually after identification failure');
-              // Navigate to import-preview with photo but no identification
               const fallbackData = {
                 itemName: '',
                 imageUrl: cameraImage,
@@ -643,106 +675,139 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Check for specific errors
-      if (result.error) {
-        console.warn('[AddItem] Identification returned error:', result.error);
-        
-        // Check if it's a configuration error (OpenAI API key missing)
-        if (result.error.includes('OpenAI API key not configured')) {
-          Alert.alert(
-            'Feature Not Available',
-            'Image identification is temporarily unavailable. The server needs to be configured with an OpenAI API key. You can still add the item manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after configuration error');
-                  const fallbackData = {
-                    itemName: '',
-                    imageUrl: uploadImage,
-                    extractedImages: [uploadImage],
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: 'USD',
-                    countryAvailability: searchCountry ? [searchCountry] : [],
-                    sourceUrl: '',
-                    inputType: 'image',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      data: JSON.stringify(fallbackData),
-                    },
-                  });
-                },
-              },
-            ]
-          );
-          return;
-        }
-        
-        // Check for low confidence
-        if (result.confidence < 0.3) {
-          Alert.alert(
-            'Low Confidence',
-            'Could not identify the product with high confidence. You can still add it manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after low confidence');
-                  const fallbackData = {
-                    itemName: result.itemName || '',
-                    imageUrl: uploadImage,
-                    extractedImages: [uploadImage],
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: 'USD',
-                    countryAvailability: searchCountry ? [searchCountry] : [],
-                    sourceUrl: '',
-                    inputType: 'image',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      data: JSON.stringify(fallbackData),
-                    },
-                  });
-                },
-              },
-            ]
-          );
-          return;
-        }
+      // Handle AUTH_REQUIRED
+      if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
+        console.log('[AddItem] Auth required, redirecting to login');
+        Alert.alert('Session Expired', 'Please sign in again to continue', [
+          { text: 'OK', onPress: () => router.push('/auth') },
+        ]);
+        return;
       }
 
-      // Navigate to import-preview with identified data (even if partial)
-      const productData = {
-        itemName: result.itemName || '',
-        imageUrl: uploadImage,
-        extractedImages: [uploadImage],
-        storeName: '',
-        storeDomain: '',
-        price: null,
-        currency: 'USD',
-        countryAvailability: [searchCountry],
-        sourceUrl: '',
-        inputType: 'image',
-      };
+      // Handle no_results
+      if (result.status === 'no_results') {
+        console.log('[AddItem] No results found');
+        Alert.alert(
+          'No Products Found',
+          result.message || 'Could not find any matching products online. Try a different image or add manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after no results');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: uploadImage,
+                  extractedImages: [uploadImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'image',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
 
-      console.log('[AddItem] Navigating to import-preview with upload data');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          data: JSON.stringify(productData),
-        },
-      });
+      // Handle error
+      if (result.status === 'error') {
+        console.error('[AddItem] Identification error:', result.message);
+        Alert.alert(
+          'Identification Failed',
+          result.message || 'Could not identify the product. You can still add it manually with the photo.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after error');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: uploadImage,
+                  extractedImages: [uploadImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'image',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // Success - navigate to import-preview with candidates
+      if (result.status === 'ok' && result.items.length > 0) {
+        console.log('[AddItem] Found', result.items.length, 'product candidates');
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            imageUri: uploadImage,
+            identifiedItems: JSON.stringify(result.items),
+            providerUsed: result.providerUsed,
+            confidence: result.confidence.toString(),
+            query: result.query,
+          },
+        });
+      } else {
+        // Unexpected case - no items but status is ok
+        console.warn('[AddItem] Status ok but no items');
+        Alert.alert(
+          'No Products Found',
+          'Could not find any matching products. Try a different image or add manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: uploadImage,
+                  extractedImages: [uploadImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'image',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
+      }
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromUpload:', error);
       
@@ -756,7 +821,6 @@ export default function AddItemScreen() {
             text: 'Add Manually',
             onPress: () => {
               console.log('[AddItem] User chose to add manually after identification failure');
-              // Navigate to import-preview with photo but no identification
               const fallbackData = {
                 itemName: '',
                 imageUrl: uploadImage,
