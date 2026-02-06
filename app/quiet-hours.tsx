@@ -133,7 +133,10 @@ export default function QuietHoursScreen() {
   };
 
   const handleStartTimeChange = (event: any, selectedDate?: Date) => {
-    setShowStartPicker(Platform.OS === 'ios');
+    // On iOS, keep picker open; on Android, close after selection
+    if (Platform.OS === 'android') {
+      setShowStartPicker(false);
+    }
     if (selectedDate) {
       console.log('[QuietHoursScreen] Start time changed:', formatTime(selectedDate));
       haptics.selection();
@@ -142,7 +145,10 @@ export default function QuietHoursScreen() {
   };
 
   const handleEndTimeChange = (event: any, selectedDate?: Date) => {
-    setShowEndPicker(Platform.OS === 'ios');
+    // On iOS, keep picker open; on Android, close after selection
+    if (Platform.OS === 'android') {
+      setShowEndPicker(false);
+    }
     if (selectedDate) {
       console.log('[QuietHoursScreen] End time changed:', formatTime(selectedDate));
       haptics.selection();
@@ -229,6 +235,16 @@ export default function QuietHoursScreen() {
                   />
                   <Text style={[styles.timeText, { color: theme.colors.text }]}>{startTimeText}</Text>
                 </PressableScale>
+                {showStartPicker && Platform.OS === 'ios' && (
+                  <DateTimePicker
+                    value={startTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="spinner"
+                    onChange={handleStartTimeChange}
+                    style={styles.picker}
+                  />
+                )}
               </Card>
 
               <Card style={styles.card}>
@@ -249,9 +265,20 @@ export default function QuietHoursScreen() {
                   />
                   <Text style={[styles.timeText, { color: theme.colors.text }]}>{endTimeText}</Text>
                 </PressableScale>
+                {showEndPicker && Platform.OS === 'ios' && (
+                  <DateTimePicker
+                    value={endTime}
+                    mode="time"
+                    is24Hour={false}
+                    display="spinner"
+                    onChange={handleEndTimeChange}
+                    style={styles.picker}
+                  />
+                )}
               </Card>
 
-              {showStartPicker && (
+              {/* Android DateTimePicker - shown as modal */}
+              {showStartPicker && Platform.OS === 'android' && (
                 <DateTimePicker
                   value={startTime}
                   mode="time"
@@ -261,7 +288,7 @@ export default function QuietHoursScreen() {
                 />
               )}
 
-              {showEndPicker && (
+              {showEndPicker && Platform.OS === 'android' && (
                 <DateTimePicker
                   value={endTime}
                   mode="time"
@@ -334,6 +361,9 @@ const styles = StyleSheet.create({
   },
   timeText: {
     ...typography.bodyLarge,
+  },
+  picker: {
+    marginTop: spacing.sm,
   },
   buttonContainer: {
     marginTop: spacing.lg,

@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -58,6 +59,7 @@ export default function DiagnosticsScreen() {
           headerShown: true,
           title: 'Diagnostics',
           headerBackTitle: 'Back',
+          ...(Platform.OS === 'ios' && { headerLargeTitle: true }),
         }}
       />
       <SafeAreaView style={styles.container} edges={['bottom']}>
