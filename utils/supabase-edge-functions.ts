@@ -115,14 +115,16 @@ export interface IdentifyFromImageRequest {
 
 export interface ProductCandidate {
   title: string;
-  brand: string | null;
-  model: string | null;
-  category: string | null;
-  imageUrl: string;
-  url: string;
-  price: number | null;
-  currency: string | null;
-  store: string | null;
+  brand?: string | null;
+  model?: string | null;
+  category?: string | null;
+  imageUrl?: string;
+  storeUrl?: string;
+  price?: number | null;
+  currency?: string | null;
+  storeName?: string | null;
+  score: number;
+  reason?: string;
 }
 
 export interface IdentifyFromImageResponse {
@@ -132,6 +134,7 @@ export interface IdentifyFromImageResponse {
   query: string;
   items: ProductCandidate[];
   message?: string;
+  code?: string;
 }
 
 export interface SearchByNameRequest {
