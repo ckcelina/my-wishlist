@@ -12,12 +12,23 @@ interface IdentifyFromImageRequest {
 }
 
 interface IdentifyFromImageResponse {
-  itemName: string | null;
-  brand: string | null;
+  status: 'ok' | 'no_results' | 'error';
+  code?: string; // e.g., 'AUTH_REQUIRED', 'INTERNAL_ERROR'
+  message?: string;
+  providerUsed: 'openai_vision' | 'serpapi_google_lens' | 'bing_visual_search' | 'none';
   confidence: number; // 0.0 - 1.0
-  extractedText: string;
-  suggestedQueries: string[];
-  error?: string;
+  query: string;
+  items: Array<{
+    title: string;
+    brand: string | null;
+    model: string | null;
+    category: string | null;
+    imageUrl: string;
+    url: string;
+    price: number | null;
+    currency: string | null;
+    store: string | null;
+  }>;
 }
 
 Deno.serve(async (req) => {
@@ -32,12 +43,20 @@ Deno.serve(async (req) => {
   try {
     console.log(`[${requestId}] identify-from-image: Request received`);
 
-    // Validate JWT and get user ID
+    // EDGE FUNCTION ENTRY CHECK: Validate JWT and get user ID
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.error(`[${requestId}] Missing Authorization header`);
       return new Response(
-        JSON.stringify({ error: 'Missing Authorization header' }),
+        JSON.stringify({
+          status: 'error',
+          code: 'AUTH_REQUIRED',
+          message: 'Login required',
+          providerUsed: 'none',
+          confidence: 0,
+          query: '',
+          items: [],
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -50,10 +69,19 @@ Deno.serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
+    // If user is missing → return AUTH_REQUIRED (NEVER throw raw errors)
     if (authError || !user) {
-      console.error(`[${requestId}] Invalid JWT:`, authError?.message);
+      console.error(`[${requestId}] Invalid JWT or user missing:`, authError?.message);
       return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' }),
+        JSON.stringify({
+          status: 'error',
+          code: 'AUTH_REQUIRED',
+          message: 'Login required',
+          providerUsed: 'none',
+          confidence: 0,
+          query: '',
+          items: [],
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -96,12 +124,13 @@ Deno.serve(async (req) => {
       console.error(`[${requestId}] Error fetching image:`, error.message);
       return new Response(
         JSON.stringify({
-          itemName: null,
-          brand: null,
+          status: 'error',
+          code: 'IMAGE_FETCH_ERROR',
+          message: 'Failed to fetch image from URL. Please ensure the URL is valid and accessible.',
+          providerUsed: 'none',
           confidence: 0,
-          extractedText: '',
-          suggestedQueries: [],
-          error: 'Failed to fetch image from URL. Please ensure the URL is valid and accessible.',
+          query: '',
+          items: [],
         } as IdentifyFromImageResponse),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -113,12 +142,13 @@ Deno.serve(async (req) => {
       console.error(`[${requestId}] OPENAI_API_KEY not configured`);
       return new Response(
         JSON.stringify({
-          itemName: null,
-          brand: null,
+          status: 'error',
+          code: 'CONFIG_ERROR',
+          message: 'OpenAI API key not configured. Please contact support.',
+          providerUsed: 'none',
           confidence: 0,
-          extractedText: '',
-          suggestedQueries: [],
-          error: 'OpenAI API key not configured. Please contact support.',
+          query: '',
+          items: [],
         } as IdentifyFromImageResponse),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -186,22 +216,28 @@ suggestedQueries: string[]`,
       console.error(`[${requestId}] OpenAI API error (${visionResponse.status}):`, errorText);
 
       let errorMessage = 'Failed to analyze image. Please try again.';
+      let errorCode = 'OPENAI_ERROR';
+      
       if (visionResponse.status === 401) {
         errorMessage = 'OpenAI API authentication failed. Please contact support.';
+        errorCode = 'OPENAI_AUTH_ERROR';
       } else if (visionResponse.status === 429) {
         errorMessage = 'Rate limit exceeded. Please try again in a moment.';
+        errorCode = 'RATE_LIMIT_ERROR';
       } else if (visionResponse.status === 400) {
         errorMessage = 'Invalid image format. Please try a different image.';
+        errorCode = 'INVALID_IMAGE_ERROR';
       }
 
       return new Response(
         JSON.stringify({
-          itemName: null,
-          brand: null,
+          status: 'error',
+          code: errorCode,
+          message: errorMessage,
+          providerUsed: 'openai_vision',
           confidence: 0,
-          extractedText: '',
-          suggestedQueries: [],
-          error: errorMessage,
+          query: '',
+          items: [],
         } as IdentifyFromImageResponse),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -220,12 +256,13 @@ suggestedQueries: string[]`,
       console.error(`[${requestId}] Failed to parse OpenAI response:`, e);
       return new Response(
         JSON.stringify({
-          itemName: null,
-          brand: null,
+          status: 'error',
+          code: 'PARSE_ERROR',
+          message: 'Failed to parse AI response. Please try again.',
+          providerUsed: 'openai_vision',
           confidence: 0,
-          extractedText: '',
-          suggestedQueries: [],
-          error: 'Failed to parse AI response. Please try again.',
+          query: '',
+          items: [],
         } as IdentifyFromImageResponse),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -260,28 +297,62 @@ suggestedQueries: string[]`,
     console.log(`[${requestId}] Identification complete in ${durationMs}ms`);
     console.log(`[${requestId}] Result: itemName="${itemName}", brand="${brand}", confidence=${confidence}`);
 
+    // Build query from extracted data
+    const query = [itemName, brand].filter(Boolean).join(' ').trim() || extractedText.slice(0, 100);
+
+    // If we have a high-confidence result, return it as a single item
+    if (itemName && confidence >= 0.5) {
+      return new Response(
+        JSON.stringify({
+          status: 'ok',
+          providerUsed: 'openai_vision',
+          confidence,
+          query,
+          items: [
+            {
+              title: itemName,
+              brand,
+              model: null,
+              category: null,
+              imageUrl: imageUrl, // Use the original image
+              url: '',
+              price: null,
+              currency: null,
+              store: null,
+            },
+          ],
+        } as IdentifyFromImageResponse),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If confidence is low or no item name, return no_results
     return new Response(
       JSON.stringify({
-        itemName,
-        brand,
+        status: 'no_results',
+        message: 'Could not identify the product with sufficient confidence. Try a clearer image or add manually.',
+        providerUsed: 'openai_vision',
         confidence,
-        extractedText,
-        suggestedQueries,
+        query,
+        items: [],
       } as IdentifyFromImageResponse),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
     console.error(`[${requestId}] Unexpected error:`, error);
+    
+    // NEVER throw raw errors - always return structured JSON
     return new Response(
       JSON.stringify({
-        itemName: null,
-        brand: null,
+        status: 'error',
+        code: 'INTERNAL_ERROR',
+        message: error.message || 'Internal server error. Please try again.',
+        providerUsed: 'none',
         confidence: 0,
-        extractedText: '',
-        suggestedQueries: [],
-        error: error.message || 'Internal server error. Please try again.',
-      } as IdentifyFromImageResponse),
+        query: '',
+        items: [],
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

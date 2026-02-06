@@ -184,27 +184,29 @@ if (!isEnvironmentConfigured()) {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PERMANENT EDGE FUNCTION AUTH FIX (401 Invalid JWT)
+ * CENTRALIZED EDGE FUNCTION AUTH (CLIENT) - HARDENED
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * This is the SINGLE wrapper for ALL Supabase Edge Function calls.
  * NO OTHER FILE is allowed to call fetch(functions/v1/...) directly.
  * 
  * MANDATORY behavior:
- * - Always attach:
- *   - apikey: SUPABASE_ANON_KEY
+ * - Always fetch session via supabase.auth.getSession()
+ * - If no access_token → throw AUTH_REQUIRED immediately (NO edge call)
+ * - If token exists → attach headers:
  *   - Authorization: Bearer <access_token>
- * - Get token via supabase.auth.getSession()
- * - If token missing/expired:
- *   - call supabase.auth.refreshSession() ONCE
- *   - re-read session
- * - Call edge function
+ *   - apikey: SUPABASE_ANON_KEY
  * - If response is 401:
- *   - refreshSession ONCE (if not already)
- *   - retry ONCE
- * - If still 401:
- *   - throw an Error with code/string exactly: "AUTH_REQUIRED"
- * - Add dev-only safe logs (NO TOKENS): functionName, status, retried(true/false)
+ *   - Attempt supabase.auth.refreshSession() ONCE
+ *   - Retry edge call ONCE
+ * - If still 401 → throw AUTH_REQUIRED
+ * - Never allow identify-from-image to be called without a token
+ * 
+ * Safe logs:
+ * - function name
+ * - retry attempted (true/false)
+ * - final status
+ * (NO TOKENS)
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
   functionName: string,
@@ -212,6 +214,8 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   options?: { showErrorAlert?: boolean }
 ): Promise<TResponse> {
   const showErrorAlert = options?.showErrorAlert !== false; // Default to true
+  let retryAttempted = false;
+  let finalStatus = 'unknown';
 
   console.log(`[callEdgeFunctionSafely] Calling ${functionName}`);
 
@@ -238,167 +242,149 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   }
 
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
-  console.log(`[callEdgeFunctionSafely] URL: ${url}`);
 
-  // Maximum 1 retry for 401 errors
-  let retryCount = 0;
-  const maxRetries = 1;
-  let hasRefreshed = false;
+  // STEP 1: Always fetch session FIRST
+  console.log(`[callEdgeFunctionSafely] Step 1: Fetching session`);
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError) {
+    console.error(`[callEdgeFunctionSafely] Session error for ${functionName}:`, sessionError.message);
+    finalStatus = 'session_error';
+    console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
+    throw new Error('AUTH_REQUIRED');
+  }
 
-  while (retryCount <= maxRetries) {
-    try {
-      // Step 1: Get the user's access token
-      console.log(`[callEdgeFunctionSafely] Step 1: Getting session (attempt ${retryCount + 1})`);
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  // STEP 2: If no access_token → throw AUTH_REQUIRED immediately (NO edge call)
+  if (!sessionData.session || !sessionData.session.access_token) {
+    console.warn(`[callEdgeFunctionSafely] No access_token for ${functionName} - throwing AUTH_REQUIRED immediately`);
+    finalStatus = 'no_token';
+    console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
+    throw new Error('AUTH_REQUIRED');
+  }
+
+  let session = sessionData.session;
+
+  // STEP 3: Make the edge call with token
+  const makeRequest = async (accessToken: string): Promise<Response> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${accessToken}`,
+    };
+
+    console.log(`[callEdgeFunctionSafely] Making request to ${functionName} (token exists: ${!!accessToken})`);
+
+    return await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  };
+
+  try {
+    // First attempt
+    let response = await makeRequest(session.access_token);
+    finalStatus = response.status.toString();
+
+    console.log(`[callEdgeFunctionSafely] ${functionName} - initial response status: ${finalStatus}`);
+
+    // STEP 4: If response is 401 → attempt refresh ONCE and retry ONCE
+    if (response.status === 401) {
+      console.warn(`[callEdgeFunctionSafely] 401 for ${functionName} - attempting session refresh`);
       
-      if (sessionError) {
-        console.error(`[callEdgeFunctionSafely] Session error:`, sessionError.message);
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError || !refreshData.session || !refreshData.session.access_token) {
+        console.error(`[callEdgeFunctionSafely] Refresh failed for ${functionName}:`, refreshError?.message);
+        finalStatus = '401_refresh_failed';
+        retryAttempted = true;
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
         throw new Error('AUTH_REQUIRED');
       }
 
-      let session = sessionData.session;
+      console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName} - retrying request`);
+      retryAttempted = true;
+      
+      // Retry with new token
+      response = await makeRequest(refreshData.session.access_token);
+      finalStatus = response.status.toString();
+      
+      console.log(`[callEdgeFunctionSafely] ${functionName} - retry response status: ${finalStatus}`);
 
-      // Step 2: Check if session is expired or expiring soon (within 60 seconds)
-      if (session) {
-        const expiresAt = session.expires_at;
-        const now = Math.floor(Date.now() / 1000);
-        const isExpired = expiresAt ? expiresAt <= now : false;
-        const isExpiringSoon = expiresAt ? expiresAt <= now + 60 : false;
-
-        if ((isExpired || isExpiringSoon) && !hasRefreshed) {
-          console.log(`[callEdgeFunctionSafely] Session expired or expiring soon, refreshing proactively`);
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          
-          if (refreshError || !refreshData.session) {
-            console.error(`[callEdgeFunctionSafely] Failed to refresh session:`, refreshError?.message);
-            throw new Error('AUTH_REQUIRED');
-          }
-          
-          session = refreshData.session;
-          hasRefreshed = true;
-          console.log(`[callEdgeFunctionSafely] Session refreshed successfully`);
-        }
-      }
-
-      // Step 3: Ensure we have a valid access token
-      if (!session || !session.access_token) {
-        console.warn(`[callEdgeFunctionSafely] No access token available for ${functionName}`);
-        throw new Error('AUTH_REQUIRED');
-      }
-
-      // Step 4: Build headers - CRITICAL: apikey is ALWAYS required
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY, // ✅ ALWAYS send anon key as apikey header
-        'Authorization': `Bearer ${session.access_token}`, // ✅ Send user JWT for protected functions
-      };
-
-      console.log(`[callEdgeFunctionSafely] Headers prepared (token exists: ${!!session.access_token})`);
-
-      // Step 5: Make the request
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
-
-      console.log(`[callEdgeFunctionSafely] Response status: ${response.status}, retried: ${retryCount > 0}`);
-
-      // Step 6: Handle 401 Unauthorized - try to refresh session and retry ONCE
-      if (response.status === 401 && retryCount < maxRetries) {
-        console.warn(`[callEdgeFunctionSafely] 401 Unauthorized for ${functionName}. Attempting refresh and retry...`);
-        
-        if (!hasRefreshed) {
-          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-          
-          if (refreshError || !refreshData.session) {
-            console.error(`[callEdgeFunctionSafely] Final 401 - refresh failed:`, refreshError?.message);
-            throw new Error('AUTH_REQUIRED');
-          }
-          
-          hasRefreshed = true;
-          console.log(`[callEdgeFunctionSafely] Session refreshed, retrying request`);
-        }
-        
-        retryCount++;
-        continue; // Retry the request with the new token
-      }
-
-      // Step 7: If still 401 after retry, throw AUTH_REQUIRED
+      // STEP 5: If still 401 → throw AUTH_REQUIRED
       if (response.status === 401) {
-        console.error(`[callEdgeFunctionSafely] Final 401 Unauthorized for ${functionName} after retry`);
+        console.error(`[callEdgeFunctionSafely] Still 401 for ${functionName} after refresh - throwing AUTH_REQUIRED`);
+        finalStatus = '401_after_retry';
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
         throw new Error('AUTH_REQUIRED');
       }
+    }
 
-      // Step 8: Handle other errors
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, response.status, errorText);
-        
-        // Handle 404 - function not deployed
-        if (response.status === 404) {
-          if (showErrorAlert) {
-            Alert.alert(
-              'Feature Unavailable',
-              'This feature is temporarily unavailable. Please try again later.',
-              [{ text: 'OK' }]
-            );
-          }
-          throw new Error(`Edge Function '${functionName}' not found (404)`);
-        }
+    // STEP 6: Handle other errors
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, response.status, errorText);
+      
+      // Handle 404 - function not deployed
+      if (response.status === 404) {
+        finalStatus = '404';
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
         
         if (showErrorAlert) {
           Alert.alert(
-            'Request Failed',
-            `Unable to complete the request. Please try again. (Error ${response.status})`,
+            'Feature Unavailable',
+            'This feature is temporarily unavailable. Please try again later.',
             [{ text: 'OK' }]
           );
         }
-        
-        throw new Error(`Edge function failed: ${response.status} ${errorText}`);
-      }
-
-      // Step 9: Parse and return response
-      const data = await response.json();
-      console.log(`[callEdgeFunctionSafely] ${functionName} call successful (retried: ${retryCount > 0})`);
-      return data as TResponse;
-
-    } catch (error: any) {
-      console.error(`[callEdgeFunctionSafely] Error calling ${functionName}:`, error.message);
-      
-      // If it's AUTH_REQUIRED, propagate it
-      if (error.message === 'AUTH_REQUIRED') {
-        if (showErrorAlert) {
-          Alert.alert(
-            'Session Expired',
-            'Your session has expired. Please sign in again.',
-            [{ text: 'OK' }]
-          );
-        }
-        throw error;
+        throw new Error(`Edge Function '${functionName}' not found (404)`);
       }
       
-      // If it's a 401 and we haven't retried yet, continue to retry
-      if (error.message.includes('401') && retryCount < maxRetries) {
-        retryCount++;
-        continue;
-      }
+      console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted}`);
       
-      // Only show alert if we haven't already shown one
-      if (showErrorAlert && !error.message.includes('Session expired') && !error.message.includes('not found')) {
+      if (showErrorAlert) {
         Alert.alert(
-          'Network Error',
-          'Unable to connect to the service. Please check your internet connection and try again.',
+          'Request Failed',
+          `Unable to complete the request. Please try again. (Error ${response.status})`,
           [{ text: 'OK' }]
         );
       }
       
+      throw new Error(`Edge function failed: ${response.status} ${errorText}`);
+    }
+
+    // STEP 7: Parse and return response
+    const data = await response.json();
+    console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted} - SUCCESS`);
+    return data as TResponse;
+
+  } catch (error: any) {
+    console.error(`[callEdgeFunctionSafely] Error calling ${functionName}:`, error.message);
+    console.log(`[callEdgeFunctionSafely] ${functionName} - status: ${finalStatus}, retry: ${retryAttempted} - ERROR`);
+    
+    // If it's AUTH_REQUIRED, propagate it
+    if (error.message === 'AUTH_REQUIRED') {
+      if (showErrorAlert) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please sign in again.',
+          [{ text: 'OK' }]
+        );
+      }
       throw error;
     }
+    
+    // Only show alert if we haven't already shown one
+    if (showErrorAlert && !error.message.includes('Session expired') && !error.message.includes('not found')) {
+      Alert.alert(
+        'Network Error',
+        'Unable to connect to the service. Please check your internet connection and try again.',
+        [{ text: 'OK' }]
+      );
+    }
+    
+    throw error;
   }
-  
-  // Should never reach here, but TypeScript needs a return
-  throw new Error('Maximum retries exceeded');
 }
 
 /**
@@ -641,6 +627,9 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
   }
 }
 
+// Track if identify-from-image is currently running to prevent parallel calls
+let identifyInProgress = false;
+
 /**
  * Identify a product from an image using a robust Google Lens-style pipeline
  * 
@@ -656,6 +645,11 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
  * 5. Returns structured JSON with status, items, and metadata
  * 
  * ALWAYS returns a response - never silently fails
+ * 
+ * GUARDS:
+ * - Prevents multiple parallel identify calls
+ * - Checks auth state before calling edge function
+ * - If AUTH_REQUIRED is thrown → stops and returns error (no retry loops)
  */
 export async function identifyFromImage(
   imageUrl?: string,
@@ -664,13 +658,45 @@ export async function identifyFromImage(
   try {
     console.log('[identifyFromImage] Starting image identification');
 
+    // GUARD: Prevent multiple parallel identify calls
+    if (identifyInProgress) {
+      console.warn('[identifyFromImage] Identify already in progress - blocking parallel call');
+      return {
+        status: 'error',
+        message: 'Image identification already in progress. Please wait.',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
+    identifyInProgress = true;
+
+    // GUARD: Check auth state BEFORE calling edge function
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session || !session.access_token) {
+      console.error('[identifyFromImage] Invalid auth state - redirecting to login');
+      identifyInProgress = false;
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       console.error('[identifyFromImage] User not authenticated');
+      identifyInProgress = false;
       return {
         status: 'error',
-        message: 'You must be logged in to identify images',
+        message: 'AUTH_REQUIRED',
         providerUsed: 'none',
         confidence: 0,
         query: '',
@@ -688,6 +714,7 @@ export async function identifyFromImage(
       // If URL is provided, use it directly (assuming it's already a signed URL)
       signedUrl = imageUrl;
     } else {
+      identifyInProgress = false;
       return {
         status: 'error',
         message: 'Either imageUrl or imageBase64 must be provided',
@@ -701,6 +728,7 @@ export async function identifyFromImage(
     console.log('[identifyFromImage] Calling Edge Function with signed URL');
 
     // Call Edge Function with signed URL using the safe wrapper
+    // This will throw AUTH_REQUIRED if auth fails - we catch it below
     const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
       { imageUrl: signedUrl },
@@ -710,12 +738,15 @@ export async function identifyFromImage(
     console.log('[identifyFromImage] Identification complete');
     console.log('[identifyFromImage] Status:', response.status, 'Provider:', response.providerUsed, 'Items:', response.items.length);
 
+    identifyInProgress = false;
     return response;
   } catch (error: any) {
     console.error('[identifyFromImage] Failed:', error);
+    identifyInProgress = false;
     
-    // Check for AUTH_REQUIRED
+    // Check for AUTH_REQUIRED - stop and redirect (no retry loops)
     if (error.message === 'AUTH_REQUIRED') {
+      console.log('[identifyFromImage] AUTH_REQUIRED caught - returning error status');
       return {
         status: 'error',
         message: 'AUTH_REQUIRED',

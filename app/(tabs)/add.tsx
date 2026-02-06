@@ -380,6 +380,15 @@ export default function AddItemScreen() {
         return;
       }
 
+      // GUARD: Check auth state BEFORE calling identify-from-image
+      if (!user) {
+        console.log('[AddItem] No user - redirecting to login');
+        Alert.alert('Sign In Required', 'Please sign in to identify products', [
+          { text: 'OK', onPress: () => router.push('/auth') },
+        ]);
+        return;
+      }
+
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -410,9 +419,9 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Handle AUTH_REQUIRED
+      // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
       if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
-        console.log('[AddItem] Auth required, redirecting to login');
+        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
         Alert.alert('Session Expired', 'Please sign in again to continue', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
@@ -645,6 +654,15 @@ export default function AddItemScreen() {
         return;
       }
 
+      // GUARD: Check auth state BEFORE calling identify-from-image
+      if (!user) {
+        console.log('[AddItem] No user - redirecting to login');
+        Alert.alert('Sign In Required', 'Please sign in to identify products', [
+          { text: 'OK', onPress: () => router.push('/auth') },
+        ]);
+        return;
+      }
+
       console.log('[AddItem] Using search country from Settings:', searchCountry);
       
       if (!searchCountry) {
@@ -675,9 +693,9 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', result);
 
-      // Handle AUTH_REQUIRED
+      // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
       if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
-        console.log('[AddItem] Auth required, redirecting to login');
+        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
         Alert.alert('Session Expired', 'Please sign in again to continue', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
