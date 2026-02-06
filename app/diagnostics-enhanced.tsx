@@ -141,6 +141,68 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
+    // Test 2.5: Auth Ping (Edge Function Auth Verification)
+    if (user) {
+      try {
+        updateResult({ name: 'Edge Function Auth', status: 'pending', message: 'Testing auth-ping...' });
+        
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session || !session.access_token) {
+          updateResult({
+            name: 'Edge Function Auth',
+            status: 'fail',
+            message: 'No valid session',
+            details: 'Session is missing. Try signing out and back in.',
+          });
+        } else {
+          // Call auth-ping Edge Function directly
+          const response = await fetch(`${Constants.expoConfig?.extra?.supabaseUrl}/functions/v1/auth-ping`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': Constants.expoConfig?.extra?.supabaseAnonKey,
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({}),
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.status === 'ok') {
+            updateResult({
+              name: 'Edge Function Auth',
+              status: 'pass',
+              message: 'Auth ping successful',
+              details: `User ID verified: ${data.userId.substring(0, 8)}...`,
+            });
+          } else {
+            updateResult({
+              name: 'Edge Function Auth',
+              status: 'fail',
+              message: 'Auth ping failed',
+              details: data.message || 'Your app is pointing to the wrong Supabase project or session is not valid.',
+            });
+          }
+        }
+      } catch (error: any) {
+        updateResult({
+          name: 'Edge Function Auth',
+          status: 'fail',
+          message: 'Auth ping error',
+          details: error.message || 'Failed to call auth-ping Edge Function',
+        });
+      }
+    } else {
+      updateResult({
+        name: 'Edge Function Auth',
+        status: 'warning',
+        message: 'Not logged in',
+        details: 'Sign in to test Edge Function authentication',
+      });
+    }
+    incrementProgress();
+
     // Test 3: Database Schema
     try {
       updateResult({ name: 'Database Schema', status: 'pending', message: 'Verifying...' });

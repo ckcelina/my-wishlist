@@ -108,15 +108,28 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-// Create Supabase client with custom storage and typed database
-// This supports both legacy anon keys and new sb_publishable_* format
-// No manual JWT validation - @supabase/supabase-js v2 handles all key formats
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * SUPABASE CLIENT - CONFIGURED FOR REACT NATIVE
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * CRITICAL CONFIGURATION FOR EDGE FUNCTION AUTH:
+ * - persistSession: true (session survives app restarts)
+ * - autoRefreshToken: true (automatically refreshes tokens before expiry)
+ * - detectSessionInUrl: false (React Native doesn't use URL-based auth)
+ * - secure storage: Expo SecureStore (encrypted storage on device)
+ * 
+ * This ensures:
+ * - Session is restored when app opens
+ * - Tokens are refreshed automatically
+ * - Edge Functions always have valid access_token
+ */
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+    autoRefreshToken: true, // ✅ CRITICAL: Auto-refresh tokens
+    persistSession: true, // ✅ CRITICAL: Persist session across app restarts
+    detectSessionInUrl: false, // ✅ CRITICAL: React Native doesn't use URL-based auth
   },
 });
 
