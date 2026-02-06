@@ -481,12 +481,14 @@ export function generateShareSlug(): string {
 }
 
 // ============================================================================
-// USER SETTINGS
+// USER SETTINGS (HARDENED - NO DUPLICATES, NO NULLS)
 // ============================================================================
 
 export interface UserSettings {
   userId: string;
   priceDropAlertsEnabled: boolean;
+  priceDropNotificationsEnabled: boolean;
+  targetPriceAlertsEnabled: boolean;
   weeklyDigestEnabled: boolean;
   defaultCurrency: string;
   country: string | null;
@@ -498,6 +500,8 @@ export interface UserSettings {
 // Default settings to return when no user_settings row exists
 const DEFAULT_USER_SETTINGS: Omit<UserSettings, 'userId' | 'updatedAt'> = {
   priceDropAlertsEnabled: false,
+  priceDropNotificationsEnabled: false,
+  targetPriceAlertsEnabled: false,
   weeklyDigestEnabled: false,
   defaultCurrency: 'USD',
   country: null,
@@ -506,15 +510,17 @@ const DEFAULT_USER_SETTINGS: Omit<UserSettings, 'userId' | 'updatedAt'> = {
 };
 
 /**
- * Fetch user settings from Supabase user_settings table.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * HARDENED: Fetch user settings using RPC function (NO DUPLICATES, NO NULLS)
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL FIX: Uses UPSERT with onConflict: 'user_id' to prevent duplicate key errors (23505).
+ * Uses the get_or_create_user_settings RPC function which:
+ * - Inserts defaults if missing
+ * - On conflict(user_id) do update (idempotent)
+ * - Returns the settings row always
+ * - Concurrency-safe (no race conditions)
  * 
- * Behavior:
- * 1. First attempts to SELECT existing settings
- * 2. If no row exists, creates one using UPSERT (prevents race conditions)
- * 3. Always returns a valid UserSettings object (never null)
- * 4. Uses in-flight request guard to prevent concurrent calls for the same user
+ * ALWAYS returns a valid UserSettings object (never null).
  * 
  * @param userId - The user ID to fetch settings for
  * @returns Promise<UserSettings> - Always returns valid settings object with defaults if needed
@@ -532,19 +538,15 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings> {
   }
 
   try {
-    console.log('[Supabase] Step 1: Attempting to SELECT user_settings for userId:', userId);
+    console.log('[Supabase] Calling RPC: get_or_create_user_settings');
     
-    // 1. First, try to SELECT the row
-    const { data: existingSettings, error: selectError } = await supabase
-      .from('user_settings')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // Call the RPC function which handles everything safely
+    const { data, error } = await supabase
+      .rpc('get_or_create_user_settings', { user_uuid: userId });
 
-    if (selectError && selectError.code !== 'PGRST116') {
-      // PGRST116 is "no rows found" - this is expected if the row doesn't exist
-      console.error('[Supabase] Error selecting user settings:', selectError);
-      console.warn('[Supabase] Returning default settings due to select error');
+    if (error) {
+      console.error('[Supabase] RPC error:', error);
+      console.warn('[Supabase] Returning default settings due to RPC error');
       return {
         userId,
         ...DEFAULT_USER_SETTINGS,
@@ -552,41 +554,8 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings> {
       };
     }
 
-    // 2. If a row exists, return it
-    if (existingSettings) {
-      console.log('[Supabase] User settings found, returning existing settings');
-      return {
-        userId: existingSettings.user_id,
-        priceDropAlertsEnabled: existingSettings.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
-        weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
-        defaultCurrency: existingSettings.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
-        country: existingSettings.country,
-        city: existingSettings.city,
-        currency: existingSettings.currency ?? DEFAULT_USER_SETTINGS.currency,
-        updatedAt: existingSettings.updated_at || new Date().toISOString(),
-      };
-    }
-
-    console.log('[Supabase] Step 2: No user_settings row exists, creating with UPSERT');
-
-    // 3. If the row does not exist, create it using UPSERT
-    const defaults = {
-      user_id: userId,
-      notification_enabled: DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
-      currency: DEFAULT_USER_SETTINGS.currency,
-      country: DEFAULT_USER_SETTINGS.country,
-      city: DEFAULT_USER_SETTINGS.city,
-    };
-
-    const { data: newSettings, error: upsertError } = await supabase
-      .from('user_settings')
-      .upsert(defaults, { onConflict: 'user_id' })
-      .select('*')
-      .single();
-
-    if (upsertError) {
-      console.error('[Supabase] Error upserting user settings:', upsertError);
-      console.warn('[Supabase] Returning default settings due to upsert error');
+    if (!data) {
+      console.warn('[Supabase] RPC returned null, returning defaults');
       return {
         userId,
         ...DEFAULT_USER_SETTINGS,
@@ -594,16 +563,20 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings> {
       };
     }
 
-    console.log('[Supabase] User settings created successfully via UPSERT');
+    console.log('[Supabase] User settings fetched successfully via RPC');
+    
+    // Map database columns to frontend interface
     return {
-      userId: newSettings.user_id,
-      priceDropAlertsEnabled: newSettings.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
-      weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
-      defaultCurrency: newSettings.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
-      country: newSettings.country,
-      city: newSettings.city,
-      currency: newSettings.currency ?? DEFAULT_USER_SETTINGS.currency,
-      updatedAt: newSettings.updated_at || new Date().toISOString(),
+      userId: data.user_id,
+      priceDropAlertsEnabled: data.price_drop_alerts_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+      priceDropNotificationsEnabled: data.price_drop_notifications_enabled ?? DEFAULT_USER_SETTINGS.priceDropNotificationsEnabled,
+      targetPriceAlertsEnabled: data.target_price_alerts_enabled ?? DEFAULT_USER_SETTINGS.targetPriceAlertsEnabled,
+      weeklyDigestEnabled: data.weekly_digest_enabled ?? DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
+      defaultCurrency: data.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
+      country: data.country,
+      city: data.city,
+      currency: data.currency ?? DEFAULT_USER_SETTINGS.currency,
+      updatedAt: data.updated_at || new Date().toISOString(),
     };
 
   } catch (e) {
@@ -617,14 +590,17 @@ export async function fetchUserSettings(userId: string): Promise<UserSettings> {
 }
 
 /**
- * Update user settings in Supabase user_settings table.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * HARDENED: Update user settings using UPSERT (NO DUPLICATES, NO NULLS)
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL FIX: Uses UPSERT with onConflict: 'user_id' to prevent duplicate key errors (23505).
+ * Uses UPSERT with onConflict: 'user_id' to prevent duplicate key errors (23505).
  * 
  * This ensures that:
  * - If the row exists, it updates it
  * - If the row doesn't exist, it creates it
  * - No duplicate key errors can occur
+ * - Concurrency-safe
  * 
  * @param userId - The user ID to update settings for
  * @param updates - Partial settings to update
@@ -634,6 +610,8 @@ export async function updateUserSettings(
   userId: string,
   updates: {
     priceDropAlertsEnabled?: boolean;
+    priceDropNotificationsEnabled?: boolean;
+    targetPriceAlertsEnabled?: boolean;
     weeklyDigestEnabled?: boolean;
     defaultCurrency?: string;
     country?: string | null;
@@ -647,10 +625,20 @@ export async function updateUserSettings(
     // Map frontend field names to database field names
     const dbUpdates: any = {
       user_id: userId, // Always include user_id for UPSERT
+      updated_at: new Date().toISOString(), // Always update timestamp
     };
     
     if (updates.priceDropAlertsEnabled !== undefined) {
-      dbUpdates.notification_enabled = updates.priceDropAlertsEnabled;
+      dbUpdates.price_drop_alerts_enabled = updates.priceDropAlertsEnabled;
+    }
+    if (updates.priceDropNotificationsEnabled !== undefined) {
+      dbUpdates.price_drop_notifications_enabled = updates.priceDropNotificationsEnabled;
+    }
+    if (updates.targetPriceAlertsEnabled !== undefined) {
+      dbUpdates.target_price_alerts_enabled = updates.targetPriceAlertsEnabled;
+    }
+    if (updates.weeklyDigestEnabled !== undefined) {
+      dbUpdates.weekly_digest_enabled = updates.weeklyDigestEnabled;
     }
     if (updates.country !== undefined) {
       dbUpdates.country = updates.country;
@@ -679,8 +667,10 @@ export async function updateUserSettings(
     
     return {
       userId: data.user_id,
-      priceDropAlertsEnabled: data.notification_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
-      weeklyDigestEnabled: DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
+      priceDropAlertsEnabled: data.price_drop_alerts_enabled ?? DEFAULT_USER_SETTINGS.priceDropAlertsEnabled,
+      priceDropNotificationsEnabled: data.price_drop_notifications_enabled ?? DEFAULT_USER_SETTINGS.priceDropNotificationsEnabled,
+      targetPriceAlertsEnabled: data.target_price_alerts_enabled ?? DEFAULT_USER_SETTINGS.targetPriceAlertsEnabled,
+      weeklyDigestEnabled: data.weekly_digest_enabled ?? DEFAULT_USER_SETTINGS.weeklyDigestEnabled,
       defaultCurrency: data.currency ?? DEFAULT_USER_SETTINGS.defaultCurrency,
       country: data.country,
       city: data.city,
