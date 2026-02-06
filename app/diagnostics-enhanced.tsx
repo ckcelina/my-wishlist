@@ -240,6 +240,7 @@ export default function DiagnosticsEnhancedScreen() {
       });
       
       if (error) {
+        // Check if it's a 404 (function not deployed)
         if (error.message.includes('not found') || error.message.includes('404')) {
           updateResult({
             name: 'Edge Function: extract-item',
@@ -247,7 +248,17 @@ export default function DiagnosticsEnhancedScreen() {
             message: 'Not deployed',
             details: 'Function not found on server',
           });
-        } else {
+        } 
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: extract-item',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
           updateResult({
             name: 'Edge Function: extract-item',
             status: 'warning',
@@ -264,12 +275,22 @@ export default function DiagnosticsEnhancedScreen() {
         });
       }
     } catch (error: any) {
-      updateResult({
-        name: 'Edge Function: extract-item',
-        status: 'fail',
-        message: 'Not available',
-        details: error.message || 'Function invocation failed',
-      });
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: extract-item',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: extract-item',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
     }
     incrementProgress();
 
@@ -282,6 +303,7 @@ export default function DiagnosticsEnhancedScreen() {
       });
       
       if (error) {
+        // Check if it's a 404 (function not deployed)
         if (error.message.includes('not found') || error.message.includes('404')) {
           updateResult({
             name: 'Edge Function: identify-from-image',
@@ -289,7 +311,17 @@ export default function DiagnosticsEnhancedScreen() {
             message: 'Not deployed',
             details: 'Function not found on server',
           });
-        } else {
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
           updateResult({
             name: 'Edge Function: identify-from-image',
             status: 'warning',
@@ -306,12 +338,22 @@ export default function DiagnosticsEnhancedScreen() {
         });
       }
     } catch (error: any) {
-      updateResult({
-        name: 'Edge Function: identify-from-image',
-        status: 'fail',
-        message: 'Not available',
-        details: error.message || 'Function invocation failed',
-      });
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
     }
     incrementProgress();
 
@@ -324,6 +366,7 @@ export default function DiagnosticsEnhancedScreen() {
       });
       
       if (error) {
+        // Check if it's a 404 (function not deployed)
         if (error.message.includes('not found') || error.message.includes('404')) {
           updateResult({
             name: 'Edge Function: find-alternatives',
@@ -331,7 +374,17 @@ export default function DiagnosticsEnhancedScreen() {
             message: 'Not deployed',
             details: 'Function not found on server',
           });
-        } else {
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
           updateResult({
             name: 'Edge Function: find-alternatives',
             status: 'warning',
@@ -348,12 +401,22 @@ export default function DiagnosticsEnhancedScreen() {
         });
       }
     } catch (error: any) {
-      updateResult({
-        name: 'Edge Function: find-alternatives',
-        status: 'fail',
-        message: 'Not available',
-        details: error.message || 'Function invocation failed',
-      });
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
     }
     incrementProgress();
 
@@ -366,6 +429,7 @@ export default function DiagnosticsEnhancedScreen() {
       });
       
       if (error) {
+        // Check if it's a 404 (function not deployed)
         if (error.message.includes('not found') || error.message.includes('404')) {
           updateResult({
             name: 'Edge Function: import-wishlist',
@@ -373,7 +437,17 @@ export default function DiagnosticsEnhancedScreen() {
             message: 'Not deployed',
             details: 'Function not found on server',
           });
-        } else {
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
           updateResult({
             name: 'Edge Function: import-wishlist',
             status: 'warning',
@@ -390,12 +464,22 @@ export default function DiagnosticsEnhancedScreen() {
         });
       }
     } catch (error: any) {
-      updateResult({
-        name: 'Edge Function: import-wishlist',
-        status: 'fail',
-        message: 'Not available',
-        details: error.message || 'Function invocation failed',
-      });
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
     }
     incrementProgress();
 
