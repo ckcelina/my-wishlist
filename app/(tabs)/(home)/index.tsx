@@ -12,6 +12,7 @@ import { Divider } from '@/components/design-system/Divider';
 import { useRouter, Stack } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { IconSymbol } from '@/components/IconSymbol';
+import { HeaderRightButton, HeaderLeftButton } from '@/components/HeaderButtons';
 
 export default function HomeScreen() {
   const { theme, isDark } = useAppTheme();
@@ -88,8 +89,12 @@ export default function HomeScreen() {
       <Stack.Screen 
         options={{
           headerShown: true,
-          title: 'My Wishlist',
-          ...(Platform.OS === 'ios' && { headerLargeTitle: true }),
+          title: Platform.OS === 'ios' ? 'Building the app...' : 'My Wishlist',
+          ...(Platform.OS === 'ios' && { 
+            headerLargeTitle: true,
+            headerRight: () => <HeaderRightButton />,
+            headerLeft: () => <HeaderLeftButton />,
+          }),
         }}
       />
       <SafeAreaView style={componentStyles.container} edges={['top', 'left', 'right']}>
