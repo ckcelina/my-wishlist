@@ -11,6 +11,8 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -18,7 +20,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { IconSymbol } from '@/components/IconSymbol';
+import { ConfirmDialog } from '@/components/design-system/ConfirmDialog';
 import { supabase } from '@/lib/supabase';
+import { 
+  fetchWishlists, 
+  fetchWishlistItems, 
+  createWishlistItem 
+} from '@/lib/supabase-helpers';
+import * as FileSystem from 'expo-file-system/legacy';
 
 // Helper to resolve image sources
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
@@ -47,10 +56,25 @@ interface ProductCandidate {
   model: string | null;
   category: string | null;
   imageUrl: string;
-  url: string;
+  storeUrl: string;
   price: number | null;
   currency: string | null;
-  store: string | null;
+  storeName: string | null;
+}
+
+interface ImportedItem {
+  title: string;
+  imageUrl: string | null;
+  price: number | null;
+  currency: string | null;
+  productUrl: string;
+  storeDomain?: string;
+}
+
+interface Wishlist {
+  id: string;
+  name: string;
+  is_default: boolean;
 }
 
 export default function ImportPreviewScreen() {
@@ -63,28 +87,50 @@ export default function ImportPreviewScreen() {
 
   const [productData, setProductData] = useState<ProductData | null>(null);
   const [candidates, setCandidates] = useState<ProductCandidate[]>([]);
+  const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
   const [selectedCandidate, setSelectedCandidate] = useState<ProductCandidate | null>(null);
   const [imageUri, setImageUri] = useState<string>('');
   const [editedName, setEditedName] = useState('');
   const [editedPrice, setEditedPrice] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
+  const [selectedWishlistId, setSelectedWishlistId] = useState<string>('');
+  const [showWishlistPicker, setShowWishlistPicker] = useState(false);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicateMessage, setDuplicateMessage] = useState('');
+  const [pendingSave, setPendingSave] = useState(false);
 
   useEffect(() => {
-    // Handle new format with identified items (product candidates)
+    console.log('[ImportPreview] Component mounted with params:', Object.keys(params));
+    loadWishlists();
+
+    // Handle identified items from image search (multiple candidates)
     if (params.identifiedItems) {
       try {
         const items = JSON.parse(params.identifiedItems as string) as ProductCandidate[];
         setCandidates(items);
         setImageUri(params.imageUri as string || '');
-        console.log('[ImportPreview] Loaded', items.length, 'product candidates');
+        console.log('[ImportPreview] Loaded', items.length, 'product candidates from image search');
       } catch (error) {
         console.error('[ImportPreview] Error parsing identifiedItems:', error);
         Alert.alert('Error', 'Failed to load product candidates');
         router.back();
       }
     }
-    // Handle legacy format with single product data
+    // Handle imported items from wishlist import (multiple items)
+    else if (params.items) {
+      try {
+        const items = JSON.parse(params.items as string) as ImportedItem[];
+        setImportedItems(items);
+        console.log('[ImportPreview] Loaded', items.length, 'items from wishlist import');
+      } catch (error) {
+        console.error('[ImportPreview] Error parsing items:', error);
+        Alert.alert('Error', 'Failed to load imported items');
+        router.back();
+      }
+    }
+    // Handle legacy single product data
     else if (params.data) {
       try {
         const parsed = JSON.parse(params.data as string);
@@ -92,13 +138,37 @@ export default function ImportPreviewScreen() {
         setEditedName(parsed.itemName || '');
         setEditedPrice(parsed.price ? parsed.price.toString() : '');
         setEditedNotes(parsed.notes || '');
+        console.log('[ImportPreview] Loaded single product data');
       } catch (error) {
         console.error('[ImportPreview] Error parsing data:', error);
         Alert.alert('Error', 'Failed to load product data');
         router.back();
       }
     }
-  }, [params.data, params.identifiedItems]);
+  }, [params.data, params.identifiedItems, params.items]);
+
+  const loadWishlists = async () => {
+    if (!user?.id) {
+      console.warn('[ImportPreview] No user ID, cannot load wishlists');
+      return;
+    }
+
+    try {
+      console.log('[ImportPreview] Loading wishlists for user:', user.id);
+      const lists = await fetchWishlists(user.id);
+      setWishlists(lists);
+
+      // Find default wishlist or use first one
+      const defaultList = lists.find(w => w.is_default) || lists[0];
+      if (defaultList) {
+        setSelectedWishlistId(defaultList.id);
+        console.log('[ImportPreview] Selected default wishlist:', defaultList.name);
+      }
+    } catch (error) {
+      console.error('[ImportPreview] Error loading wishlists:', error);
+      Alert.alert('Error', 'Failed to load wishlists');
+    }
+  };
 
   const handleSelectCandidate = (candidate: ProductCandidate) => {
     console.log('[ImportPreview] User selected candidate:', candidate.title);
@@ -107,8 +177,100 @@ export default function ImportPreviewScreen() {
     setEditedPrice(candidate.price ? candidate.price.toString() : '');
   };
 
-  const handleSave = async () => {
-    if (!editedName.trim()) {
+  const uploadImageToStorage = async (localUri: string): Promise<string | null> => {
+    try {
+      console.log('[ImportPreview] Uploading local image to Supabase Storage:', localUri);
+
+      // Read file as base64
+      const base64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(7);
+      const filename = `item_${timestamp}_${randomStr}.jpg`;
+      const filePath = `items/${user?.id}/${filename}`;
+
+      console.log('[ImportPreview] Uploading to path:', filePath);
+
+      // Convert base64 to blob for upload
+      const blob = await fetch(`data:image/jpeg;base64,${base64}`).then(r => r.blob());
+
+      // Upload to Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('images')
+        .upload(filePath, blob, {
+          contentType: 'image/jpeg',
+          upsert: false,
+        });
+
+      if (error) {
+        console.error('[ImportPreview] Upload error:', error);
+        return null;
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath);
+
+      console.log('[ImportPreview] Image uploaded successfully:', urlData.publicUrl);
+      return urlData.publicUrl;
+    } catch (error) {
+      console.error('[ImportPreview] Error uploading image:', error);
+      return null;
+    }
+  };
+
+  const checkForDuplicates = async (
+    wishlistId: string,
+    title: string,
+    url: string | null
+  ): Promise<boolean> => {
+    try {
+      console.log('[ImportPreview] Checking for duplicates in wishlist:', wishlistId);
+      const existingItems = await fetchWishlistItems(wishlistId);
+
+      // Check for duplicate by URL (exact match)
+      if (url) {
+        const urlDuplicate = existingItems.find(
+          item => item.original_url && item.original_url.toLowerCase() === url.toLowerCase()
+        );
+        if (urlDuplicate) {
+          console.log('[ImportPreview] Found duplicate by URL:', urlDuplicate.title);
+          setDuplicateMessage(
+            `An item with this URL already exists in your wishlist:\n\n"${urlDuplicate.title}"\n\nDo you want to add it anyway?`
+          );
+          return true;
+        }
+      }
+
+      // Check for duplicate by title (case-insensitive, trimmed)
+      const titleDuplicate = existingItems.find(
+        item => item.title.toLowerCase().trim() === title.toLowerCase().trim()
+      );
+      if (titleDuplicate) {
+        console.log('[ImportPreview] Found duplicate by title:', titleDuplicate.title);
+        setDuplicateMessage(
+          `An item with a similar name already exists in your wishlist:\n\n"${titleDuplicate.title}"\n\nDo you want to add it anyway?`
+        );
+        return true;
+      }
+
+      console.log('[ImportPreview] No duplicates found');
+      return false;
+    } catch (error) {
+      console.error('[ImportPreview] Error checking duplicates:', error);
+      // Don't block save if duplicate check fails
+      return false;
+    }
+  };
+
+  const performSave = async () => {
+    const trimmedName = editedName.trim();
+    
+    if (!trimmedName) {
       Alert.alert('Error', 'Please enter an item name');
       return;
     }
@@ -118,63 +280,136 @@ export default function ImportPreviewScreen() {
       return;
     }
 
+    if (!selectedWishlistId) {
+      Alert.alert('Error', 'Please select a wishlist');
+      return;
+    }
+
     try {
-      console.log('[ImportPreview] Saving item:', editedName);
+      console.log('[ImportPreview] Starting save process for:', trimmedName);
       setSaving(true);
 
-      // Get default wishlist
-      const { data: wishlists, error: wishlistError } = await supabase
-        .from('wishlists')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('is_default', true)
-        .limit(1);
+      // Determine image URL
+      let finalImageUrl: string | null = null;
+      const candidateImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
 
-      if (wishlistError) throw wishlistError;
+      // If image is a local file (starts with file://), upload it
+      if (candidateImageUrl && candidateImageUrl.startsWith('file://')) {
+        console.log('[ImportPreview] Detected local image, uploading to storage');
+        finalImageUrl = await uploadImageToStorage(candidateImageUrl);
+        
+        if (!finalImageUrl) {
+          console.warn('[ImportPreview] Image upload failed, continuing without image');
+        }
+      } else {
+        finalImageUrl = candidateImageUrl || null;
+      }
 
-      if (!wishlists || wishlists.length === 0) {
-        Alert.alert('Error', 'No default wishlist found. Please create a wishlist first.');
+      // Determine source URL and domain
+      const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
+      const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
+      const currency = selectedCandidate?.currency || productData?.currency || 'USD';
+      const price = editedPrice ? parseFloat(editedPrice) : null;
+
+      // Check for duplicates
+      const hasDuplicate = await checkForDuplicates(selectedWishlistId, trimmedName, sourceUrl);
+      
+      if (hasDuplicate) {
+        console.log('[ImportPreview] Duplicate found, showing confirmation dialog');
+        setPendingSave(true);
+        setShowDuplicateDialog(true);
+        setSaving(false);
         return;
       }
 
-      const wishlistId = wishlists[0].id;
-
-      // Determine image URL and source URL
-      const imageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri || null;
-      const sourceUrl = selectedCandidate?.url || productData?.sourceUrl || null;
-      const sourceDomain = selectedCandidate?.store || productData?.storeDomain || null;
-      const currency = selectedCandidate?.currency || productData?.currency || 'USD';
-
-      // Save item
-      const { error: itemError } = await supabase
-        .from('wishlist_items')
-        .insert({
-          wishlist_id: wishlistId,
-          title: editedName.trim(),
-          image_url: imageUrl,
-          current_price: editedPrice ? parseFloat(editedPrice) : null,
-          currency,
-          original_url: sourceUrl,
-          source_domain: sourceDomain,
-          notes: editedNotes.trim() || null,
-        });
-
-      if (itemError) throw itemError;
+      // Save item to database
+      console.log('[ImportPreview] Creating wishlist item');
+      await createWishlistItem({
+        wishlist_id: selectedWishlistId,
+        title: trimmedName,
+        image_url: finalImageUrl,
+        current_price: price,
+        currency,
+        original_url: sourceUrl,
+        source_domain: sourceDomain,
+        notes: editedNotes.trim() || null,
+      });
 
       console.log('[ImportPreview] Item saved successfully');
-      Alert.alert('Success', 'Item added to your wishlist', [
-        {
-          text: 'OK',
-          onPress: () => router.push('/(tabs)/(home)'),
-        },
-      ]);
+      
+      // Navigate to the wishlist
+      router.replace({
+        pathname: '/wishlist/[id]',
+        params: { id: selectedWishlistId },
+      });
     } catch (error) {
       console.error('[ImportPreview] Error saving item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
       setSaving(false);
     }
   };
+
+  const handleSave = async () => {
+    await performSave();
+  };
+
+  const handleConfirmDuplicate = async () => {
+    console.log('[ImportPreview] User confirmed adding duplicate');
+    setShowDuplicateDialog(false);
+    setPendingSave(false);
+
+    // Proceed with save without duplicate check
+    const trimmedName = editedName.trim();
+    
+    try {
+      setSaving(true);
+
+      // Determine image URL
+      let finalImageUrl: string | null = null;
+      const candidateImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+
+      if (candidateImageUrl && candidateImageUrl.startsWith('file://')) {
+        finalImageUrl = await uploadImageToStorage(candidateImageUrl);
+      } else {
+        finalImageUrl = candidateImageUrl || null;
+      }
+
+      const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
+      const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
+      const currency = selectedCandidate?.currency || productData?.currency || 'USD';
+      const price = editedPrice ? parseFloat(editedPrice) : null;
+
+      await createWishlistItem({
+        wishlist_id: selectedWishlistId,
+        title: trimmedName,
+        image_url: finalImageUrl,
+        current_price: price,
+        currency,
+        original_url: sourceUrl,
+        source_domain: sourceDomain,
+        notes: editedNotes.trim() || null,
+      });
+
+      console.log('[ImportPreview] Duplicate item saved successfully');
+      
+      router.replace({
+        pathname: '/wishlist/[id]',
+        params: { id: selectedWishlistId },
+      });
+    } catch (error) {
+      console.error('[ImportPreview] Error saving duplicate item:', error);
+      Alert.alert('Error', 'Failed to save item. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  const handleCancelDuplicate = () => {
+    console.log('[ImportPreview] User cancelled adding duplicate');
+    setShowDuplicateDialog(false);
+    setPendingSave(false);
+  };
+
+  const selectedWishlistName = wishlists.find(w => w.id === selectedWishlistId)?.name || 'Select Wishlist';
 
   const styles = StyleSheet.create({
     container: {
@@ -200,6 +435,7 @@ export default function ImportPreviewScreen() {
       fontSize: 18,
       fontWeight: '600',
       marginBottom: spacing.md,
+      color: colors.textPrimary,
     },
     candidateCard: {
       flexDirection: 'row',
@@ -214,6 +450,7 @@ export default function ImportPreviewScreen() {
       height: 80,
       borderRadius: 8,
       marginRight: spacing.sm,
+      backgroundColor: colors.surface,
     },
     candidateInfo: {
       flex: 1,
@@ -269,6 +506,21 @@ export default function ImportPreviewScreen() {
       minHeight: 100,
       textAlignVertical: 'top',
     },
+    wishlistSelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: spacing.md,
+      marginBottom: spacing.md,
+    },
+    wishlistSelectorText: {
+      fontSize: 16,
+      color: colors.textPrimary,
+    },
     saveButton: {
       backgroundColor: colors.accent,
       padding: spacing.md,
@@ -284,10 +536,58 @@ export default function ImportPreviewScreen() {
     saveButtonDisabled: {
       opacity: 0.5,
     },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: spacing.lg,
+      width: '85%',
+      maxWidth: 400,
+      maxHeight: '70%',
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginBottom: spacing.md,
+    },
+    wishlistOption: {
+      padding: spacing.md,
+      borderRadius: 8,
+      marginBottom: spacing.xs,
+    },
+    wishlistOptionSelected: {
+      backgroundColor: colors.accent + '20',
+    },
+    wishlistOptionText: {
+      fontSize: 16,
+      color: colors.textPrimary,
+    },
+    wishlistOptionTextSelected: {
+      fontWeight: '600',
+      color: colors.accent,
+    },
+    modalCloseButton: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: 8,
+      backgroundColor: colors.border,
+      alignItems: 'center',
+    },
+    modalCloseButtonText: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: colors.textPrimary,
+    },
   });
 
   // Show loading if neither format is loaded
-  if (!productData && candidates.length === 0) {
+  if (!productData && candidates.length === 0 && importedItems.length === 0) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -317,7 +617,7 @@ export default function ImportPreviewScreen() {
               </View>
             )}
 
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            <Text style={styles.sectionTitle}>
               Select the matching product:
             </Text>
 
@@ -343,9 +643,9 @@ export default function ImportPreviewScreen() {
                       {candidate.brand}
                     </Text>
                   )}
-                  {candidate.store && (
+                  {candidate.storeName && (
                     <Text style={[styles.candidateStore, { color: colors.textTertiary }]}>
-                      {candidate.store}
+                      {candidate.storeName}
                     </Text>
                   )}
                   {candidate.price && candidate.currency && (
@@ -373,10 +673,10 @@ export default function ImportPreviewScreen() {
                   model: null,
                   category: null,
                   imageUrl: imageUri,
-                  url: '',
+                  storeUrl: '',
                   price: null,
                   currency: null,
-                  store: null,
+                  storeName: null,
                 });
               }}
             >
@@ -418,6 +718,20 @@ export default function ImportPreviewScreen() {
               />
             </View>
           )}
+
+          <Text style={styles.label}>Wishlist</Text>
+          <TouchableOpacity
+            style={styles.wishlistSelector}
+            onPress={() => setShowWishlistPicker(true)}
+          >
+            <Text style={styles.wishlistSelectorText}>{selectedWishlistName}</Text>
+            <IconSymbol
+              ios_icon_name="chevron.down"
+              android_material_icon_name="arrow-drop-down"
+              size={20}
+              color={colors.textSecondary}
+            />
+          </TouchableOpacity>
 
           <Text style={styles.label}>Item Name *</Text>
           <TextInput
@@ -462,6 +776,63 @@ export default function ImportPreviewScreen() {
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Wishlist Picker Modal */}
+      <Modal
+        visible={showWishlistPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWishlistPicker(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowWishlistPicker(false)}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select Wishlist</Text>
+            <ScrollView>
+              {wishlists.map((wishlist) => (
+                <TouchableOpacity
+                  key={wishlist.id}
+                  style={[
+                    styles.wishlistOption,
+                    selectedWishlistId === wishlist.id && styles.wishlistOptionSelected,
+                  ]}
+                  onPress={() => {
+                    console.log('[ImportPreview] Selected wishlist:', wishlist.name);
+                    setSelectedWishlistId(wishlist.id);
+                    setShowWishlistPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.wishlistOptionText,
+                      selectedWishlistId === wishlist.id && styles.wishlistOptionTextSelected,
+                    ]}
+                  >
+                    {wishlist.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCloseButton}
+              onPress={() => setShowWishlistPicker(false)}
+            >
+              <Text style={styles.modalCloseButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Duplicate Confirmation Dialog */}
+      <ConfirmDialog
+        visible={showDuplicateDialog}
+        title="Duplicate Item"
+        message={duplicateMessage}
+        confirmLabel="Add Anyway"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmDuplicate}
+        onCancel={handleCancelDuplicate}
+        icon="warning"
+      />
     </View>
   );
 }
