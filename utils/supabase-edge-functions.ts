@@ -110,7 +110,12 @@ export interface ImportWishlistResponse {
 }
 
 export interface IdentifyFromImageRequest {
-  imageUrl: string; // Signed URL from Supabase Storage
+  imageBase64?: string;
+  imageUrl?: string;
+  countryCode?: string;
+  currencyCode?: string;
+  locale?: string;
+  hints?: string[];
 }
 
 export interface ProductCandidate {
@@ -123,7 +128,8 @@ export interface ProductCandidate {
   price?: number | null;
   currency?: string | null;
   storeName?: string | null;
-  score: number;
+  source?: string;
+  score?: number;
   reason?: string;
 }
 
@@ -420,54 +426,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   }
 }
 
-/**
- * Upload image to Supabase Storage and generate a signed URL
- * Returns the signed URL with 5-minute expiry
- */
-async function uploadImageAndGetSignedUrl(imageBase64: string, userId: string): Promise<string> {
-  console.log('[uploadImageAndGetSignedUrl] Starting upload for user:', userId);
-  
-  // Convert base64 to Uint8Array
-  const binaryString = atob(imageBase64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
 
-  // Generate unique filename
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.jpg`;
-  const filePath = `${userId}/${fileName}`;
-
-  console.log('[uploadImageAndGetSignedUrl] Uploading to path:', filePath);
-
-  // Upload to Supabase Storage (private bucket)
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from('product-images')
-    .upload(filePath, bytes, {
-      contentType: 'image/jpeg',
-      upsert: false,
-    });
-
-  if (uploadError) {
-    console.error('[uploadImageAndGetSignedUrl] Upload error:', uploadError);
-    throw new Error(`Failed to upload image: ${uploadError.message}`);
-  }
-
-  console.log('[uploadImageAndGetSignedUrl] Upload successful:', uploadData.path);
-
-  // Generate signed URL with 5-minute expiry
-  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-    .from('product-images')
-    .createSignedUrl(uploadData.path, 300); // 300 seconds = 5 minutes
-
-  if (signedUrlError) {
-    console.error('[uploadImageAndGetSignedUrl] Signed URL error:', signedUrlError);
-    throw new Error(`Failed to generate signed URL: ${signedUrlError.message}`);
-  }
-
-  console.log('[uploadImageAndGetSignedUrl] Signed URL generated successfully');
-  return signedUrlData.signedUrl;
-}
 
 /**
  * Search for items across multiple stores using AI
@@ -667,15 +626,15 @@ let identifyInProgress = false;
  * Identify a product from an image using a robust Google Lens-style pipeline
  * 
  * PIPELINE:
- * 1. Upload image to Supabase Storage (private bucket)
- * 2. Generate signed URL (5-minute expiry)
- * 3. Send signed URL to Edge Function
- * 4. Edge Function runs pipeline:
- *    a) FIRST TRY (optional): OpenAI Vision for high-confidence identification
- *    b) FALLBACK: Visual search provider (SerpAPI Google Lens / Bing Visual Search)
- *    c) Fetch product pages and extract schema.org / OpenGraph data
- *    d) Score, dedupe, and return top 5-8 candidates
- * 5. Returns structured JSON with status, items, and metadata
+ * 1. Send image (base64 or URL) directly to Edge Function
+ * 2. Edge Function runs pipeline:
+ *    a) Validate auth (verify_jwt=true), reject images > 6MB
+ *    b) Check rate limit (20 searches/day per user)
+ *    c) FIRST TRY (optional): OpenAI Vision for high-confidence identification
+ *    d) FALLBACK: Visual search provider (SerpAPI Google Lens / Bing Visual Search)
+ *    e) Fetch product pages and extract schema.org / OpenGraph data
+ *    f) Score, dedupe, and return top 5-8 candidates
+ * 3. Returns structured JSON with status, items, and metadata
  * 
  * ALWAYS returns a response - never silently fails
  * 
@@ -685,8 +644,13 @@ let identifyInProgress = false;
  * - If AUTH_REQUIRED is thrown → stops and returns error (no retry loops)
  */
 export async function identifyFromImage(
-  imageUrl?: string,
-  imageBase64?: string
+  imageBase64?: string,
+  options?: {
+    countryCode?: string;
+    currencyCode?: string;
+    locale?: string;
+    hints?: string[];
+  }
 ): Promise<IdentifyFromImageResponse> {
   try {
     console.log('[identifyFromImage] Starting image identification');
@@ -739,20 +703,11 @@ export async function identifyFromImage(
       };
     }
 
-    let signedUrl: string;
-
-    // If base64 is provided, upload to Supabase Storage and get signed URL
-    if (imageBase64) {
-      console.log('[identifyFromImage] Uploading image to Supabase Storage');
-      signedUrl = await uploadImageAndGetSignedUrl(imageBase64, user.id);
-    } else if (imageUrl) {
-      // If URL is provided, use it directly (assuming it's already a signed URL)
-      signedUrl = imageUrl;
-    } else {
+    if (!imageBase64) {
       identifyInProgress = false;
       return {
         status: 'error',
-        message: 'Either imageUrl or imageBase64 must be provided',
+        message: 'imageBase64 is required',
         providerUsed: 'none',
         confidence: 0,
         query: '',
@@ -760,13 +715,19 @@ export async function identifyFromImage(
       };
     }
 
-    console.log('[identifyFromImage] Calling Edge Function with signed URL');
+    console.log('[identifyFromImage] Calling Edge Function with image data');
 
-    // Call Edge Function with signed URL using the safe wrapper
+    // Call Edge Function with image data using the safe wrapper
     // This will throw AUTH_REQUIRED if auth fails - we catch it below
     const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
-      { imageUrl: signedUrl },
+      {
+        imageBase64,
+        countryCode: options?.countryCode,
+        currencyCode: options?.currencyCode,
+        locale: options?.locale,
+        hints: options?.hints,
+      },
       { showErrorAlert: false } // We'll handle errors ourselves
     );
 

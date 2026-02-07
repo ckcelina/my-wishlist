@@ -416,7 +416,11 @@ export default function AddItemScreen() {
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
       console.log('[AddItem] Calling identifyFromImage...');
-      const result = await identifyFromImage(undefined, base64);
+      const result = await identifyFromImage(base64, {
+        countryCode: searchCountry,
+        currencyCode: smartLocationSettings?.currency || 'USD',
+        locale: 'en',
+      });
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
@@ -425,6 +429,44 @@ export default function AddItemScreen() {
         Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
+        return;
+      }
+
+      // Handle RATE_LIMIT_EXCEEDED
+      if (result.status === 'error' && result.code === 'RATE_LIMIT_EXCEEDED') {
+        console.log('[AddItem] Rate limit exceeded');
+        Alert.alert(
+          'Daily Limit Reached',
+          result.message || 'You\'ve reached the daily limit for image searches. Please try again tomorrow or add items manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after rate limit');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: cameraImage,
+                  extractedImages: [cameraImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'camera',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
         return;
       }
 
@@ -712,7 +754,11 @@ export default function AddItemScreen() {
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
       console.log('[AddItem] Calling identifyFromImage...');
-      const result = await identifyFromImage(undefined, base64);
+      const result = await identifyFromImage(base64, {
+        countryCode: searchCountry,
+        currencyCode: smartLocationSettings?.currency || 'USD',
+        locale: 'en',
+      });
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
@@ -721,6 +767,44 @@ export default function AddItemScreen() {
         Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
+        return;
+      }
+
+      // Handle RATE_LIMIT_EXCEEDED
+      if (result.status === 'error' && result.code === 'RATE_LIMIT_EXCEEDED') {
+        console.log('[AddItem] Rate limit exceeded');
+        Alert.alert(
+          'Daily Limit Reached',
+          result.message || 'You\'ve reached the daily limit for image searches. Please try again tomorrow or add items manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after rate limit');
+                const fallbackData = {
+                  itemName: '',
+                  imageUrl: uploadImage,
+                  extractedImages: [uploadImage],
+                  storeName: '',
+                  storeDomain: '',
+                  price: null,
+                  currency: 'USD',
+                  countryAvailability: searchCountry ? [searchCountry] : [],
+                  sourceUrl: '',
+                  inputType: 'image',
+                };
+                
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify(fallbackData),
+                  },
+                });
+              },
+            },
+          ]
+        );
         return;
       }
 
