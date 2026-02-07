@@ -240,6 +240,18 @@ export default function SmartSearchScreen() {
       }, 500);
     } catch (error: any) {
       console.error('[SmartSearch] AI Price Search failed:', error);
+      
+      // Handle AUTH_REQUIRED - redirect to login without sign out
+      if (error.message === 'AUTH_REQUIRED') {
+        console.log('[SmartSearch] AUTH_REQUIRED - redirecting to login (no sign out)');
+        setError('Session expired — please sign in again');
+        setCurrentStage('error');
+        setTimeout(() => {
+          router.push('/auth');
+        }, 1500);
+        return;
+      }
+      
       setError(error.message || 'Failed to search for product prices. Please try again.');
       setCurrentStage('error');
     } finally {

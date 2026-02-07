@@ -419,10 +419,10 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
-      // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
+      // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
       if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
-        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
-        Alert.alert('Session Expired', 'Please sign in again to continue', [
+        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
+        Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
         return;
@@ -715,10 +715,10 @@ export default function AddItemScreen() {
       const result = await identifyFromImage(undefined, base64);
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
-      // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
+      // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
       if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
-        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
-        Alert.alert('Session Expired', 'Please sign in again to continue', [
+        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
+        Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
         ]);
         return;
