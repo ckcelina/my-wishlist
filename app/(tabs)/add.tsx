@@ -350,11 +350,10 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching camera');
-      // CRITICAL FIX: Remove allowsEditing and aspect to prevent cropping UI
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
-        allowsEditing: false, // ✅ FIXED: Disable cropping UI
-        quality: 1, // ✅ FIXED: Use highest quality
+        allowsEditing: false,
+        quality: 1,
         base64: true,
       });
 
@@ -371,7 +370,7 @@ export default function AddItemScreen() {
   };
 
   const handleIdentifyFromCamera = async () => {
-    console.log('[AddItem] handleIdentifyFromCamera called');
+    console.log('[AddItem] handleIdentifyFromCamera called - START');
     
     try {
       if (!cameraImage) {
@@ -416,11 +415,12 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
+      console.log('[AddItem] Calling identifyFromImage...');
       const result = await identifyFromImage(undefined, base64);
-      console.log('[AddItem] Identification result:', result);
+      console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
-      if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
+      if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
         console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
         Alert.alert('Session Expired', 'Please sign in again to continue', [
           { text: 'OK', onPress: () => router.push('/auth') },
@@ -507,11 +507,32 @@ export default function AddItemScreen() {
       // Success - navigate to import-preview with candidates
       if (result.status === 'ok' && result.items.length > 0) {
         console.log('[AddItem] Found', result.items.length, 'product candidates');
+        
+        // Convert ProductCandidate[] to the format expected by import-preview
+        const candidates = result.items.map(item => ({
+          itemName: item.title,
+          brand: item.brand || '',
+          model: item.model || '',
+          category: item.category || '',
+          imageUrl: item.imageUrl || cameraImage,
+          extractedImages: item.imageUrl ? [item.imageUrl] : [cameraImage],
+          storeName: item.storeName || '',
+          storeDomain: item.storeUrl ? new URL(item.storeUrl).hostname : '',
+          price: item.price || null,
+          currency: item.currency || 'USD',
+          countryAvailability: searchCountry ? [searchCountry] : [],
+          sourceUrl: item.storeUrl || '',
+          inputType: 'camera',
+          score: item.score || 0,
+          reason: item.reason || '',
+        }));
+
+        console.log('[AddItem] Navigating to import-preview with candidates');
         router.push({
           pathname: '/import-preview',
           params: {
             imageUri: cameraImage,
-            identifiedItems: JSON.stringify(result.items),
+            identifiedItems: JSON.stringify(candidates),
             providerUsed: result.providerUsed,
             confidence: result.confidence.toString(),
             query: result.query,
@@ -590,6 +611,7 @@ export default function AddItemScreen() {
       );
     } finally {
       setIdentifyingCamera(false);
+      console.log('[AddItem] handleIdentifyFromCamera called - END');
     }
   };
 
@@ -624,11 +646,10 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching image picker');
-      // CRITICAL FIX: Remove allowsEditing and aspect to prevent cropping UI
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: false, // ✅ FIXED: Disable cropping UI
-        quality: 1, // ✅ FIXED: Use highest quality
+        allowsEditing: false,
+        quality: 1,
         base64: true,
       });
 
@@ -645,7 +666,7 @@ export default function AddItemScreen() {
   };
 
   const handleIdentifyFromUpload = async () => {
-    console.log('[AddItem] handleIdentifyFromUpload called');
+    console.log('[AddItem] handleIdentifyFromUpload called - START');
     
     try {
       if (!uploadImage) {
@@ -690,11 +711,12 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
+      console.log('[AddItem] Calling identifyFromImage...');
       const result = await identifyFromImage(undefined, base64);
-      console.log('[AddItem] Identification result:', result);
+      console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops)
-      if (result.status === 'error' && result.message === 'AUTH_REQUIRED') {
+      if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
         console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login');
         Alert.alert('Session Expired', 'Please sign in again to continue', [
           { text: 'OK', onPress: () => router.push('/auth') },
@@ -781,11 +803,32 @@ export default function AddItemScreen() {
       // Success - navigate to import-preview with candidates
       if (result.status === 'ok' && result.items.length > 0) {
         console.log('[AddItem] Found', result.items.length, 'product candidates');
+        
+        // Convert ProductCandidate[] to the format expected by import-preview
+        const candidates = result.items.map(item => ({
+          itemName: item.title,
+          brand: item.brand || '',
+          model: item.model || '',
+          category: item.category || '',
+          imageUrl: item.imageUrl || uploadImage,
+          extractedImages: item.imageUrl ? [item.imageUrl] : [uploadImage],
+          storeName: item.storeName || '',
+          storeDomain: item.storeUrl ? new URL(item.storeUrl).hostname : '',
+          price: item.price || null,
+          currency: item.currency || 'USD',
+          countryAvailability: searchCountry ? [searchCountry] : [],
+          sourceUrl: item.storeUrl || '',
+          inputType: 'image',
+          score: item.score || 0,
+          reason: item.reason || '',
+        }));
+
+        console.log('[AddItem] Navigating to import-preview with candidates');
         router.push({
           pathname: '/import-preview',
           params: {
             imageUri: uploadImage,
-            identifiedItems: JSON.stringify(result.items),
+            identifiedItems: JSON.stringify(candidates),
             providerUsed: result.providerUsed,
             confidence: result.confidence.toString(),
             query: result.query,
@@ -864,6 +907,7 @@ export default function AddItemScreen() {
       );
     } finally {
       setIdentifyingUpload(false);
+      console.log('[AddItem] handleIdentifyFromUpload called - END');
     }
   };
 
@@ -1017,11 +1061,10 @@ export default function AddItemScreen() {
       }
 
       console.log('[AddItem] Launching image picker for manual entry');
-      // CRITICAL FIX: Remove allowsEditing to prevent cropping UI
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: false, // ✅ FIXED: Disable cropping UI
-        quality: 1, // ✅ FIXED: Use highest quality
+        allowsEditing: false,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets[0]) {
