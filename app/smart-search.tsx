@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   Platform,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +23,8 @@ import { searchItem } from '@/utils/supabase-edge-functions';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { TravelBanner } from '@/components/TravelBanner';
 import { getCountryFlag } from '@/constants/countries';
+import { EmptyState } from '@/components/design-system/EmptyState';
+import { ErrorState } from '@/components/design-system/ErrorState';
 
 type SearchStage = 'idle' | 'normalizing' | 'finding_stores' | 'checking_prices' | 'verifying_shipping' | 'choosing_photo' | 'complete' | 'error';
 type SearchMode = 'standard' | 'near_me';
@@ -82,6 +85,7 @@ export default function SmartSearchScreen() {
   const [itemDraft, setItemDraft] = useState<ItemDraft | null>(null);
   const [offerGroups, setOfferGroups] = useState<OfferGroup[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [noResults, setNoResults] = useState(false);
 
   // UI state
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -102,7 +106,9 @@ export default function SmartSearchScreen() {
   }, [params, settings]);
 
   const handleStartSearch = async () => {
-    if (!productName.trim()) {
+    const trimmedProductName = productName.trim();
+    
+    if (!trimmedProductName) {
       setError('Please enter a product name');
       return;
     }
@@ -115,11 +121,14 @@ export default function SmartSearchScreen() {
       return;
     }
 
-    console.log('[SmartSearch] Starting AI Price Search for:', productName);
+    console.log('[SmartSearch] Starting AI Price Search for:', trimmedProductName);
     console.log('[SmartSearch] Search mode:', searchMode);
     console.log('[SmartSearch] Search country:', searchCountry);
     setSearching(true);
     setError(null);
+    setNoResults(false);
+    setItemDraft(null);
+    setOfferGroups([]);
     setCurrentStage('normalizing');
     setStageProgress(0);
 
@@ -152,13 +161,33 @@ export default function SmartSearchScreen() {
       // Call Supabase Edge Function for AI Price Search
       console.log('[SmartSearch] Calling search-item Edge Function');
       const response = await searchItem(
-        productName.trim(),
+        trimmedProductName,
         searchCountry,
         undefined // city is optional
       );
 
+      // Handle error response from Edge Function
       if (response.error) {
-        throw new Error(response.error);
+        console.error('[SmartSearch] Edge Function returned error:', response.error);
+        
+        // Check for API key configuration errors
+        if (response.error.toLowerCase().includes('api key')) {
+          setError('Product search service is not configured. Please contact support.');
+        } else {
+          setError(response.error);
+        }
+        
+        setCurrentStage('error');
+        return;
+      }
+
+      // Check if no offers were found
+      if (!response.offers || response.offers.length === 0) {
+        console.log('[SmartSearch] No offers found for product');
+        setNoResults(true);
+        setCurrentStage('complete');
+        setStageProgress(100);
+        return;
       }
 
       console.log('[SmartSearch] AI Price Search completed:', response.offers.length, 'offers');
@@ -193,10 +222,10 @@ export default function SmartSearchScreen() {
 
       // Create ItemDraft
       const draft: ItemDraft = {
-        title: productName.trim(),
+        title: trimmedProductName,
         brand: undefined,
         category: undefined,
-        best_image_url: response.images[0] || imageUrl.trim() || undefined,
+        best_image_url: response.images?.[0] || imageUrl.trim() || undefined,
         canonical_product_url: response.canonical || originalUrl.trim() || undefined,
         offers: response.offers,
       };
@@ -204,65 +233,95 @@ export default function SmartSearchScreen() {
       setItemDraft(draft);
       setCurrentStage('complete');
       setStageProgress(100);
-
-      // Navigate to import preview with the draft
-      setTimeout(() => {
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            data: JSON.stringify({
-              itemName: draft.title,
-              imageUrl: draft.best_image_url || '',
-              extractedImages: draft.best_image_url ? [draft.best_image_url] : [],
-              storeName: draft.offers[0]?.storeName || '',
-              storeDomain: draft.offers[0]?.storeDomain || '',
-              price: draft.offers[0]?.price || null,
-              currency: draft.offers[0]?.currency || 'USD',
-              countryAvailability: [searchCountry],
-              alternativeStores: draft.offers.map(offer => ({
-                storeName: offer.storeName,
-                storeDomain: offer.storeDomain,
-                price: offer.price,
-                currency: offer.currency,
-                originalPrice: offer.originalPrice || offer.price,
-                originalCurrency: offer.originalCurrency || offer.currency,
-                shippingCost: offer.shippingCost || null,
-                deliveryTime: offer.estimatedDelivery || null,
-                availability: offer.availability,
-                confidenceScore: offer.confidenceScore || 0.8,
-                url: offer.productUrl,
-              })),
-              sourceUrl: draft.canonical_product_url || '',
-              inputType: 'name',
-            }),
-          },
-        });
-      }, 500);
     } catch (error: any) {
       console.error('[SmartSearch] AI Price Search failed:', error);
       
       // Handle AUTH_REQUIRED - redirect to login without sign out
       if (error.message === 'AUTH_REQUIRED') {
         console.log('[SmartSearch] AUTH_REQUIRED - redirecting to login (no sign out)');
-        setError('Session expired — please sign in again');
-        setCurrentStage('error');
-        setTimeout(() => {
-          router.push('/auth');
-        }, 1500);
+        Alert.alert(
+          'Session expired',
+          'Please sign in again',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.push('/auth'),
+            },
+          ]
+        );
+        setCurrentStage('idle');
         return;
       }
       
-      setError(error.message || 'Failed to search for product prices. Please try again.');
+      // Check for network/connection errors
+      if (error.message.includes('network') || error.message.includes('fetch')) {
+        setError('Unable to fetch search results. Please check your connection or try again later.');
+      } else {
+        setError(error.message || 'Failed to search for product prices. Please try again.');
+      }
+      
       setCurrentStage('error');
     } finally {
       setSearching(false);
     }
   };
 
+  const handleAddToWishlist = () => {
+    if (!itemDraft) {
+      console.warn('[SmartSearch] No itemDraft available');
+      return;
+    }
+
+    console.log('[SmartSearch] User tapped Add to Wishlist');
+    
+    // Get the best offer (first one, which should be the cheapest/best)
+    const bestOffer = itemDraft.offers[0];
+    
+    // Navigate to Import Preview with the item data
+    router.push({
+      pathname: '/import-preview',
+      params: {
+        data: JSON.stringify({
+          itemName: itemDraft.title,
+          imageUrl: itemDraft.best_image_url || '',
+          extractedImages: itemDraft.best_image_url ? [itemDraft.best_image_url] : [],
+          storeName: bestOffer?.storeName || '',
+          storeDomain: bestOffer?.storeDomain || '',
+          price: bestOffer?.price || null,
+          currency: bestOffer?.currency || 'USD',
+          countryAvailability: [settings?.activeSearchCountry || 'US'],
+          alternativeStores: itemDraft.offers.map(offer => ({
+            storeName: offer.storeName,
+            storeDomain: offer.storeDomain,
+            price: offer.price,
+            currency: offer.currency,
+            originalPrice: offer.originalPrice || offer.price,
+            originalCurrency: offer.originalCurrency || offer.currency,
+            shippingCost: offer.shippingCost || null,
+            deliveryTime: offer.estimatedDelivery || null,
+            availability: offer.availability,
+            confidenceScore: offer.confidenceScore || 0.8,
+            url: offer.productUrl,
+          })),
+          sourceUrl: itemDraft.canonical_product_url || bestOffer?.productUrl || '',
+          inputType: 'name',
+        }),
+      },
+    });
+  };
+
   const handleSetLocation = () => {
     console.log('[SmartSearch] User tapped Set Location');
     setShowLocationModal(false);
     router.push('/location');
+  };
+
+  const handleRetrySearch = () => {
+    console.log('[SmartSearch] User tapped Retry');
+    setError(null);
+    setNoResults(false);
+    setCurrentStage('idle');
+    setStageProgress(0);
   };
 
   const getStageLabel = (stage: SearchStage): string => {
@@ -485,77 +544,156 @@ export default function SmartSearchScreen() {
             </View>
           )}
 
-          {/* Error Display */}
-          {error && (
-            <View style={[styles.errorCard, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
-              <View style={styles.errorHeader}>
+          {/* Error Display using ErrorState component */}
+          {error && !searching && (
+            <ErrorState
+              title="Search Failed"
+              message={error}
+              onRetry={handleRetrySearch}
+              retryLabel="Try Again"
+              icon="error"
+            />
+          )}
+
+          {/* No Results Display using EmptyState component */}
+          {noResults && !searching && !error && (
+            <EmptyState
+              icon="search-off"
+              title="No prices found"
+              description="No prices found for this product. Try adjusting your search terms or check back later."
+              actionLabel="Try Again"
+              onAction={handleRetrySearch}
+            />
+          )}
+
+          {/* Results Display with Add to Wishlist Button */}
+          {itemDraft && offerGroups.length > 0 && !searching && !error && (
+            <View style={styles.resultsSection}>
+              <View style={styles.resultsHeader}>
                 <IconSymbol
-                  ios_icon_name="exclamationmark.triangle"
-                  android_material_icon_name="error"
-                  size={20}
-                  color={colors.error}
+                  ios_icon_name="checkmark.circle.fill"
+                  android_material_icon_name="check-circle"
+                  size={32}
+                  color={colors.success}
                 />
-                <Text style={[styles.errorTitle, { color: colors.error }]}>Search Failed</Text>
+                <Text style={[styles.resultsTitle, { color: colors.textPrimary }]}>
+                  Found {itemDraft.offers.length} {itemDraft.offers.length === 1 ? 'offer' : 'offers'}!
+                </Text>
               </View>
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+
+              <Text style={[styles.resultsSubtitle, { color: colors.textSecondary }]}>
+                {itemDraft.title}
+              </Text>
+
+              {/* Add to Wishlist Button */}
+              <TouchableOpacity
+                style={[styles.addToWishlistButton, { backgroundColor: colors.accent }]}
+                onPress={handleAddToWishlist}
+              >
+                <IconSymbol
+                  ios_icon_name="plus.circle.fill"
+                  android_material_icon_name="add-circle"
+                  size={20}
+                  color={colors.textInverse}
+                />
+                <Text style={[styles.addToWishlistButtonText, { color: colors.textInverse }]}>
+                  Add to Wishlist
+                </Text>
+              </TouchableOpacity>
+
+              {/* Offer Groups */}
+              {offerGroups.map((group, groupIndex) => (
+                <View key={groupIndex} style={styles.offerGroup}>
+                  <Text style={[styles.offerGroupLabel, { color: colors.textSecondary }]}>
+                    {group.label}
+                  </Text>
+                  {group.offers.map((offer, offerIndex) => (
+                    <View
+                      key={offerIndex}
+                      style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                    >
+                      <View style={styles.offerHeader}>
+                        <Text style={[styles.offerStoreName, { color: colors.textPrimary }]}>
+                          {offer.storeName}
+                        </Text>
+                        <Text style={[styles.offerPrice, { color: colors.accent }]}>
+                          {offer.currency} {offer.price.toFixed(2)}
+                        </Text>
+                      </View>
+                      {offer.estimatedDelivery && (
+                        <Text style={[styles.offerDelivery, { color: colors.textSecondary }]}>
+                          Delivery: {offer.estimatedDelivery} days
+                        </Text>
+                      )}
+                      <Text style={[styles.offerAvailability, { color: colors.textTertiary }]}>
+                        {offer.availability.replace(/_/g, ' ')}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ))}
             </View>
           )}
 
           {/* Search Button */}
-          <TouchableOpacity
-            style={[
-              styles.searchButton,
-              { backgroundColor: colors.accent },
-              (searching || !productName.trim() || !settings?.activeSearchCountry) && styles.searchButtonDisabled,
-            ]}
-            onPress={handleStartSearch}
-            disabled={searching || !productName.trim() || !settings?.activeSearchCountry}
-          >
-            {searching ? (
-              <ActivityIndicator size="small" color={colors.textInverse} />
-            ) : (
-              <>
-                <IconSymbol
-                  ios_icon_name="magnifyingglass"
-                  android_material_icon_name="search"
-                  size={20}
-                  color={colors.textInverse}
-                />
-                <Text style={[styles.searchButtonText, { color: colors.textInverse }]}>
-                  {searchMode === 'near_me' ? 'Scan Stores Near Me' : 'Start Smart Search'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {!itemDraft && (
+            <TouchableOpacity
+              style={[
+                styles.searchButton,
+                { backgroundColor: colors.accent },
+                (searching || !productName.trim() || !settings?.activeSearchCountry) && styles.searchButtonDisabled,
+              ]}
+              onPress={handleStartSearch}
+              disabled={searching || !productName.trim() || !settings?.activeSearchCountry}
+            >
+              {searching ? (
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              ) : (
+                <>
+                  <IconSymbol
+                    ios_icon_name="magnifyingglass"
+                    android_material_icon_name="search"
+                    size={20}
+                    color={colors.textInverse}
+                  />
+                  <Text style={[styles.searchButtonText, { color: colors.textInverse }]}>
+                    {searchMode === 'near_me' ? 'Scan Stores Near Me' : 'Start Smart Search'}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           {/* Info Section */}
-          <View style={styles.infoSection}>
-            <Text style={[styles.infoTitle, { color: colors.textPrimary }]}>How it works:</Text>
-            <View style={styles.infoItem}>
-              <Text style={[styles.infoBullet, { color: colors.accent }]}>1.</Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                AI analyzes your product name and extracts key details
-              </Text>
+          {!itemDraft && (
+            <View style={styles.infoSection}>
+              <Text style={[styles.infoTitle, { color: colors.textPrimary }]}>How it works:</Text>
+              <View style={styles.infoItem}>
+                <Text style={[styles.infoBullet, { color: colors.accent }]}>1.</Text>
+                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                  AI analyzes your product name and extracts key details
+                </Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Text style={[styles.infoBullet, { color: colors.accent }]}>2.</Text>
+                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                  Searches 6-12 online stores based on your selected country
+                </Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Text style={[styles.infoBullet, { color: colors.accent }]}>3.</Text>
+                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                  Compares prices and verifies shipping availability
+                </Text>
+              </View>
+              <View style={styles.infoItem}>
+                <Text style={[styles.infoBullet, { color: colors.accent }]}>4.</Text>
+                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                  Groups results by local pickup / fast delivery vs international shipping
+                </Text>
+              </View>
             </View>
-            <View style={styles.infoItem}>
-              <Text style={[styles.infoBullet, { color: colors.accent }]}>2.</Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Searches 6-12 online stores based on your selected country
-              </Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Text style={[styles.infoBullet, { color: colors.accent }]}>3.</Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Compares prices and verifies shipping availability
-              </Text>
-            </View>
-            <View style={styles.infoItem}>
-              <Text style={[styles.infoBullet, { color: colors.accent }]}>4.</Text>
-              <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                Groups results by local pickup / fast delivery vs international shipping
-              </Text>
-            </View>
-          </View>
+          )}
         </ScrollView>
 
         {/* Location Required Modal */}
@@ -721,24 +859,73 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'right',
   },
-  errorCard: {
-    borderRadius: 12,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    borderWidth: 1,
+  resultsSection: {
+    marginBottom: spacing.xl,
   },
-  errorHeader: {
+  resultsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  errorTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+  resultsTitle: {
+    fontSize: 20,
+    fontWeight: '600',
   },
-  errorText: {
+  resultsSubtitle: {
+    fontSize: 16,
+    marginBottom: spacing.lg,
+  },
+  addToWishlistButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.lg,
+  },
+  addToWishlistButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  offerGroup: {
+    marginBottom: spacing.lg,
+  },
+  offerGroupLabel: {
     fontSize: 14,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  offerCard: {
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+  },
+  offerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  offerStoreName: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  offerPrice: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  offerDelivery: {
+    fontSize: 14,
+    marginBottom: spacing.xs / 2,
+  },
+  offerAvailability: {
+    fontSize: 12,
+    textTransform: 'capitalize',
   },
   searchButton: {
     flexDirection: 'row',

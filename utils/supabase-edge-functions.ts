@@ -185,12 +185,34 @@ const EXPECTED_EDGE_FUNCTIONS = [
   'auth-ping',
 ];
 
-// Log configuration status on module load
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔧 CONFIGURATION VERIFICATION - Log configuration status on module load
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('═══════════════════════════════════════════════════════════════');
+console.log('🔧 SUPABASE EDGE FUNCTIONS CONFIGURATION');
+console.log('═══════════════════════════════════════════════════════════════');
+
 if (!isEnvironmentConfigured()) {
-  console.warn('[Supabase Edge Functions] Configuration missing - check app.json');
-  console.warn('[Supabase Edge Functions] SUPABASE_URL:', SUPABASE_URL ? 'Set' : 'Missing');
-  console.warn('[Supabase Edge Functions] SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? 'Set' : 'Missing');
+  console.error('❌ [Supabase Edge Functions] Configuration MISSING - check app.config.js');
+  console.error('   SUPABASE_URL:', SUPABASE_URL ? '✅ Set' : '❌ Missing');
+  console.error('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
+} else {
+  console.log('✅ [Supabase Edge Functions] Configuration OK');
+  console.log('   SUPABASE_URL:', SUPABASE_URL ? '✅ Set' : '❌ Missing');
+  console.log('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
 }
+
+// Check BACKEND_URL configuration (for global search)
+const BACKEND_URL = appConfig.backendUrl || '';
+console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '❌ Missing');
+
+if (!BACKEND_URL) {
+  console.error('❌ [Backend] BACKEND_URL is NOT configured in app.config.js');
+  console.error('   Global search and other backend features will NOT work.');
+  console.error('   Please set BACKEND_URL in app.config.js or .env file.');
+}
+
+console.log('═══════════════════════════════════════════════════════════════');
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -442,7 +464,7 @@ export async function searchItem(
     const response = await callEdgeFunctionSafely<SearchItemRequest, SearchItemResponse>(
       'search-item',
       { query, country, city },
-      { showErrorAlert: true }
+      { showErrorAlert: false } // Let UI handle errors
     );
 
     // Log warnings for partial results
