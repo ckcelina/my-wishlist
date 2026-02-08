@@ -380,7 +380,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      // GUARD: Check auth state BEFORE calling identify-from-image
+      // GUARD: Check auth state BEFORE calling identify-product-from-image
       if (!user) {
         console.log('[AddItem] No user - redirecting to login');
         Alert.alert('Sign In Required', 'Please sign in to identify products', [
@@ -440,22 +440,19 @@ export default function AddItemScreen() {
         if (result.identified) {
           console.log('[AddItem] Product identified but no offers, showing identified data');
           const fallbackData = {
-            itemName: result.identified.title,
+            title: result.identified.title,
             imageUrl: cameraImage,
-            extractedImages: [cameraImage],
-            storeName: '',
-            storeDomain: '',
+            originalUrl: '',
+            store: '',
             price: null,
             currency: smartLocationSettings?.currency || 'USD',
-            countryAvailability: searchCountry ? [searchCountry] : [],
-            sourceUrl: '',
-            inputType: 'camera',
           };
           
           router.push({
             pathname: '/import-preview',
             params: {
-              data: JSON.stringify(fallbackData),
+              identifiedItems: JSON.stringify([fallbackData]),
+              wishlistId: selectedWishlistId,
             },
           });
           return;
@@ -472,22 +469,19 @@ export default function AddItemScreen() {
               onPress: () => {
                 console.log('[AddItem] User chose to add manually');
                 const fallbackData = {
-                  itemName: '',
+                  title: '',
                   imageUrl: cameraImage,
-                  extractedImages: [cameraImage],
-                  storeName: '',
-                  storeDomain: '',
+                  originalUrl: '',
+                  store: '',
                   price: null,
                   currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'camera',
                 };
                 
                 router.push({
                   pathname: '/import-preview',
                   params: {
-                    data: JSON.stringify(fallbackData),
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
                   },
                 });
               },
@@ -502,55 +496,40 @@ export default function AddItemScreen() {
         console.log('[AddItem] Found', result.offers.length, 'product offers');
         
         // Convert ProductOffer[] to the format expected by import-preview
-        const candidates = result.offers.map(offer => ({
-          itemName: offer.title,
-          brand: result.identified?.brand || '',
-          model: result.identified?.attributes?.model || '',
-          category: result.identified?.category || '',
+        const identifiedItems = result.offers.map(offer => ({
+          title: offer.title,
           imageUrl: offer.image_url || cameraImage,
-          extractedImages: offer.image_url ? [offer.image_url] : [cameraImage],
-          storeName: offer.store,
-          storeDomain: offer.product_url ? new URL(offer.product_url).hostname : '',
-          price: offer.price || null,
-          currency: offer.currency || 'USD',
-          countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: offer.product_url || '',
-          inputType: 'camera',
-          score: offer.score || 0,
-          reason: `Found at ${offer.store}`,
+          originalUrl: offer.product_url,
+          store: offer.store,
+          price: offer.price,
+          currency: offer.currency,
         }));
 
         console.log('[AddItem] Navigating to import-preview with offers');
         router.push({
           pathname: '/import-preview',
           params: {
-            imageUri: cameraImage,
-            identifiedItems: JSON.stringify(candidates),
-            providerUsed: 'openai_lens',
-            confidence: result.identified?.confidence.toString() || '0',
-            query: result.identified?.search_query || '',
+            identifiedItems: JSON.stringify(identifiedItems),
+            wishlistId: selectedWishlistId,
           },
         });
       } else if (result.status === 'ok' && result.identified) {
         // Product identified but no offers - still show the identified data
         console.log('[AddItem] Product identified but no offers');
         const fallbackData = {
-          itemName: result.identified.title,
+          title: result.identified.title,
           imageUrl: cameraImage,
-          extractedImages: [cameraImage],
-          storeName: '',
-          storeDomain: '',
+          originalUrl: '',
+          store: '',
           price: null,
           currency: smartLocationSettings?.currency || 'USD',
-          countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: '',
-          inputType: 'camera',
         };
         
         router.push({
           pathname: '/import-preview',
           params: {
-            data: JSON.stringify(fallbackData),
+            identifiedItems: JSON.stringify([fallbackData]),
+            wishlistId: selectedWishlistId,
           },
         });
       } else {
@@ -565,22 +544,19 @@ export default function AddItemScreen() {
               text: 'Add Manually',
               onPress: () => {
                 const fallbackData = {
-                  itemName: '',
+                  title: '',
                   imageUrl: cameraImage,
-                  extractedImages: [cameraImage],
-                  storeName: '',
-                  storeDomain: '',
+                  originalUrl: '',
+                  store: '',
                   price: null,
                   currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'camera',
                 };
                 
                 router.push({
                   pathname: '/import-preview',
                   params: {
-                    data: JSON.stringify(fallbackData),
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
                   },
                 });
               },
@@ -602,22 +578,19 @@ export default function AddItemScreen() {
             onPress: () => {
               console.log('[AddItem] User chose to add manually after identification failure');
               const fallbackData = {
-                itemName: '',
+                title: '',
                 imageUrl: cameraImage,
-                extractedImages: [cameraImage],
-                storeName: '',
-                storeDomain: '',
+                originalUrl: '',
+                store: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: searchCountry ? [searchCountry] : [],
-                sourceUrl: '',
-                inputType: 'camera',
               };
               
               router.push({
                 pathname: '/import-preview',
                 params: {
-                  data: JSON.stringify(fallbackData),
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
                 },
               });
             },
@@ -690,7 +663,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      // GUARD: Check auth state BEFORE calling identify-from-image
+      // GUARD: Check auth state BEFORE calling identify-product-from-image
       if (!user) {
         console.log('[AddItem] No user - redirecting to login');
         Alert.alert('Sign In Required', 'Please sign in to identify products', [
@@ -750,22 +723,19 @@ export default function AddItemScreen() {
         if (result.identified) {
           console.log('[AddItem] Product identified but no offers, showing identified data');
           const fallbackData = {
-            itemName: result.identified.title,
+            title: result.identified.title,
             imageUrl: uploadImage,
-            extractedImages: [uploadImage],
-            storeName: '',
-            storeDomain: '',
+            originalUrl: '',
+            store: '',
             price: null,
             currency: smartLocationSettings?.currency || 'USD',
-            countryAvailability: searchCountry ? [searchCountry] : [],
-            sourceUrl: '',
-            inputType: 'image',
           };
           
           router.push({
             pathname: '/import-preview',
             params: {
-              data: JSON.stringify(fallbackData),
+              identifiedItems: JSON.stringify([fallbackData]),
+              wishlistId: selectedWishlistId,
             },
           });
           return;
@@ -782,22 +752,19 @@ export default function AddItemScreen() {
               onPress: () => {
                 console.log('[AddItem] User chose to add manually');
                 const fallbackData = {
-                  itemName: '',
+                  title: '',
                   imageUrl: uploadImage,
-                  extractedImages: [uploadImage],
-                  storeName: '',
-                  storeDomain: '',
+                  originalUrl: '',
+                  store: '',
                   price: null,
                   currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'image',
                 };
                 
                 router.push({
                   pathname: '/import-preview',
                   params: {
-                    data: JSON.stringify(fallbackData),
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
                   },
                 });
               },
@@ -812,55 +779,40 @@ export default function AddItemScreen() {
         console.log('[AddItem] Found', result.offers.length, 'product offers');
         
         // Convert ProductOffer[] to the format expected by import-preview
-        const candidates = result.offers.map(offer => ({
-          itemName: offer.title,
-          brand: result.identified?.brand || '',
-          model: result.identified?.attributes?.model || '',
-          category: result.identified?.category || '',
+        const identifiedItems = result.offers.map(offer => ({
+          title: offer.title,
           imageUrl: offer.image_url || uploadImage,
-          extractedImages: offer.image_url ? [offer.image_url] : [uploadImage],
-          storeName: offer.store,
-          storeDomain: offer.product_url ? new URL(offer.product_url).hostname : '',
-          price: offer.price || null,
-          currency: offer.currency || 'USD',
-          countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: offer.product_url || '',
-          inputType: 'image',
-          score: offer.score || 0,
-          reason: `Found at ${offer.store}`,
+          originalUrl: offer.product_url,
+          store: offer.store,
+          price: offer.price,
+          currency: offer.currency,
         }));
 
         console.log('[AddItem] Navigating to import-preview with offers');
         router.push({
           pathname: '/import-preview',
           params: {
-            imageUri: uploadImage,
-            identifiedItems: JSON.stringify(candidates),
-            providerUsed: 'openai_lens',
-            confidence: result.identified?.confidence.toString() || '0',
-            query: result.identified?.search_query || '',
+            identifiedItems: JSON.stringify(identifiedItems),
+            wishlistId: selectedWishlistId,
           },
         });
       } else if (result.status === 'ok' && result.identified) {
         // Product identified but no offers - still show the identified data
         console.log('[AddItem] Product identified but no offers');
         const fallbackData = {
-          itemName: result.identified.title,
+          title: result.identified.title,
           imageUrl: uploadImage,
-          extractedImages: [uploadImage],
-          storeName: '',
-          storeDomain: '',
+          originalUrl: '',
+          store: '',
           price: null,
           currency: smartLocationSettings?.currency || 'USD',
-          countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: '',
-          inputType: 'image',
         };
         
         router.push({
           pathname: '/import-preview',
           params: {
-            data: JSON.stringify(fallbackData),
+            identifiedItems: JSON.stringify([fallbackData]),
+            wishlistId: selectedWishlistId,
           },
         });
       } else {
@@ -875,22 +827,19 @@ export default function AddItemScreen() {
               text: 'Add Manually',
               onPress: () => {
                 const fallbackData = {
-                  itemName: '',
+                  title: '',
                   imageUrl: uploadImage,
-                  extractedImages: [uploadImage],
-                  storeName: '',
-                  storeDomain: '',
+                  originalUrl: '',
+                  store: '',
                   price: null,
                   currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'image',
                 };
                 
                 router.push({
                   pathname: '/import-preview',
                   params: {
-                    data: JSON.stringify(fallbackData),
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
                   },
                 });
               },
@@ -912,22 +861,19 @@ export default function AddItemScreen() {
             onPress: () => {
               console.log('[AddItem] User chose to add manually after identification failure');
               const fallbackData = {
-                itemName: '',
+                title: '',
                 imageUrl: uploadImage,
-                extractedImages: [uploadImage],
-                storeName: '',
-                storeDomain: '',
+                originalUrl: '',
+                store: '',
                 price: null,
                 currency: 'USD',
-                countryAvailability: searchCountry ? [searchCountry] : [],
-                sourceUrl: '',
-                inputType: 'image',
               };
               
               router.push({
                 pathname: '/import-preview',
                 params: {
-                  data: JSON.stringify(fallbackData),
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
                 },
               });
             },

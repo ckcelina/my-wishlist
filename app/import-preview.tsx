@@ -50,25 +50,14 @@ interface ProductData {
   inputType: 'url' | 'camera' | 'image' | 'name' | 'manual';
 }
 
-interface ProductCandidate {
+// NEW: Simplified format from identify-product-from-image
+interface IdentifiedItem {
   title: string;
-  brand: string | null;
-  model: string | null;
-  category: string | null;
   imageUrl: string;
-  storeUrl: string;
+  originalUrl: string;
+  store: string;
   price: number | null;
-  currency: string | null;
-  storeName: string | null;
-}
-
-interface ImportedItem {
-  title: string;
-  imageUrl: string | null;
-  price: number | null;
-  currency: string | null;
-  productUrl: string;
-  storeDomain?: string;
+  currency: string;
 }
 
 interface Wishlist {
@@ -86,10 +75,8 @@ export default function ImportPreviewScreen() {
   const typography = createTypography(theme);
 
   const [productData, setProductData] = useState<ProductData | null>(null);
-  const [candidates, setCandidates] = useState<ProductCandidate[]>([]);
-  const [importedItems, setImportedItems] = useState<ImportedItem[]>([]);
-  const [selectedCandidate, setSelectedCandidate] = useState<ProductCandidate | null>(null);
-  const [imageUri, setImageUri] = useState<string>('');
+  const [identifiedItems, setIdentifiedItems] = useState<IdentifiedItem[]>([]);
+  const [selectedItem, setSelectedItem] = useState<IdentifiedItem | null>(null);
   const [editedName, setEditedName] = useState('');
   const [editedPrice, setEditedPrice] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
@@ -106,28 +93,20 @@ export default function ImportPreviewScreen() {
     console.log('[ImportPreview] Component mounted with params:', Object.keys(params));
     loadWishlists();
 
-    // Handle identified items from image search (multiple candidates)
+    // Handle identified items from image search (NEW: multiple offers)
     if (params.identifiedItems) {
       try {
-        const items = JSON.parse(params.identifiedItems as string) as ProductCandidate[];
-        setCandidates(items);
-        setImageUri(params.imageUri as string || '');
-        console.log('[ImportPreview] Loaded', items.length, 'product candidates from image search');
+        const items = JSON.parse(params.identifiedItems as string) as IdentifiedItem[];
+        setIdentifiedItems(items);
+        console.log('[ImportPreview] Loaded', items.length, 'identified items from image search');
+        
+        // If wishlistId is provided, use it
+        if (params.wishlistId) {
+          setSelectedWishlistId(params.wishlistId as string);
+        }
       } catch (error) {
         console.error('[ImportPreview] Error parsing identifiedItems:', error);
-        Alert.alert('Error', 'Failed to load product candidates');
-        router.back();
-      }
-    }
-    // Handle imported items from wishlist import (multiple items)
-    else if (params.items) {
-      try {
-        const items = JSON.parse(params.items as string) as ImportedItem[];
-        setImportedItems(items);
-        console.log('[ImportPreview] Loaded', items.length, 'items from wishlist import');
-      } catch (error) {
-        console.error('[ImportPreview] Error parsing items:', error);
-        Alert.alert('Error', 'Failed to load imported items');
+        Alert.alert('Error', 'Failed to load product offers');
         router.back();
       }
     }
@@ -146,7 +125,7 @@ export default function ImportPreviewScreen() {
         router.back();
       }
     }
-  }, [params.data, params.identifiedItems, params.items]);
+  }, [params.data, params.identifiedItems, params.wishlistId]);
 
   const loadWishlists = async () => {
     if (!user?.id) {
@@ -161,7 +140,7 @@ export default function ImportPreviewScreen() {
 
       // Find default wishlist or use first one
       const defaultList = lists.find(w => w.is_default) || lists[0];
-      if (defaultList) {
+      if (defaultList && !selectedWishlistId) {
         setSelectedWishlistId(defaultList.id);
         console.log('[ImportPreview] Selected default wishlist:', defaultList.name);
       }
@@ -171,11 +150,11 @@ export default function ImportPreviewScreen() {
     }
   };
 
-  const handleSelectCandidate = (candidate: ProductCandidate) => {
-    console.log('[ImportPreview] User selected candidate:', candidate.title);
-    setSelectedCandidate(candidate);
-    setEditedName(candidate.title);
-    setEditedPrice(candidate.price ? candidate.price.toString() : '');
+  const handleSelectItem = (item: IdentifiedItem) => {
+    console.log('[ImportPreview] User selected item:', item.title);
+    setSelectedItem(item);
+    setEditedName(item.title);
+    setEditedPrice(item.price ? item.price.toString() : '');
   };
 
   const uploadImageToStorage = async (localUri: string): Promise<string | null> => {
@@ -293,11 +272,11 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Starting save process for:', trimmedName);
       setSaving(true);
 
-      // Determine image URL - CRITICAL: Translate field names from camelCase to snake_case
+      // Determine image URL
       let finalImageUrl: string | null = null;
       
-      // Get the raw image URL from various sources (camelCase from add.tsx)
-      const rawImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+      // Get the raw image URL from selected item or legacy productData
+      const rawImageUrl = selectedItem?.imageUrl || productData?.imageUrl;
 
       // If image is a local file (starts with file://), upload it to Supabase Storage
       if (rawImageUrl && rawImageUrl.startsWith('file://')) {
@@ -317,16 +296,10 @@ export default function ImportPreviewScreen() {
         finalImageUrl = rawImageUrl || null;
       }
 
-      // CRITICAL: Translate field names from camelCase (add.tsx) to snake_case (database)
-      // camelCase -> snake_case mapping:
-      // - imageUrl -> image_url
-      // - sourceUrl -> original_url
-      // - storeDomain -> source_domain
-      // - storeUrl -> original_url
-      
-      const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
-      const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
-      const currency = selectedCandidate?.currency || productData?.currency || 'USD';
+      // Get data from selected item or legacy productData
+      const sourceUrl = selectedItem?.originalUrl || productData?.sourceUrl || null;
+      const sourceDomain = selectedItem?.store || productData?.storeDomain || null;
+      const currency = selectedItem?.currency || productData?.currency || 'USD';
       const price = editedPrice ? parseFloat(editedPrice) : null;
 
       // Check for duplicates
@@ -392,9 +365,9 @@ export default function ImportPreviewScreen() {
     try {
       setSaving(true);
 
-      // Determine image URL with proper field name translation
+      // Determine image URL
       let finalImageUrl: string | null = null;
-      const rawImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+      const rawImageUrl = selectedItem?.imageUrl || productData?.imageUrl;
 
       if (rawImageUrl && rawImageUrl.startsWith('file://')) {
         console.log('[ImportPreview] Uploading local image for duplicate item');
@@ -407,10 +380,9 @@ export default function ImportPreviewScreen() {
         finalImageUrl = rawImageUrl || null;
       }
 
-      // CRITICAL: Translate field names from camelCase to snake_case
-      const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
-      const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
-      const currency = selectedCandidate?.currency || productData?.currency || 'USD';
+      const sourceUrl = selectedItem?.originalUrl || productData?.sourceUrl || null;
+      const sourceDomain = selectedItem?.store || productData?.storeDomain || null;
+      const currency = selectedItem?.currency || productData?.currency || 'USD';
       const price = editedPrice ? parseFloat(editedPrice) : null;
 
       await createWishlistItem({
@@ -453,6 +425,57 @@ export default function ImportPreviewScreen() {
     scrollContent: {
       padding: spacing.lg,
     },
+    sectionTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: spacing.md,
+      color: colors.textPrimary,
+    },
+    offerCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.sm,
+      borderRadius: 12,
+      marginBottom: spacing.sm,
+      borderWidth: 1,
+    },
+    offerImage: {
+      width: 80,
+      height: 80,
+      borderRadius: 8,
+      marginRight: spacing.sm,
+      backgroundColor: colors.surface,
+    },
+    offerInfo: {
+      flex: 1,
+    },
+    offerTitle: {
+      fontSize: 15,
+      fontWeight: '500',
+      marginBottom: spacing.xs / 2,
+    },
+    offerStore: {
+      fontSize: 12,
+      marginBottom: spacing.xs / 2,
+    },
+    offerPrice: {
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    manualButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      padding: spacing.md,
+      borderRadius: 12,
+      marginTop: spacing.md,
+      borderWidth: 1,
+    },
+    manualButtonText: {
+      fontSize: 15,
+      fontWeight: '500',
+    },
     imageContainer: {
       width: '100%',
       height: 300,
@@ -477,61 +500,6 @@ export default function ImportPreviewScreen() {
       fontSize: 14,
       fontWeight: '500',
       marginTop: spacing.sm,
-    },
-    sectionTitle: {
-      fontSize: 18,
-      fontWeight: '600',
-      marginBottom: spacing.md,
-      color: colors.textPrimary,
-    },
-    candidateCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: spacing.sm,
-      borderRadius: 12,
-      marginBottom: spacing.sm,
-      borderWidth: 1,
-    },
-    candidateImage: {
-      width: 80,
-      height: 80,
-      borderRadius: 8,
-      marginRight: spacing.sm,
-      backgroundColor: colors.surface,
-    },
-    candidateInfo: {
-      flex: 1,
-    },
-    candidateTitle: {
-      fontSize: 15,
-      fontWeight: '500',
-      marginBottom: spacing.xs / 2,
-    },
-    candidateBrand: {
-      fontSize: 13,
-      marginBottom: spacing.xs / 2,
-    },
-    candidateStore: {
-      fontSize: 12,
-      marginBottom: spacing.xs / 2,
-    },
-    candidatePrice: {
-      fontSize: 15,
-      fontWeight: '600',
-    },
-    manualButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      padding: spacing.md,
-      borderRadius: 12,
-      marginTop: spacing.md,
-      borderWidth: 1,
-    },
-    manualButtonText: {
-      fontSize: 15,
-      fontWeight: '500',
     },
     label: {
       fontSize: 14,
@@ -634,7 +602,7 @@ export default function ImportPreviewScreen() {
   });
 
   // Show loading if neither format is loaded
-  if (!productData && candidates.length === 0 && importedItems.length === 0) {
+  if (!productData && identifiedItems.length === 0) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.accent} />
@@ -642,62 +610,47 @@ export default function ImportPreviewScreen() {
     );
   }
 
-  // Render candidate selection UI if we have multiple candidates
-  if (candidates.length > 0 && !selectedCandidate) {
+  // Render offer selection UI if we have multiple identified items
+  if (identifiedItems.length > 0 && !selectedItem) {
     return (
       <View style={styles.container}>
         <Stack.Screen
           options={{
-            title: 'Which one is it?',
+            title: 'Select Product',
             headerShown: true,
           }}
         />
         <SafeAreaView style={styles.container} edges={['bottom']}>
           <ScrollView contentContainerStyle={styles.scrollContent}>
-            {imageUri && (
-              <View style={styles.imageContainer}>
-                <Image
-                  source={resolveImageSource(imageUri)}
-                  style={styles.image}
-                  resizeMode="contain"
-                />
-              </View>
-            )}
-
             <Text style={styles.sectionTitle}>
-              Select the matching product:
+              {identifiedItems.length === 1 ? 'Confirm product:' : 'Select the product you want to add:'}
             </Text>
 
-            {candidates.map((candidate, index) => (
+            {identifiedItems.map((item, index) => (
               <TouchableOpacity
                 key={index}
-                style={[styles.candidateCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => handleSelectCandidate(candidate)}
+                style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => handleSelectItem(item)}
               >
-                {candidate.imageUrl && (
+                {item.imageUrl && (
                   <Image
-                    source={resolveImageSource(candidate.imageUrl)}
-                    style={styles.candidateImage}
+                    source={resolveImageSource(item.imageUrl)}
+                    style={styles.offerImage}
                     resizeMode="cover"
                   />
                 )}
-                <View style={styles.candidateInfo}>
-                  <Text style={[styles.candidateTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                    {candidate.title}
+                <View style={styles.offerInfo}>
+                  <Text style={[styles.offerTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                    {item.title}
                   </Text>
-                  {candidate.brand && (
-                    <Text style={[styles.candidateBrand, { color: colors.textSecondary }]}>
-                      {candidate.brand}
+                  {item.store && (
+                    <Text style={[styles.offerStore, { color: colors.textTertiary }]}>
+                      {item.store}
                     </Text>
                   )}
-                  {candidate.storeName && (
-                    <Text style={[styles.candidateStore, { color: colors.textTertiary }]}>
-                      {candidate.storeName}
-                    </Text>
-                  )}
-                  {candidate.price && candidate.currency && (
-                    <Text style={[styles.candidatePrice, { color: colors.accent }]}>
-                      {candidate.currency} {candidate.price.toFixed(2)}
+                  {item.price && item.currency && (
+                    <Text style={[styles.offerPrice, { color: colors.accent }]}>
+                      {item.currency} {item.price.toFixed(2)}
                     </Text>
                   )}
                 </View>
@@ -714,16 +667,13 @@ export default function ImportPreviewScreen() {
               style={[styles.manualButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => {
                 console.log('[ImportPreview] User chose manual entry');
-                setSelectedCandidate({
+                setSelectedItem({
                   title: '',
-                  brand: null,
-                  model: null,
-                  category: null,
-                  imageUrl: imageUri,
-                  storeUrl: '',
+                  imageUrl: identifiedItems[0]?.imageUrl || '',
+                  originalUrl: '',
+                  store: '',
                   price: null,
-                  currency: null,
-                  storeName: null,
+                  currency: 'USD',
                 });
               }}
             >
@@ -743,8 +693,8 @@ export default function ImportPreviewScreen() {
     );
   }
 
-  // Render edit form (either from selected candidate or legacy productData)
-  const displayImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+  // Render edit form (either from selected item or legacy productData)
+  const displayImageUrl = selectedItem?.imageUrl || productData?.imageUrl;
 
   return (
     <View style={styles.container}>
