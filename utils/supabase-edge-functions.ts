@@ -251,11 +251,14 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   options?: { showErrorAlert?: boolean }
 ): Promise<TResponse> {
   const showErrorAlert = options?.showErrorAlert !== false; // Default to true
+  const isDev = __DEV__;
   let didRefresh = false;
   let didRetry = false;
   let finalStatus: number | string = 'UNKNOWN';
 
-  console.log(`[callEdgeFunctionSafely] Starting call to ${functionName}`);
+  if (isDev) {
+    console.log(`[callEdgeFunctionSafely] Starting call to ${functionName}`);
+  }
 
   // Check if environment is configured
   if (!isEnvironmentConfigured()) {
@@ -282,13 +285,18 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
 
   // STEP 1: Always fetch session FIRST
-  console.log(`[callEdgeFunctionSafely] Fetching session for ${functionName}`);
+  if (isDev) {
+    console.log(`[callEdgeFunctionSafely] Fetching session for ${functionName}`);
+  }
+  
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   
   if (sessionError) {
     console.error(`[callEdgeFunctionSafely] Session error for ${functionName}:`, sessionError.message);
     finalStatus = 'session_error';
-    console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+    }
     throw new Error('AUTH_REQUIRED');
   }
 
@@ -296,7 +304,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   if (!sessionData.session || !sessionData.session.access_token) {
     console.warn(`[callEdgeFunctionSafely] No access_token for ${functionName} - throwing AUTH_REQUIRED immediately`);
     finalStatus = 'no_token';
-    console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+    }
     throw new Error('AUTH_REQUIRED');
   }
 
@@ -305,11 +315,15 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   const now = Math.floor(Date.now() / 1000);
 
   // Safe logging (no tokens)
-  console.log(`[callEdgeFunctionSafely] ${functionName} - hasSession=true, tokenLength=${currentAccessToken.length}, expiresAt=${expiresAt}, now=${now}`);
+  if (isDev) {
+    console.log(`[callEdgeFunctionSafely] ${functionName} - hasSession=true, tokenLength=${currentAccessToken.length}, expiresAt=${expiresAt}, now=${now}`);
+  }
 
   // STEP 3: If token exists but is near expiry (expires_at <= now+60s), refresh once
   if (expiresAt && expiresAt <= now + 60) {
-    console.log(`[callEdgeFunctionSafely] Token for ${functionName} expiring soon (${expiresAt} vs ${now + 60}). Refreshing session.`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] Token for ${functionName} expiring soon (${expiresAt} vs ${now + 60}). Refreshing session.`);
+    }
     
     const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
     
@@ -317,11 +331,15 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       console.error(`[callEdgeFunctionSafely] Proactive refresh failed for ${functionName}:`, refreshError?.message);
       finalStatus = 'refresh_failed';
       didRefresh = true;
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      }
       throw new Error('AUTH_REQUIRED');
     }
 
-    console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName} - new token length: ${refreshData.session.access_token.length}`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName} - new token length: ${refreshData.session.access_token.length}`);
+    }
     didRefresh = true;
     currentAccessToken = refreshData.session.access_token;
   }
@@ -334,7 +352,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       'Authorization': `Bearer ${token}`,
     };
 
-    console.log(`[callEdgeFunctionSafely] Making request to ${functionName} (token length: ${token.length})`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] Making request to ${functionName} (token length: ${token.length})`);
+    }
 
     return await fetch(url, {
       method: 'POST',
@@ -348,7 +368,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     let response = await makeRequest(currentAccessToken);
     finalStatus = response.status;
 
-    console.log(`[callEdgeFunctionSafely] ${functionName} - initial response status: ${finalStatus}`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] ${functionName} - initial response status: ${finalStatus}`);
+    }
 
     // STEP 5: If response is 401 → attempt refresh ONCE and retry ONCE
     if (response.status === 401 && !didRetry) {
@@ -363,11 +385,15 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
           finalStatus = '401_refresh_failed';
           didRefresh = true;
           didRetry = true;
-          console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+          if (isDev) {
+            console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+          }
           throw new Error('AUTH_REQUIRED');
         }
 
-        console.log(`[callEdgeFunctionSafely] Session refreshed on 401 for ${functionName} - new token length: ${retryRefreshData.session.access_token.length}`);
+        if (isDev) {
+          console.log(`[callEdgeFunctionSafely] Session refreshed on 401 for ${functionName} - new token length: ${retryRefreshData.session.access_token.length}`);
+        }
         didRefresh = true;
         currentAccessToken = retryRefreshData.session.access_token;
       }
@@ -377,14 +403,18 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       response = await makeRequest(currentAccessToken);
       finalStatus = response.status;
       
-      console.log(`[callEdgeFunctionSafely] ${functionName} - retry response status: ${finalStatus}`);
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] ${functionName} - retry response status: ${finalStatus}`);
+      }
     }
 
     // STEP 6: If still 401 → throw AUTH_REQUIRED (do NOT sign out)
     if (response.status === 401) {
       console.error(`[callEdgeFunctionSafely] Still 401 for ${functionName} after refresh+retry - throwing AUTH_REQUIRED`);
       finalStatus = '401_after_retry';
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      }
       throw new Error('AUTH_REQUIRED');
     }
 
@@ -396,7 +426,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       // Handle 404 - function not deployed
       if (response.status === 404) {
         finalStatus = '404';
-        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+        if (isDev) {
+          console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+        }
         
         if (showErrorAlert) {
           Alert.alert(
@@ -408,7 +440,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
         throw new Error(`Edge Function '${functionName}' not found (404)`);
       }
       
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      }
       
       if (showErrorAlert) {
         Alert.alert(
@@ -423,12 +457,16 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
 
     // STEP 8: Parse and return response
     const data = await response.json();
-    console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - SUCCESS`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - SUCCESS`);
+    }
     return data as TResponse;
 
   } catch (error: any) {
     console.error(`[callEdgeFunctionSafely] Error calling ${functionName}:`, error.message);
-    console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - ERROR`);
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - ERROR`);
+    }
     
     // If it's AUTH_REQUIRED, propagate it (do NOT show alert here - let UI handle it)
     if (error.message === 'AUTH_REQUIRED') {
