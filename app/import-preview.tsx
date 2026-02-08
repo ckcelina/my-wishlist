@@ -94,6 +94,7 @@ export default function ImportPreviewScreen() {
   const [editedPrice, setEditedPrice] = useState('');
   const [editedNotes, setEditedNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [selectedWishlistId, setSelectedWishlistId] = useState<string>('');
   const [showWishlistPicker, setShowWishlistPicker] = useState(false);
@@ -180,6 +181,7 @@ export default function ImportPreviewScreen() {
   const uploadImageToStorage = async (localUri: string): Promise<string | null> => {
     try {
       console.log('[ImportPreview] Uploading local image to Supabase Storage:', localUri);
+      setUploadingImage(true);
 
       // Read file as base64
       const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -220,6 +222,8 @@ export default function ImportPreviewScreen() {
     } catch (error) {
       console.error('[ImportPreview] Error uploading image:', error);
       return null;
+    } finally {
+      setUploadingImage(false);
     }
   };
 
@@ -289,23 +293,37 @@ export default function ImportPreviewScreen() {
       console.log('[ImportPreview] Starting save process for:', trimmedName);
       setSaving(true);
 
-      // Determine image URL
+      // Determine image URL - CRITICAL: Translate field names from camelCase to snake_case
       let finalImageUrl: string | null = null;
-      const candidateImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+      
+      // Get the raw image URL from various sources (camelCase from add.tsx)
+      const rawImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
 
-      // If image is a local file (starts with file://), upload it
-      if (candidateImageUrl && candidateImageUrl.startsWith('file://')) {
+      // If image is a local file (starts with file://), upload it to Supabase Storage
+      if (rawImageUrl && rawImageUrl.startsWith('file://')) {
         console.log('[ImportPreview] Detected local image, uploading to storage');
-        finalImageUrl = await uploadImageToStorage(candidateImageUrl);
+        finalImageUrl = await uploadImageToStorage(rawImageUrl);
         
         if (!finalImageUrl) {
           console.warn('[ImportPreview] Image upload failed, continuing without image');
+          Alert.alert(
+            'Image Upload Failed',
+            'The image could not be uploaded. The item will be saved without an image. You can add an image later.',
+            [{ text: 'Continue', style: 'default' }]
+          );
         }
       } else {
-        finalImageUrl = candidateImageUrl || null;
+        // Remote URL - use as is
+        finalImageUrl = rawImageUrl || null;
       }
 
-      // Determine source URL and domain
+      // CRITICAL: Translate field names from camelCase (add.tsx) to snake_case (database)
+      // camelCase -> snake_case mapping:
+      // - imageUrl -> image_url
+      // - sourceUrl -> original_url
+      // - storeDomain -> source_domain
+      // - storeUrl -> original_url
+      
       const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
       const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
       const currency = selectedCandidate?.currency || productData?.currency || 'USD';
@@ -322,8 +340,18 @@ export default function ImportPreviewScreen() {
         return;
       }
 
-      // Save item to database
-      console.log('[ImportPreview] Creating wishlist item');
+      // Save item to database with CORRECT snake_case field names
+      console.log('[ImportPreview] Creating wishlist item with fields:', {
+        wishlist_id: selectedWishlistId,
+        title: trimmedName,
+        image_url: finalImageUrl,
+        current_price: price,
+        currency,
+        original_url: sourceUrl,
+        source_domain: sourceDomain,
+        notes: editedNotes.trim() || null,
+      });
+
       await createWishlistItem({
         wishlist_id: selectedWishlistId,
         title: trimmedName,
@@ -364,16 +392,22 @@ export default function ImportPreviewScreen() {
     try {
       setSaving(true);
 
-      // Determine image URL
+      // Determine image URL with proper field name translation
       let finalImageUrl: string | null = null;
-      const candidateImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
+      const rawImageUrl = selectedCandidate?.imageUrl || productData?.imageUrl || imageUri;
 
-      if (candidateImageUrl && candidateImageUrl.startsWith('file://')) {
-        finalImageUrl = await uploadImageToStorage(candidateImageUrl);
+      if (rawImageUrl && rawImageUrl.startsWith('file://')) {
+        console.log('[ImportPreview] Uploading local image for duplicate item');
+        finalImageUrl = await uploadImageToStorage(rawImageUrl);
+        
+        if (!finalImageUrl) {
+          console.warn('[ImportPreview] Image upload failed for duplicate');
+        }
       } else {
-        finalImageUrl = candidateImageUrl || null;
+        finalImageUrl = rawImageUrl || null;
       }
 
+      // CRITICAL: Translate field names from camelCase to snake_case
       const sourceUrl = selectedCandidate?.storeUrl || productData?.sourceUrl || null;
       const sourceDomain = selectedCandidate?.storeName || productData?.storeDomain || null;
       const currency = selectedCandidate?.currency || productData?.currency || 'USD';
@@ -430,6 +464,19 @@ export default function ImportPreviewScreen() {
     image: {
       width: '100%',
       height: '100%',
+    },
+    uploadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderRadius: 12,
+    },
+    uploadingText: {
+      color: '#fff',
+      fontSize: 14,
+      fontWeight: '500',
+      marginTop: spacing.sm,
     },
     sectionTitle: {
       fontSize: 18,
@@ -716,6 +763,12 @@ export default function ImportPreviewScreen() {
                 style={styles.image}
                 resizeMode="contain"
               />
+              {uploadingImage && (
+                <View style={styles.uploadingOverlay}>
+                  <ActivityIndicator size="large" color="#fff" />
+                  <Text style={styles.uploadingText}>Uploading image...</Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -764,11 +817,11 @@ export default function ImportPreviewScreen() {
           />
 
           <TouchableOpacity
-            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            style={[styles.saveButton, (saving || uploadingImage) && styles.saveButtonDisabled]}
             onPress={handleSave}
-            disabled={saving}
+            disabled={saving || uploadingImage}
           >
-            {saving ? (
+            {saving || uploadingImage ? (
               <ActivityIndicator size="small" color={colors.textInverse} />
             ) : (
               <Text style={styles.saveButtonText}>Save to Wishlist</Text>
