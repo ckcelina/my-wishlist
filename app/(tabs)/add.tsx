@@ -123,6 +123,7 @@ export default function AddItemScreen() {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Mode 6: Manual Entry
   const [manualName, setManualName] = useState('');
@@ -1026,18 +1027,22 @@ export default function AddItemScreen() {
 
       console.log('[AddItem] Searching for:', searchQuery);
       setSearching(true);
+      setSearchResults([]);
+      setSearchError(null);
 
       const result = await searchByName(searchQuery.trim(), {
         countryCode: searchCountry,
       });
       console.log('[AddItem] Search results:', result);
 
-      // Check for configuration errors
-      if (result.error && result.error.includes('OpenAI API key not configured')) {
-        console.error('[AddItem] OpenAI API key not configured');
+      // Broader check for API key configuration issues
+      if (result.error && result.error.toLowerCase().includes('api key')) {
+        console.error('[AddItem] API key configuration error detected');
+        const errorMessage = 'Product search service is not configured. Please contact support.';
+        setSearchError(errorMessage);
         Alert.alert(
-          'Feature Not Available',
-          'Product search is temporarily unavailable due to server configuration. Please try adding the item manually or contact support.',
+          'Service Not Available',
+          errorMessage,
           [
             { text: 'Cancel', style: 'cancel' },
             {
@@ -1053,13 +1058,33 @@ export default function AddItemScreen() {
         return;
       }
 
+      // Handle case where result.error is set but results array is empty
+      if (result.error && (!result.results || result.results.length === 0)) {
+        console.log('[AddItem] Error with no results:', result.error);
+        const errorMessage = result.error || 'No products found. Try a different search or add manually.';
+        setSearchError(errorMessage);
+        Alert.alert('No Results', errorMessage, [
+          { text: 'OK', style: 'cancel' },
+          {
+            text: 'Add Manually',
+            onPress: () => {
+              console.log('[AddItem] User chose to add manually after error with no results');
+              setSelectedMode('manual');
+              setManualName(searchQuery.trim());
+            },
+          },
+        ]);
+        return;
+      }
+
       if (result.results && result.results.length > 0) {
         console.log('[AddItem] Found', result.results.length, 'results');
         setSearchResults(result.results);
         setShowSearchResults(true);
       } else {
         console.log('[AddItem] No search results found');
-        const errorMessage = result.error || 'No products found. Try a different search or add manually.';
+        const errorMessage = 'No products found. Try a different search or add manually.';
+        setSearchError(errorMessage);
         Alert.alert('No Results', errorMessage, [
           { text: 'OK', style: 'cancel' },
           {
@@ -1075,10 +1100,13 @@ export default function AddItemScreen() {
     } catch (error: any) {
       console.error('[AddItem] Error in handleSearchByName:', error);
       
+      const errorMessage = 'Failed to perform search. Please try again.';
+      setSearchError(errorMessage);
+      
       // Fallback: Allow manual entry
       Alert.alert(
-        'Search Failed',
-        'Could not search for products. You can still add the item manually.',
+        'Search Error',
+        errorMessage,
         [
           { text: 'Cancel', style: 'cancel' },
           {

@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ImageSourcePropType,
   ActivityIndicator,
   Platform,
+  Alert,
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,6 +23,7 @@ import { EmptyState } from '@/components/design-system/EmptyState';
 import { colors, typography, spacing, containerStyles, inputStyles } from '@/styles/designSystem';
 import { authenticatedGet } from '@/utils/api';
 import { useHaptics } from '@/hooks/useHaptics';
+import Constants from 'expo-constants';
 
 interface SearchResult {
   itemId: string;
@@ -44,6 +46,9 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
+// Get BACKEND_URL from environment
+const BACKEND_URL = Constants.expoConfig?.extra?.backendUrl || '';
+
 export default function GlobalSearchScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -57,16 +62,43 @@ export default function GlobalSearchScreen() {
   const [priceKnownOnly, setPriceKnownOnly] = useState(false);
   const [onSaleOnly, setOnSaleOnly] = useState(false);
   const [storeDomain, setStoreDomain] = useState('');
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Log BACKEND_URL on mount (only in dev mode)
+  useEffect(() => {
+    if (__DEV__) {
+      console.log('[GlobalSearchScreen] Mounted. BACKEND_URL:', BACKEND_URL || 'NOT SET');
+    }
+  }, []);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim()) {
+      setResults([]);
+      setLoading(false);
+      setSearched(false);
+      setSearchError(null);
       return;
     }
 
-    console.log('[GlobalSearchScreen] Searching for:', query);
+    console.log('[GlobalSearchScreen] User initiated search for:', query);
     haptics.light();
     setLoading(true);
     setSearched(true);
+    setSearchError(null); // Clear previous errors
+
+    // Check if BACKEND_URL is configured
+    if (!BACKEND_URL) {
+      console.error('[GlobalSearchScreen] BACKEND_URL is not configured');
+      setLoading(false);
+      setSearchError('Search service is not configured. Please contact support.');
+      Alert.alert(
+        'Configuration Error',
+        'The search service is not configured. Please contact support.',
+        [{ text: 'OK' }]
+      );
+      setResults([]); // Ensure no stale results
+      return;
+    }
 
     try {
       const params = new URLSearchParams({
@@ -76,13 +108,31 @@ export default function GlobalSearchScreen() {
         ...(storeDomain && { storeDomain }),
       });
 
+      console.log('[GlobalSearchScreen] Fetching search results from:', `${BACKEND_URL}/api/search/global`);
       const data = await authenticatedGet<SearchResponse>(`/api/search/global?${params.toString()}`);
       
-      console.log('[GlobalSearchScreen] Search results:', data.totalCount);
-      setResults(data.results);
-    } catch (error) {
-      console.error('[GlobalSearchScreen] Error searching:', error);
-      setResults([]);
+      console.log('[GlobalSearchScreen] Search results received:', data.totalCount, 'items');
+      
+      if (data.results && data.results.length > 0) {
+        setResults(data.results);
+      } else {
+        setResults([]); // Explicitly set to empty for "No results" state
+      }
+    } catch (error: any) {
+      console.error('[GlobalSearchScreen] Error fetching search results:', error);
+      
+      // Set error state
+      const errorMessage = 'Unable to fetch search results. Please check your connection or try again later.';
+      setSearchError(errorMessage);
+      
+      // Show alert to user
+      Alert.alert(
+        'Search Error',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+      
+      setResults([]); // Ensure no stale results are shown
     } finally {
       setLoading(false);
     }
@@ -162,6 +212,7 @@ export default function GlobalSearchScreen() {
                   setQuery('');
                   setResults([]);
                   setSearched(false);
+                  setSearchError(null);
                 }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -227,6 +278,12 @@ export default function GlobalSearchScreen() {
               Searching...
             </Text>
           </View>
+        ) : searchError ? (
+          <EmptyState
+            icon="error"
+            title="Search Error"
+            description={searchError}
+          />
         ) : searched && results.length === 0 ? (
           <EmptyState
             icon="search"
