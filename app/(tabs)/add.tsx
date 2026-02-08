@@ -21,7 +21,7 @@ import {
 import { useAppTheme } from '@/contexts/ThemeContext';
 import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
-import { extractItem, identifyFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import { extractItem, identifyFromImage, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import * as Linking from 'expo-linking';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -407,7 +407,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      console.log('[AddItem] Identifying product from camera image');
+      console.log('[AddItem] Identifying product from camera image using OpenAI Lens pipeline');
       setIdentifyingCamera(true);
 
       // Convert image to base64
@@ -416,11 +416,10 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      console.log('[AddItem] Calling identifyFromImage...');
-      const result = await identifyFromImage(base64, {
+      console.log('[AddItem] Calling identifyProductFromImage (OpenAI Lens)...');
+      const result = await identifyProductFromImage(base64, {
         countryCode: searchCountry,
-        currencyCode: smartLocationSettings?.currency || 'USD',
-        locale: 'en',
+        currency: smartLocationSettings?.currency || 'USD',
       });
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
@@ -433,94 +432,45 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Handle RATE_LIMIT_EXCEEDED
-      if (result.status === 'error' && result.code === 'RATE_LIMIT_EXCEEDED') {
-        console.log('[AddItem] Rate limit exceeded');
-        Alert.alert(
-          'Daily Limit Reached',
-          result.message || 'You\'ve reached the daily limit for image searches. Please try again tomorrow or add items manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after rate limit');
-                const fallbackData = {
-                  itemName: '',
-                  imageUrl: cameraImage,
-                  extractedImages: [cameraImage],
-                  storeName: '',
-                  storeDomain: '',
-                  price: null,
-                  currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'camera',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify(fallbackData),
-                  },
-                });
-              },
+      // Handle no_results or error
+      if (result.status === 'no_results' || result.status === 'error') {
+        console.log('[AddItem] No results or error:', result.message);
+        
+        // If we have identified product data but no offers, show it
+        if (result.identified) {
+          console.log('[AddItem] Product identified but no offers, showing identified data');
+          const fallbackData = {
+            itemName: result.identified.title,
+            imageUrl: cameraImage,
+            extractedImages: [cameraImage],
+            storeName: '',
+            storeDomain: '',
+            price: null,
+            currency: smartLocationSettings?.currency || 'USD',
+            countryAvailability: searchCountry ? [searchCountry] : [],
+            sourceUrl: '',
+            inputType: 'camera',
+          };
+          
+          router.push({
+            pathname: '/import-preview',
+            params: {
+              data: JSON.stringify(fallbackData),
             },
-          ]
-        );
-        return;
-      }
-
-      // Handle no_results
-      if (result.status === 'no_results') {
-        console.log('[AddItem] No results found');
+          });
+          return;
+        }
+        
+        // No identified data - show error and allow manual entry
         Alert.alert(
-          'No Products Found',
-          result.message || 'Could not find any matching products online. Try a different image or add manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after no results');
-                const fallbackData = {
-                  itemName: '',
-                  imageUrl: cameraImage,
-                  extractedImages: [cameraImage],
-                  storeName: '',
-                  storeDomain: '',
-                  price: null,
-                  currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'camera',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify(fallbackData),
-                  },
-                });
-              },
-            },
-          ]
-        );
-        return;
-      }
-
-      // Handle error
-      if (result.status === 'error') {
-        console.error('[AddItem] Identification error:', result.message);
-        Alert.alert(
-          'Identification Failed',
+          result.status === 'error' ? 'Identification Failed' : 'No Products Found',
           result.message || 'Could not identify the product. You can still add it manually with the photo.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Add Manually',
               onPress: () => {
-                console.log('[AddItem] User chose to add manually after error');
+                console.log('[AddItem] User chose to add manually');
                 const fallbackData = {
                   itemName: '',
                   imageUrl: cameraImage,
@@ -547,43 +497,65 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Success - navigate to import-preview with candidates
-      if (result.status === 'ok' && result.items.length > 0) {
-        console.log('[AddItem] Found', result.items.length, 'product candidates');
+      // Success - navigate to import-preview with offers (Lyst-style)
+      if (result.status === 'ok' && result.offers.length > 0) {
+        console.log('[AddItem] Found', result.offers.length, 'product offers');
         
-        // Convert ProductCandidate[] to the format expected by import-preview
-        const candidates = result.items.map(item => ({
-          itemName: item.title,
-          brand: item.brand || '',
-          model: item.model || '',
-          category: item.category || '',
-          imageUrl: item.imageUrl || cameraImage,
-          extractedImages: item.imageUrl ? [item.imageUrl] : [cameraImage],
-          storeName: item.storeName || '',
-          storeDomain: item.storeUrl ? new URL(item.storeUrl).hostname : '',
-          price: item.price || null,
-          currency: item.currency || 'USD',
+        // Convert ProductOffer[] to the format expected by import-preview
+        const candidates = result.offers.map(offer => ({
+          itemName: offer.title,
+          brand: result.identified?.brand || '',
+          model: result.identified?.attributes?.model || '',
+          category: result.identified?.category || '',
+          imageUrl: offer.image_url || cameraImage,
+          extractedImages: offer.image_url ? [offer.image_url] : [cameraImage],
+          storeName: offer.store,
+          storeDomain: offer.product_url ? new URL(offer.product_url).hostname : '',
+          price: offer.price || null,
+          currency: offer.currency || 'USD',
           countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: item.storeUrl || '',
+          sourceUrl: offer.product_url || '',
           inputType: 'camera',
-          score: item.score || 0,
-          reason: item.reason || '',
+          score: offer.score || 0,
+          reason: `Found at ${offer.store}`,
         }));
 
-        console.log('[AddItem] Navigating to import-preview with candidates');
+        console.log('[AddItem] Navigating to import-preview with offers');
         router.push({
           pathname: '/import-preview',
           params: {
             imageUri: cameraImage,
             identifiedItems: JSON.stringify(candidates),
-            providerUsed: result.providerUsed,
-            confidence: result.confidence.toString(),
-            query: result.query,
+            providerUsed: 'openai_lens',
+            confidence: result.identified?.confidence.toString() || '0',
+            query: result.identified?.search_query || '',
+          },
+        });
+      } else if (result.status === 'ok' && result.identified) {
+        // Product identified but no offers - still show the identified data
+        console.log('[AddItem] Product identified but no offers');
+        const fallbackData = {
+          itemName: result.identified.title,
+          imageUrl: cameraImage,
+          extractedImages: [cameraImage],
+          storeName: '',
+          storeDomain: '',
+          price: null,
+          currency: smartLocationSettings?.currency || 'USD',
+          countryAvailability: searchCountry ? [searchCountry] : [],
+          sourceUrl: '',
+          inputType: 'camera',
+        };
+        
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            data: JSON.stringify(fallbackData),
           },
         });
       } else {
-        // Unexpected case - no items but status is ok
-        console.warn('[AddItem] Status ok but no items');
+        // Unexpected case - status ok but no offers and no identified data
+        console.warn('[AddItem] Status ok but no offers or identified data');
         Alert.alert(
           'No Products Found',
           'Could not find any matching products. Try a different image or add manually.',
@@ -745,7 +717,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      console.log('[AddItem] Identifying product from uploaded image');
+      console.log('[AddItem] Identifying product from uploaded image using OpenAI Lens pipeline');
       setIdentifyingUpload(true);
 
       // Convert image to base64
@@ -754,11 +726,10 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      console.log('[AddItem] Calling identifyFromImage...');
-      const result = await identifyFromImage(base64, {
+      console.log('[AddItem] Calling identifyProductFromImage (OpenAI Lens)...');
+      const result = await identifyProductFromImage(base64, {
         countryCode: searchCountry,
-        currencyCode: smartLocationSettings?.currency || 'USD',
-        locale: 'en',
+        currency: smartLocationSettings?.currency || 'USD',
       });
       console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
 
@@ -771,94 +742,45 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Handle RATE_LIMIT_EXCEEDED
-      if (result.status === 'error' && result.code === 'RATE_LIMIT_EXCEEDED') {
-        console.log('[AddItem] Rate limit exceeded');
-        Alert.alert(
-          'Daily Limit Reached',
-          result.message || 'You\'ve reached the daily limit for image searches. Please try again tomorrow or add items manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after rate limit');
-                const fallbackData = {
-                  itemName: '',
-                  imageUrl: uploadImage,
-                  extractedImages: [uploadImage],
-                  storeName: '',
-                  storeDomain: '',
-                  price: null,
-                  currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'image',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify(fallbackData),
-                  },
-                });
-              },
+      // Handle no_results or error
+      if (result.status === 'no_results' || result.status === 'error') {
+        console.log('[AddItem] No results or error:', result.message);
+        
+        // If we have identified product data but no offers, show it
+        if (result.identified) {
+          console.log('[AddItem] Product identified but no offers, showing identified data');
+          const fallbackData = {
+            itemName: result.identified.title,
+            imageUrl: uploadImage,
+            extractedImages: [uploadImage],
+            storeName: '',
+            storeDomain: '',
+            price: null,
+            currency: smartLocationSettings?.currency || 'USD',
+            countryAvailability: searchCountry ? [searchCountry] : [],
+            sourceUrl: '',
+            inputType: 'image',
+          };
+          
+          router.push({
+            pathname: '/import-preview',
+            params: {
+              data: JSON.stringify(fallbackData),
             },
-          ]
-        );
-        return;
-      }
-
-      // Handle no_results
-      if (result.status === 'no_results') {
-        console.log('[AddItem] No results found');
+          });
+          return;
+        }
+        
+        // No identified data - show error and allow manual entry
         Alert.alert(
-          'No Products Found',
-          result.message || 'Could not find any matching products online. Try a different image or add manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after no results');
-                const fallbackData = {
-                  itemName: '',
-                  imageUrl: uploadImage,
-                  extractedImages: [uploadImage],
-                  storeName: '',
-                  storeDomain: '',
-                  price: null,
-                  currency: 'USD',
-                  countryAvailability: searchCountry ? [searchCountry] : [],
-                  sourceUrl: '',
-                  inputType: 'image',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify(fallbackData),
-                  },
-                });
-              },
-            },
-          ]
-        );
-        return;
-      }
-
-      // Handle error
-      if (result.status === 'error') {
-        console.error('[AddItem] Identification error:', result.message);
-        Alert.alert(
-          'Identification Failed',
+          result.status === 'error' ? 'Identification Failed' : 'No Products Found',
           result.message || 'Could not identify the product. You can still add it manually with the photo.',
           [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Add Manually',
               onPress: () => {
-                console.log('[AddItem] User chose to add manually after error');
+                console.log('[AddItem] User chose to add manually');
                 const fallbackData = {
                   itemName: '',
                   imageUrl: uploadImage,
@@ -885,43 +807,65 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Success - navigate to import-preview with candidates
-      if (result.status === 'ok' && result.items.length > 0) {
-        console.log('[AddItem] Found', result.items.length, 'product candidates');
+      // Success - navigate to import-preview with offers (Lyst-style)
+      if (result.status === 'ok' && result.offers.length > 0) {
+        console.log('[AddItem] Found', result.offers.length, 'product offers');
         
-        // Convert ProductCandidate[] to the format expected by import-preview
-        const candidates = result.items.map(item => ({
-          itemName: item.title,
-          brand: item.brand || '',
-          model: item.model || '',
-          category: item.category || '',
-          imageUrl: item.imageUrl || uploadImage,
-          extractedImages: item.imageUrl ? [item.imageUrl] : [uploadImage],
-          storeName: item.storeName || '',
-          storeDomain: item.storeUrl ? new URL(item.storeUrl).hostname : '',
-          price: item.price || null,
-          currency: item.currency || 'USD',
+        // Convert ProductOffer[] to the format expected by import-preview
+        const candidates = result.offers.map(offer => ({
+          itemName: offer.title,
+          brand: result.identified?.brand || '',
+          model: result.identified?.attributes?.model || '',
+          category: result.identified?.category || '',
+          imageUrl: offer.image_url || uploadImage,
+          extractedImages: offer.image_url ? [offer.image_url] : [uploadImage],
+          storeName: offer.store,
+          storeDomain: offer.product_url ? new URL(offer.product_url).hostname : '',
+          price: offer.price || null,
+          currency: offer.currency || 'USD',
           countryAvailability: searchCountry ? [searchCountry] : [],
-          sourceUrl: item.storeUrl || '',
+          sourceUrl: offer.product_url || '',
           inputType: 'image',
-          score: item.score || 0,
-          reason: item.reason || '',
+          score: offer.score || 0,
+          reason: `Found at ${offer.store}`,
         }));
 
-        console.log('[AddItem] Navigating to import-preview with candidates');
+        console.log('[AddItem] Navigating to import-preview with offers');
         router.push({
           pathname: '/import-preview',
           params: {
             imageUri: uploadImage,
             identifiedItems: JSON.stringify(candidates),
-            providerUsed: result.providerUsed,
-            confidence: result.confidence.toString(),
-            query: result.query,
+            providerUsed: 'openai_lens',
+            confidence: result.identified?.confidence.toString() || '0',
+            query: result.identified?.search_query || '',
+          },
+        });
+      } else if (result.status === 'ok' && result.identified) {
+        // Product identified but no offers - still show the identified data
+        console.log('[AddItem] Product identified but no offers');
+        const fallbackData = {
+          itemName: result.identified.title,
+          imageUrl: uploadImage,
+          extractedImages: [uploadImage],
+          storeName: '',
+          storeDomain: '',
+          price: null,
+          currency: smartLocationSettings?.currency || 'USD',
+          countryAvailability: searchCountry ? [searchCountry] : [],
+          sourceUrl: '',
+          inputType: 'image',
+        };
+        
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            data: JSON.stringify(fallbackData),
           },
         });
       } else {
-        // Unexpected case - no items but status is ok
-        console.warn('[AddItem] Status ok but no items');
+        // Unexpected case - status ok but no offers and no identified data
+        console.warn('[AddItem] Status ok but no offers or identified data');
         Alert.alert(
           'No Products Found',
           'Could not find any matching products. Try a different image or add manually.',

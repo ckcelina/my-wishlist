@@ -143,6 +143,55 @@ export interface IdentifyFromImageResponse {
   code?: string;
 }
 
+export interface IdentifiedProduct {
+  title: string;
+  brand?: string;
+  category?: string;
+  attributes?: {
+    color?: string;
+    material?: string;
+    model?: string;
+    keywords?: string[];
+  };
+  search_query: string;
+  confidence: number;
+}
+
+export interface ProductOffer {
+  store: string;
+  title: string;
+  price: number;
+  currency: string;
+  product_url: string;
+  image_url: string;
+  score: number;
+}
+
+export interface IdentifyProductFromImageRequest {
+  image_base64?: string;
+  image_url?: string;
+  crop_box?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  countryCode?: string;
+  currency?: string;
+}
+
+export interface IdentifyProductFromImageResponse {
+  status: 'ok' | 'no_results' | 'error';
+  identified?: IdentifiedProduct;
+  offers: ProductOffer[];
+  message?: string;
+  code?: string;
+  debug?: {
+    provider: string;
+    query_used: string;
+  };
+}
+
 export interface SearchByNameRequest {
   query: string;
   countryCode?: string;
@@ -175,7 +224,7 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 const EXPECTED_EDGE_FUNCTIONS = [
   'search-item',
   'identify-from-image',
-  'identify-product-from-image',
+  'identify-product-from-image', // NEW: OpenAI Lens pipeline with offers
   'extract-item',
   'find-alternatives',
   'import-wishlist',
@@ -876,6 +925,108 @@ export async function searchByName(
     return {
       results: [],
       error: error.message || 'Failed to search for products',
+    };
+  }
+}
+
+/**
+ * Identify a product from an image using OpenAI Lens pipeline
+ * 
+ * PIPELINE:
+ * 1. OpenAI Vision analyzes the image and returns structured product data
+ * 2. Performs store search based on the identified product (placeholder for now)
+ * 3. Returns identified product details and shopping offers
+ * 
+ * This is the NEW implementation that returns offers list (Lyst-style)
+ * Use this for the enhanced product discovery flow
+ */
+export async function identifyProductFromImage(
+  imageBase64?: string,
+  options?: {
+    imageUrl?: string;
+    cropBox?: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    countryCode?: string;
+    currency?: string;
+  }
+): Promise<IdentifyProductFromImageResponse> {
+  try {
+    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline');
+
+    // GUARD: Check auth state BEFORE calling edge function
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session || !session.access_token) {
+      console.error('[identifyProductFromImage] Invalid auth state');
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        offers: [],
+      };
+    }
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('[identifyProductFromImage] User not authenticated');
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        offers: [],
+      };
+    }
+
+    if (!imageBase64 && !options?.imageUrl) {
+      return {
+        status: 'error',
+        message: 'Either imageBase64 or imageUrl is required',
+        offers: [],
+      };
+    }
+
+    console.log('[identifyProductFromImage] Calling Edge Function');
+
+    const response = await callEdgeFunctionSafely<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
+      'identify-product-from-image',
+      {
+        image_base64: imageBase64,
+        image_url: options?.imageUrl,
+        crop_box: options?.cropBox,
+        countryCode: options?.countryCode,
+        currency: options?.currency,
+      },
+      { showErrorAlert: false }
+    );
+
+    console.log('[identifyProductFromImage] Pipeline complete');
+    console.log('[identifyProductFromImage] Status:', response.status, 'Offers:', response.offers.length);
+
+    return response;
+  } catch (error: any) {
+    console.error('[identifyProductFromImage] Failed:', error);
+    
+    // Check for AUTH_REQUIRED
+    if (error.message === 'AUTH_REQUIRED') {
+      console.log('[identifyProductFromImage] AUTH_REQUIRED caught');
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        offers: [],
+      };
+    }
+    
+    // Return safe fallback
+    return {
+      status: 'error',
+      message: error.message || 'Failed to identify product',
+      offers: [],
     };
   }
 }
