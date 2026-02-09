@@ -51,6 +51,7 @@ interface ProductData {
 }
 
 // NEW: Simplified format from identify-product-from-image
+// Normalized UI model for Import Preview - receives data from both primary and fallback
 interface IdentifiedItem {
   title: string;
   imageUrl: string;
@@ -58,6 +59,7 @@ interface IdentifiedItem {
   store: string;
   price: number | null;
   currency: string;
+  confidence?: number; // Optional confidence score (0-1)
 }
 
 interface Wishlist {

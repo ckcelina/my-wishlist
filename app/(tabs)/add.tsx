@@ -407,7 +407,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      console.log('[AddItem] Identifying product from camera image using OpenAI Lens pipeline');
+      console.log('[AddItem] Identifying product from camera image using primary/fallback pipeline');
       setIdentifyingCamera(true);
 
       // Convert image to base64
@@ -416,15 +416,17 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      console.log('[AddItem] Calling identifyProductFromImage (OpenAI Lens)...');
-      const result = await identifyProductFromImage(base64, {
+      // TODO: After stable, merge and remove identify-from-image.
+      // PRIMARY: Call identify-product-from-image first (OpenAI Lens + Store Search)
+      console.log('[AddItem] PRIMARY: Calling identify-product-from-image...');
+      const primaryResult = await identifyProductFromImage(base64, {
         countryCode: searchCountry,
         currency: smartLocationSettings?.currency || 'USD',
       });
-      console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
+      console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
-      if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
+      if (primaryResult.status === 'error' && (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED')) {
         console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
         Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
@@ -432,138 +434,108 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Handle no_results or error
-      if (result.status === 'no_results' || result.status === 'error') {
-        console.log('[AddItem] No results or error:', result.message);
+      // Normalize primary response to UI model
+      let finalIdentifiedItems: Array<{
+        title: string;
+        imageUrl: string;
+        originalUrl: string;
+        store: string;
+        price: number | null;
+        currency: string;
+        confidence?: number;
+      }> = [];
+
+      // Check if primary succeeded with offers
+      if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
+        console.log('[AddItem] PRIMARY succeeded with', primaryResult.offers.length, 'offers');
         
-        // If we have identified product data but no offers, show it
-        if (result.identified) {
-          console.log('[AddItem] Product identified but no offers, showing identified data');
-          const fallbackData = {
-            title: result.identified.title,
-            imageUrl: cameraImage,
-            originalUrl: '',
-            store: '',
-            price: null,
-            currency: smartLocationSettings?.currency || 'USD',
-          };
-          
-          router.push({
-            pathname: '/import-preview',
-            params: {
-              identifiedItems: JSON.stringify([fallbackData]),
-              wishlistId: selectedWishlistId,
-            },
-          });
+        // Normalize primary response
+        finalIdentifiedItems = primaryResult.offers.map(offer => ({
+          title: offer.title || primaryResult.identified?.title || 'Unknown Product',
+          imageUrl: offer.image_url || cameraImage,
+          originalUrl: offer.product_url || '',
+          store: offer.store || '',
+          price: offer.price || null,
+          currency: offer.currency || smartLocationSettings?.currency || 'USD',
+          confidence: primaryResult.identified?.confidence || 0,
+        }));
+      } else {
+        // FALLBACK: Primary failed or returned no offers - try identify-from-image
+        console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
+        
+        const fallbackResult = await identifyFromImage(base64, {
+          countryCode: searchCountry,
+          currencyCode: smartLocationSettings?.currency || 'USD',
+        });
+        console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
+
+        // Handle AUTH_REQUIRED from fallback
+        if (fallbackResult.status === 'error' && (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED')) {
+          console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
+          Alert.alert('Session expired', 'Please sign in again', [
+            { text: 'OK', onPress: () => router.push('/auth') },
+          ]);
           return;
         }
-        
-        // No identified data - show error and allow manual entry
-        Alert.alert(
-          result.status === 'error' ? 'Identification Failed' : 'No Products Found',
-          result.message || 'Could not identify the product. You can still add it manually with the photo.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually');
-                const fallbackData = {
-                  title: '',
-                  imageUrl: cameraImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
+
+        // Normalize fallback response
+        if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
+          console.log('[AddItem] FALLBACK succeeded with', fallbackResult.items.length, 'items');
+          
+          finalIdentifiedItems = fallbackResult.items.map(item => ({
+            title: item.title || 'Unknown Product',
+            imageUrl: item.imageUrl || cameraImage,
+            originalUrl: item.storeUrl || '',
+            store: item.storeName || '',
+            price: item.price || null,
+            currency: item.currency || smartLocationSettings?.currency || 'USD',
+            confidence: item.score || 0,
+          }));
+        } else {
+          // Both primary and fallback failed - show error
+          console.log('[AddItem] Both PRIMARY and FALLBACK failed');
+          Alert.alert(
+            'No Products Found',
+            'Could not identify the product. You can still add it manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after both failed');
+                  const manualData = {
+                    title: '',
+                    imageUrl: cameraImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([manualData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                },
               },
-            },
-          ]
-        );
-        return;
+            ]
+          );
+          return;
+        }
       }
 
-      // Success - navigate to import-preview with offers (Lyst-style)
-      if (result.status === 'ok' && result.offers.length > 0) {
-        console.log('[AddItem] Found', result.offers.length, 'product offers');
-        
-        // Convert ProductOffer[] to the format expected by import-preview
-        const identifiedItems = result.offers.map(offer => ({
-          title: offer.title,
-          imageUrl: offer.image_url || cameraImage,
-          originalUrl: offer.product_url,
-          store: offer.store,
-          price: offer.price,
-          currency: offer.currency,
-        }));
-
-        console.log('[AddItem] Navigating to import-preview with offers');
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify(identifiedItems),
-            wishlistId: selectedWishlistId,
-          },
-        });
-      } else if (result.status === 'ok' && result.identified) {
-        // Product identified but no offers - still show the identified data
-        console.log('[AddItem] Product identified but no offers');
-        const fallbackData = {
-          title: result.identified.title,
-          imageUrl: cameraImage,
-          originalUrl: '',
-          store: '',
-          price: null,
-          currency: smartLocationSettings?.currency || 'USD',
-        };
-        
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify([fallbackData]),
-            wishlistId: selectedWishlistId,
-          },
-        });
-      } else {
-        // Unexpected case - status ok but no offers and no identified data
-        console.warn('[AddItem] Status ok but no offers or identified data');
-        Alert.alert(
-          'No Products Found',
-          'Could not find any matching products. Try a different image or add manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: cameraImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              },
-            },
-          ]
-        );
-      }
+      // Navigate to import-preview with normalized items
+      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          identifiedItems: JSON.stringify(finalIdentifiedItems),
+          wishlistId: selectedWishlistId,
+        },
+      });
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromCamera:', error);
       
@@ -576,7 +548,7 @@ export default function AddItemScreen() {
           {
             text: 'Add Manually',
             onPress: () => {
-              console.log('[AddItem] User chose to add manually after identification failure');
+              console.log('[AddItem] User chose to add manually after error');
               const fallbackData = {
                 title: '',
                 imageUrl: cameraImage,
@@ -690,7 +662,7 @@ export default function AddItemScreen() {
         return;
       }
 
-      console.log('[AddItem] Identifying product from uploaded image using OpenAI Lens pipeline');
+      console.log('[AddItem] Identifying product from uploaded image using primary/fallback pipeline');
       setIdentifyingUpload(true);
 
       // Convert image to base64
@@ -699,15 +671,17 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      console.log('[AddItem] Calling identifyProductFromImage (OpenAI Lens)...');
-      const result = await identifyProductFromImage(base64, {
+      // TODO: After stable, merge and remove identify-from-image.
+      // PRIMARY: Call identify-product-from-image first (OpenAI Lens + Store Search)
+      console.log('[AddItem] PRIMARY: Calling identify-product-from-image...');
+      const primaryResult = await identifyProductFromImage(base64, {
         countryCode: searchCountry,
         currency: smartLocationSettings?.currency || 'USD',
       });
-      console.log('[AddItem] Identification result:', JSON.stringify(result, null, 2));
+      console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
       // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
-      if (result.status === 'error' && (result.code === 'AUTH_REQUIRED' || result.message === 'AUTH_REQUIRED')) {
+      if (primaryResult.status === 'error' && (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED')) {
         console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
         Alert.alert('Session expired', 'Please sign in again', [
           { text: 'OK', onPress: () => router.push('/auth') },
@@ -715,138 +689,108 @@ export default function AddItemScreen() {
         return;
       }
 
-      // Handle no_results or error
-      if (result.status === 'no_results' || result.status === 'error') {
-        console.log('[AddItem] No results or error:', result.message);
+      // Normalize primary response to UI model
+      let finalIdentifiedItems: Array<{
+        title: string;
+        imageUrl: string;
+        originalUrl: string;
+        store: string;
+        price: number | null;
+        currency: string;
+        confidence?: number;
+      }> = [];
+
+      // Check if primary succeeded with offers
+      if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
+        console.log('[AddItem] PRIMARY succeeded with', primaryResult.offers.length, 'offers');
         
-        // If we have identified product data but no offers, show it
-        if (result.identified) {
-          console.log('[AddItem] Product identified but no offers, showing identified data');
-          const fallbackData = {
-            title: result.identified.title,
-            imageUrl: uploadImage,
-            originalUrl: '',
-            store: '',
-            price: null,
-            currency: smartLocationSettings?.currency || 'USD',
-          };
-          
-          router.push({
-            pathname: '/import-preview',
-            params: {
-              identifiedItems: JSON.stringify([fallbackData]),
-              wishlistId: selectedWishlistId,
-            },
-          });
+        // Normalize primary response
+        finalIdentifiedItems = primaryResult.offers.map(offer => ({
+          title: offer.title || primaryResult.identified?.title || 'Unknown Product',
+          imageUrl: offer.image_url || uploadImage,
+          originalUrl: offer.product_url || '',
+          store: offer.store || '',
+          price: offer.price || null,
+          currency: offer.currency || smartLocationSettings?.currency || 'USD',
+          confidence: primaryResult.identified?.confidence || 0,
+        }));
+      } else {
+        // FALLBACK: Primary failed or returned no offers - try identify-from-image
+        console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
+        
+        const fallbackResult = await identifyFromImage(base64, {
+          countryCode: searchCountry,
+          currencyCode: smartLocationSettings?.currency || 'USD',
+        });
+        console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
+
+        // Handle AUTH_REQUIRED from fallback
+        if (fallbackResult.status === 'error' && (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED')) {
+          console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
+          Alert.alert('Session expired', 'Please sign in again', [
+            { text: 'OK', onPress: () => router.push('/auth') },
+          ]);
           return;
         }
-        
-        // No identified data - show error and allow manual entry
-        Alert.alert(
-          result.status === 'error' ? 'Identification Failed' : 'No Products Found',
-          result.message || 'Could not identify the product. You can still add it manually with the photo.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually');
-                const fallbackData = {
-                  title: '',
-                  imageUrl: uploadImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
+
+        // Normalize fallback response
+        if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
+          console.log('[AddItem] FALLBACK succeeded with', fallbackResult.items.length, 'items');
+          
+          finalIdentifiedItems = fallbackResult.items.map(item => ({
+            title: item.title || 'Unknown Product',
+            imageUrl: item.imageUrl || uploadImage,
+            originalUrl: item.storeUrl || '',
+            store: item.storeName || '',
+            price: item.price || null,
+            currency: item.currency || smartLocationSettings?.currency || 'USD',
+            confidence: item.score || 0,
+          }));
+        } else {
+          // Both primary and fallback failed - show error
+          console.log('[AddItem] Both PRIMARY and FALLBACK failed');
+          Alert.alert(
+            'No Products Found',
+            'Could not identify the product. You can still add it manually with the photo.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Add Manually',
+                onPress: () => {
+                  console.log('[AddItem] User chose to add manually after both failed');
+                  const manualData = {
+                    title: '',
+                    imageUrl: uploadImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([manualData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                },
               },
-            },
-          ]
-        );
-        return;
+            ]
+          );
+          return;
+        }
       }
 
-      // Success - navigate to import-preview with offers (Lyst-style)
-      if (result.status === 'ok' && result.offers.length > 0) {
-        console.log('[AddItem] Found', result.offers.length, 'product offers');
-        
-        // Convert ProductOffer[] to the format expected by import-preview
-        const identifiedItems = result.offers.map(offer => ({
-          title: offer.title,
-          imageUrl: offer.image_url || uploadImage,
-          originalUrl: offer.product_url,
-          store: offer.store,
-          price: offer.price,
-          currency: offer.currency,
-        }));
-
-        console.log('[AddItem] Navigating to import-preview with offers');
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify(identifiedItems),
-            wishlistId: selectedWishlistId,
-          },
-        });
-      } else if (result.status === 'ok' && result.identified) {
-        // Product identified but no offers - still show the identified data
-        console.log('[AddItem] Product identified but no offers');
-        const fallbackData = {
-          title: result.identified.title,
-          imageUrl: uploadImage,
-          originalUrl: '',
-          store: '',
-          price: null,
-          currency: smartLocationSettings?.currency || 'USD',
-        };
-        
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify([fallbackData]),
-            wishlistId: selectedWishlistId,
-          },
-        });
-      } else {
-        // Unexpected case - status ok but no offers and no identified data
-        console.warn('[AddItem] Status ok but no offers or identified data');
-        Alert.alert(
-          'No Products Found',
-          'Could not find any matching products. Try a different image or add manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: uploadImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              },
-            },
-          ]
-        );
-      }
+      // Navigate to import-preview with normalized items
+      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+      router.push({
+        pathname: '/import-preview',
+        params: {
+          identifiedItems: JSON.stringify(finalIdentifiedItems),
+          wishlistId: selectedWishlistId,
+        },
+      });
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromUpload:', error);
       
@@ -859,7 +803,7 @@ export default function AddItemScreen() {
           {
             text: 'Add Manually',
             onPress: () => {
-              console.log('[AddItem] User chose to add manually after identification failure');
+              console.log('[AddItem] User chose to add manually after error');
               const fallbackData = {
                 title: '',
                 imageUrl: uploadImage,
