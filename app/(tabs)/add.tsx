@@ -459,6 +459,18 @@ export default function AddItemScreen() {
           currency: offer.currency || smartLocationSettings?.currency || 'USD',
           confidence: primaryResult.identified?.confidence || 0,
         }));
+
+        // Navigate to import-preview with normalized items AND identified product
+        console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            identifiedItems: JSON.stringify(finalIdentifiedItems),
+            identifiedProduct: primaryResult.identified ? JSON.stringify(primaryResult.identified) : undefined,
+            wishlistId: selectedWishlistId,
+          },
+        });
+        return;
       } else {
         // FALLBACK: Primary failed or returned no offers - try identify-from-image
         console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
@@ -492,43 +504,22 @@ export default function AddItemScreen() {
             confidence: item.score || 0,
           }));
         } else {
-          // Both primary and fallback failed - show error
+          // Both primary and fallback failed - navigate to no results UI
           console.log('[AddItem] Both PRIMARY and FALLBACK failed');
-          Alert.alert(
-            'No Products Found',
-            'Could not identify the product. You can still add it manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after both failed');
-                  const manualData = {
-                    title: '',
-                    imageUrl: cameraImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([manualData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                },
-              },
-            ]
-          );
+          router.push({
+            pathname: '/import-preview',
+            params: {
+              identifiedItems: JSON.stringify([]),
+              message: 'Could not identify the product. You can still add it manually with the photo.',
+              wishlistId: selectedWishlistId,
+            },
+          });
           return;
         }
       }
 
-      // Navigate to import-preview with normalized items
-      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+      // Navigate to import-preview with normalized items (fallback succeeded)
+      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items from fallback');
       router.push({
         pathname: '/import-preview',
         params: {
@@ -714,6 +705,18 @@ export default function AddItemScreen() {
           currency: offer.currency || smartLocationSettings?.currency || 'USD',
           confidence: primaryResult.identified?.confidence || 0,
         }));
+
+        // Navigate to import-preview with normalized items AND identified product
+        console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            identifiedItems: JSON.stringify(finalIdentifiedItems),
+            identifiedProduct: primaryResult.identified ? JSON.stringify(primaryResult.identified) : undefined,
+            wishlistId: selectedWishlistId,
+          },
+        });
+        return;
       } else {
         // FALLBACK: Primary failed or returned no offers - try identify-from-image
         console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
@@ -747,43 +750,22 @@ export default function AddItemScreen() {
             confidence: item.score || 0,
           }));
         } else {
-          // Both primary and fallback failed - show error
+          // Both primary and fallback failed - navigate to no results UI
           console.log('[AddItem] Both PRIMARY and FALLBACK failed');
-          Alert.alert(
-            'No Products Found',
-            'Could not identify the product. You can still add it manually with the photo.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Add Manually',
-                onPress: () => {
-                  console.log('[AddItem] User chose to add manually after both failed');
-                  const manualData = {
-                    title: '',
-                    imageUrl: uploadImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([manualData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                },
-              },
-            ]
-          );
+          router.push({
+            pathname: '/import-preview',
+            params: {
+              identifiedItems: JSON.stringify([]),
+              message: 'Could not identify the product. You can still add it manually with the photo.',
+              wishlistId: selectedWishlistId,
+            },
+          });
           return;
         }
       }
 
-      // Navigate to import-preview with normalized items
-      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+      // Navigate to import-preview with normalized items (fallback succeeded)
+      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items from fallback');
       router.push({
         pathname: '/import-preview',
         params: {

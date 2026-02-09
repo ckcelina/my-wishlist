@@ -429,26 +429,120 @@ export default function ImportPreviewScreen() {
     scrollContent: {
       padding: spacing.lg,
     },
+    // No Results UI
+    noResultsContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.xl,
+    },
+    noResultsTitle: {
+      fontSize: 24,
+      fontWeight: '600',
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
+      textAlign: 'center',
+    },
+    noResultsMessage: {
+      fontSize: 16,
+      textAlign: 'center',
+      marginBottom: spacing.xl,
+      lineHeight: 24,
+    },
+    noResultsActions: {
+      width: '100%',
+      gap: spacing.md,
+    },
+    noResultsButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      padding: spacing.md,
+      borderRadius: 12,
+    },
+    noResultsButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    // Identified Product Header
+    identifiedHeader: {
+      marginBottom: spacing.lg,
+      paddingBottom: spacing.lg,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    identifiedTitle: {
+      fontSize: 22,
+      fontWeight: '600',
+      marginBottom: spacing.xs,
+    },
+    identifiedBrand: {
+      fontSize: 16,
+      fontWeight: '500',
+      marginBottom: spacing.sm,
+    },
+    confidenceBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+    },
+    confidenceDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    confidenceText: {
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    // Offers Section
+    offersSection: {
+      marginBottom: spacing.lg,
+    },
     sectionTitle: {
       fontSize: 18,
       fontWeight: '600',
+      marginBottom: spacing.xs / 2,
+    },
+    sectionSubtitle: {
+      fontSize: 14,
       marginBottom: spacing.md,
-      color: colors.textPrimary,
     },
     offerCard: {
+      borderRadius: 12,
+      marginBottom: spacing.md,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    bestPriceBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: spacing.sm,
-      borderRadius: 12,
-      marginBottom: spacing.sm,
-      borderWidth: 1,
+      gap: spacing.xs / 2,
+      paddingVertical: spacing.xs / 2,
+      paddingHorizontal: spacing.sm,
+      position: 'absolute',
+      top: spacing.sm,
+      left: spacing.sm,
+      borderRadius: 6,
+      zIndex: 1,
+    },
+    bestPriceText: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    offerCardContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.md,
     },
     offerImage: {
       width: 80,
       height: 80,
       borderRadius: 8,
-      marginRight: spacing.sm,
-      backgroundColor: colors.surface,
+      marginRight: spacing.md,
+      backgroundColor: colors.border,
     },
     offerInfo: {
       flex: 1,
@@ -457,35 +551,26 @@ export default function ImportPreviewScreen() {
       fontSize: 15,
       fontWeight: '500',
       marginBottom: spacing.xs / 2,
-    },
-    offerBrand: {
-      fontSize: 13,
-      fontWeight: '500',
-      marginBottom: spacing.xs / 2,
+      lineHeight: 20,
     },
     offerStore: {
-      fontSize: 12,
-      marginBottom: spacing.xs / 2,
+      fontSize: 13,
+      marginBottom: spacing.xs,
     },
     offerBottomRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       marginTop: spacing.xs / 2,
     },
     offerPrice: {
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: '600',
-    },
-    offerConfidence: {
-      fontSize: 12,
-      fontStyle: 'italic',
     },
     manualButton: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: spacing.xs,
+      gap: spacing.sm,
       padding: spacing.md,
       borderRadius: 12,
       marginTop: spacing.md,
@@ -629,100 +714,224 @@ export default function ImportPreviewScreen() {
     );
   }
 
-  // Render offer selection UI if we have multiple identified items
+  // Render Lens-style offer selection UI if we have multiple identified items
   if (identifiedItems.length > 0 && !selectedItem) {
+    // Parse identified product details if available
+    const identifiedProduct = params.identifiedProduct 
+      ? JSON.parse(params.identifiedProduct as string) 
+      : null;
+    
+    // Sort offers by lowest price by default
+    const sortedItems = [...identifiedItems].sort((a, b) => {
+      const priceA = a.price || Infinity;
+      const priceB = b.price || Infinity;
+      return priceA - priceB;
+    });
+
+    // Check if we have no results
+    const hasNoResults = sortedItems.length === 0;
+    const statusMessage = params.message as string | undefined;
+
     return (
       <View style={styles.container}>
         <Stack.Screen
           options={{
-            title: 'Select Product',
+            title: 'Product Found',
             headerShown: true,
           }}
         />
         <SafeAreaView style={styles.container} edges={['bottom']}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <Text style={styles.sectionTitle}>
-              {identifiedItems.length === 1 ? 'Confirm product:' : 'Select the product you want to add:'}
-            </Text>
-
-            {identifiedItems.map((item, index) => {
-              const confidencePercent = item.confidence ? Math.round(item.confidence * 100) : null;
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={() => handleSelectItem(item)}
-                >
-                  {item.imageUrl && (
-                    <Image
-                      source={resolveImageSource(item.imageUrl)}
-                      style={styles.offerImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <View style={styles.offerInfo}>
-                    <Text style={[styles.offerTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    {item.brand && (
-                      <Text style={[styles.offerBrand, { color: colors.textSecondary }]}>
-                        {item.brand}
-                      </Text>
-                    )}
-                    {item.store && (
-                      <Text style={[styles.offerStore, { color: colors.textTertiary }]}>
-                        {item.store}
-                      </Text>
-                    )}
-                    <View style={styles.offerBottomRow}>
-                      {item.price && item.currency && (
-                        <Text style={[styles.offerPrice, { color: colors.accent }]}>
-                          {item.currency} {item.price.toFixed(2)}
-                        </Text>
-                      )}
-                      {confidencePercent !== null && (
-                        <Text style={[styles.offerConfidence, { color: colors.textTertiary }]}>
-                          {confidencePercent}% match
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron-right"
-                    size={20}
-                    color={colors.textTertiary}
-                  />
-                </TouchableOpacity>
-              );
-            })}
-
-            <TouchableOpacity
-              style={[styles.manualButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => {
-                console.log('[ImportPreview] User chose manual entry');
-                setSelectedItem({
-                  title: '',
-                  imageUrl: identifiedItems[0]?.imageUrl || '',
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                });
-              }}
-            >
+          {hasNoResults ? (
+            // No results UI
+            <View style={styles.noResultsContainer}>
               <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={20}
-                color={colors.accent}
+                ios_icon_name="magnifyingglass"
+                android_material_icon_name="search-off"
+                size={64}
+                color={colors.textTertiary}
               />
-              <Text style={[styles.manualButtonText, { color: colors.accent }]}>
-                None of these - Add manually
+              <Text style={[styles.noResultsTitle, { color: colors.textPrimary }]}>
+                No Products Found
               </Text>
-            </TouchableOpacity>
-          </ScrollView>
+              <Text style={[styles.noResultsMessage, { color: colors.textSecondary }]}>
+                {statusMessage || "We couldn't find any products matching your image."}
+              </Text>
+              
+              <View style={styles.noResultsActions}>
+                <TouchableOpacity
+                  style={[styles.noResultsButton, { backgroundColor: colors.accent }]}
+                  onPress={() => router.back()}
+                >
+                  <IconSymbol
+                    ios_icon_name="arrow.clockwise"
+                    android_material_icon_name="refresh"
+                    size={20}
+                    color={colors.textInverse}
+                  />
+                  <Text style={[styles.noResultsButtonText, { color: colors.textInverse }]}>
+                    Try Again
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.noResultsButton, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                  onPress={() => {
+                    console.log('[ImportPreview] User chose manual entry from no results');
+                    setSelectedItem({
+                      title: '',
+                      imageUrl: '',
+                      originalUrl: '',
+                      store: '',
+                      price: null,
+                      currency: 'USD',
+                    });
+                  }}
+                >
+                  <IconSymbol
+                    ios_icon_name="pencil"
+                    android_material_icon_name="edit"
+                    size={20}
+                    color={colors.accent}
+                  />
+                  <Text style={[styles.noResultsButtonText, { color: colors.accent }]}>
+                    Add Manually
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+              {/* Identified Product Header */}
+              {identifiedProduct && (
+                <View style={styles.identifiedHeader}>
+                  <Text style={[styles.identifiedTitle, { color: colors.textPrimary }]}>
+                    {identifiedProduct.title}
+                  </Text>
+                  {identifiedProduct.brand && (
+                    <Text style={[styles.identifiedBrand, { color: colors.textSecondary }]}>
+                      {identifiedProduct.brand}
+                    </Text>
+                  )}
+                  {identifiedProduct.confidence !== undefined && (
+                    <View style={styles.confidenceBadge}>
+                      <View style={[styles.confidenceDot, { 
+                        backgroundColor: identifiedProduct.confidence >= 0.7 
+                          ? colors.success 
+                          : identifiedProduct.confidence >= 0.4 
+                          ? colors.warning 
+                          : colors.error 
+                      }]} />
+                      <Text style={[styles.confidenceText, { color: colors.textSecondary }]}>
+                        {Math.round(identifiedProduct.confidence * 100)}% match
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Offers Section */}
+              <View style={styles.offersSection}>
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                  {sortedItems.length === 1 ? 'Found 1 offer' : `Found ${sortedItems.length} offers`}
+                </Text>
+                <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+                  Sorted by lowest price
+                </Text>
+
+                {sortedItems.map((item, index) => {
+                  const isLowestPrice = index === 0 && item.price !== null;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.offerCard, 
+                        { 
+                          backgroundColor: colors.surface, 
+                          borderColor: isLowestPrice ? colors.accent : colors.border,
+                          borderWidth: isLowestPrice ? 2 : 1,
+                        }
+                      ]}
+                      onPress={() => handleSelectItem(item)}
+                    >
+                      {isLowestPrice && (
+                        <View style={[styles.bestPriceBadge, { backgroundColor: colors.accent }]}>
+                          <IconSymbol
+                            ios_icon_name="star.fill"
+                            android_material_icon_name="star"
+                            size={12}
+                            color={colors.textInverse}
+                          />
+                          <Text style={[styles.bestPriceText, { color: colors.textInverse }]}>
+                            Best Price
+                          </Text>
+                        </View>
+                      )}
+                      
+                      <View style={styles.offerCardContent}>
+                        {item.imageUrl && (
+                          <Image
+                            source={resolveImageSource(item.imageUrl)}
+                            style={styles.offerImage}
+                            resizeMode="cover"
+                          />
+                        )}
+                        <View style={styles.offerInfo}>
+                          <Text style={[styles.offerTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                            {item.title}
+                          </Text>
+                          {item.store && (
+                            <Text style={[styles.offerStore, { color: colors.textSecondary }]}>
+                              {item.store}
+                            </Text>
+                          )}
+                          <View style={styles.offerBottomRow}>
+                            {item.price !== null && item.currency && (
+                              <Text style={[styles.offerPrice, { color: colors.accent }]}>
+                                {item.currency} {item.price.toFixed(2)}
+                              </Text>
+                            )}
+                          </View>
+                        </View>
+                        <IconSymbol
+                          ios_icon_name="chevron.right"
+                          android_material_icon_name="chevron-right"
+                          size={20}
+                          color={colors.textTertiary}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Manual Entry Option */}
+              <TouchableOpacity
+                style={[styles.manualButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => {
+                  console.log('[ImportPreview] User chose manual entry');
+                  setSelectedItem({
+                    title: identifiedProduct?.title || '',
+                    imageUrl: sortedItems[0]?.imageUrl || '',
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  });
+                }}
+              >
+                <IconSymbol
+                  ios_icon_name="pencil"
+                  android_material_icon_name="edit"
+                  size={20}
+                  color={colors.accent}
+                />
+                <Text style={[styles.manualButtonText, { color: colors.accent }]}>
+                  None of these - Add manually
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          )}
         </SafeAreaView>
       </View>
     );
