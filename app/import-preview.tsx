@@ -254,7 +254,7 @@ export default function ImportPreviewScreen() {
     }
   };
 
-  const performSave = async () => {
+  const performSave = async (skipDuplicateCheck: boolean = false) => {
     const trimmedName = editedName.trim();
     
     if (!trimmedName) {
@@ -303,18 +303,24 @@ export default function ImportPreviewScreen() {
       // Get data from selected item or legacy productData
       const sourceUrl = selectedItem?.originalUrl || productData?.sourceUrl || null;
       const sourceDomain = selectedItem?.store || productData?.storeDomain || null;
-      const currency = selectedItem?.currency || productData?.currency || 'USD';
+      const rawCurrency = selectedItem?.currency || productData?.currency || null;
+      
+      // CRITICAL: Ensure currency is never null (default to 'USD')
+      const currency = rawCurrency || 'USD';
+      
       const price = editedPrice ? parseFloat(editedPrice) : null;
 
-      // Check for duplicates
-      const hasDuplicate = await checkForDuplicates(selectedWishlistId, trimmedName, sourceUrl);
-      
-      if (hasDuplicate) {
-        console.log('[ImportPreview] Duplicate found, showing confirmation dialog');
-        setPendingSave(true);
-        setShowDuplicateDialog(true);
-        setSaving(false);
-        return;
+      // Check for duplicates (unless skipping)
+      if (!skipDuplicateCheck) {
+        const hasDuplicate = await checkForDuplicates(selectedWishlistId, trimmedName, sourceUrl);
+        
+        if (hasDuplicate) {
+          console.log('[ImportPreview] Duplicate found, showing confirmation dialog');
+          setPendingSave(true);
+          setShowDuplicateDialog(true);
+          setSaving(false);
+          return;
+        }
       }
 
       // Save item to database with CORRECT snake_case field names
@@ -342,7 +348,7 @@ export default function ImportPreviewScreen() {
 
       console.log('[ImportPreview] Item saved successfully');
       
-      // Navigate to the wishlist
+      // Navigate to the wishlist - item should appear immediately
       router.replace({
         pathname: '/wishlist/[id]',
         params: { id: selectedWishlistId },
@@ -355,68 +361,23 @@ export default function ImportPreviewScreen() {
   };
 
   const handleSave = async () => {
-    await performSave();
+    await performSave(false);
   };
 
   const handleConfirmDuplicate = async () => {
     console.log('[ImportPreview] User confirmed adding duplicate');
     setShowDuplicateDialog(false);
     setPendingSave(false);
-
-    // Proceed with save without duplicate check
-    const trimmedName = editedName.trim();
     
-    try {
-      setSaving(true);
-
-      // Determine image URL
-      let finalImageUrl: string | null = null;
-      const rawImageUrl = selectedItem?.imageUrl || productData?.imageUrl;
-
-      if (rawImageUrl && rawImageUrl.startsWith('file://')) {
-        console.log('[ImportPreview] Uploading local image for duplicate item');
-        finalImageUrl = await uploadImageToStorage(rawImageUrl);
-        
-        if (!finalImageUrl) {
-          console.warn('[ImportPreview] Image upload failed for duplicate');
-        }
-      } else {
-        finalImageUrl = rawImageUrl || null;
-      }
-
-      const sourceUrl = selectedItem?.originalUrl || productData?.sourceUrl || null;
-      const sourceDomain = selectedItem?.store || productData?.storeDomain || null;
-      const currency = selectedItem?.currency || productData?.currency || 'USD';
-      const price = editedPrice ? parseFloat(editedPrice) : null;
-
-      await createWishlistItem({
-        wishlist_id: selectedWishlistId,
-        title: trimmedName,
-        image_url: finalImageUrl,
-        current_price: price,
-        currency,
-        original_url: sourceUrl,
-        source_domain: sourceDomain,
-        notes: editedNotes.trim() || null,
-      });
-
-      console.log('[ImportPreview] Duplicate item saved successfully');
-      
-      router.replace({
-        pathname: '/wishlist/[id]',
-        params: { id: selectedWishlistId },
-      });
-    } catch (error) {
-      console.error('[ImportPreview] Error saving duplicate item:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-      setSaving(false);
-    }
+    // Proceed with save, skipping duplicate check
+    await performSave(true);
   };
 
   const handleCancelDuplicate = () => {
     console.log('[ImportPreview] User cancelled adding duplicate');
     setShowDuplicateDialog(false);
     setPendingSave(false);
+    setSaving(false);
   };
 
   const selectedWishlistName = wishlists.find(w => w.id === selectedWishlistId)?.name || 'Select Wishlist';
