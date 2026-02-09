@@ -356,7 +356,11 @@ export default function ImportPreviewScreen() {
     } catch (error) {
       console.error('[ImportPreview] Error saving item:', error);
       Alert.alert('Error', 'Failed to save item. Please try again.');
+    } finally {
+      // CRITICAL: Always clear loading states
       setSaving(false);
+      setUploadingImage(false);
+      console.log('[ImportPreview] performSave - loading states cleared');
     }
   };
 

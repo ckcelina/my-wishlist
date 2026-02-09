@@ -322,7 +322,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       );
     }
     
-    throw new Error(errorMessage);
+    throw new Error('CONFIG_ERROR');
   }
 
   // Verify function name is expected (case-sensitive)
@@ -467,7 +467,17 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       throw new Error('AUTH_REQUIRED');
     }
 
-    // STEP 7: Handle other errors
+    // STEP 7: Handle rate limiting (429)
+    if (response.status === 429) {
+      console.error(`[callEdgeFunctionSafely] Rate limit exceeded for ${functionName}`);
+      finalStatus = '429';
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+      }
+      throw new Error('RATE_LIMIT_EXCEEDED');
+    }
+
+    // STEP 8: Handle other errors
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, response.status, errorText);
@@ -489,6 +499,15 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
         throw new Error(`Edge Function '${functionName}' not found (404)`);
       }
       
+      // Handle 400 - check for CONFIG_ERROR in response body
+      if (response.status === 400 && errorText.toLowerCase().includes('config')) {
+        finalStatus = '400_config';
+        if (isDev) {
+          console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+        }
+        throw new Error('CONFIG_ERROR');
+      }
+      
       if (isDev) {
         console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
       }
@@ -504,7 +523,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       throw new Error(`Edge function failed: ${response.status} ${errorText}`);
     }
 
-    // STEP 8: Parse and return response
+    // STEP 9: Parse and return response
     const data = await response.json();
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - SUCCESS`);
@@ -517,8 +536,8 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - ERROR`);
     }
     
-    // If it's AUTH_REQUIRED, propagate it (do NOT show alert here - let UI handle it)
-    if (error.message === 'AUTH_REQUIRED') {
+    // If it's a specific error code, propagate it (do NOT show alert here - let UI handle it)
+    if (error.message === 'AUTH_REQUIRED' || error.message === 'CONFIG_ERROR' || error.message === 'RATE_LIMIT_EXCEEDED') {
       throw error;
     }
     

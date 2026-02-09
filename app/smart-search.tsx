@@ -236,15 +236,15 @@ export default function SmartSearchScreen() {
     } catch (error: any) {
       console.error('[SmartSearch] AI Price Search failed:', error);
       
-      // Handle AUTH_REQUIRED - redirect to login without sign out
+      // Handle specific error codes with actionable messages
       if (error.message === 'AUTH_REQUIRED') {
         console.log('[SmartSearch] AUTH_REQUIRED - redirecting to login (no sign out)');
         Alert.alert(
-          'Session expired',
-          'Please sign in again',
+          'Session Expired',
+          'Your session has expired. Please sign in again to continue.',
           [
             {
-              text: 'OK',
+              text: 'Sign In',
               onPress: () => router.push('/auth'),
             },
           ]
@@ -253,16 +253,32 @@ export default function SmartSearchScreen() {
         return;
       }
       
+      if (error.message === 'CONFIG_ERROR') {
+        console.log('[SmartSearch] CONFIG_ERROR - service not configured');
+        setError('Product search service is not configured. Please contact support or try adding the item manually.');
+        setCurrentStage('error');
+        return;
+      }
+      
+      if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        console.log('[SmartSearch] RATE_LIMIT_EXCEEDED - too many requests');
+        setError('You have made too many search requests. Please wait a few minutes and try again.');
+        setCurrentStage('error');
+        return;
+      }
+      
       // Check for network/connection errors
       if (error.message.includes('network') || error.message.includes('fetch')) {
-        setError('Unable to fetch search results. Please check your connection or try again later.');
+        setError('Unable to connect to the search service. Please check your internet connection and try again.');
       } else {
         setError(error.message || 'Failed to search for product prices. Please try again.');
       }
       
       setCurrentStage('error');
     } finally {
+      // CRITICAL: Always clear loading state
       setSearching(false);
+      console.log('[SmartSearch] handleStartSearch - loading cleared');
     }
   };
 

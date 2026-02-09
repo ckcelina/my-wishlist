@@ -425,13 +425,73 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
-      // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
-      if (primaryResult.status === 'error' && (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED')) {
-        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
-        Alert.alert('Session expired', 'Please sign in again', [
-          { text: 'OK', onPress: () => router.push('/auth') },
-        ]);
-        return;
+      // Handle specific error codes with actionable messages
+      if (primaryResult.status === 'error') {
+        if (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED') {
+          console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
+          Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+            { text: 'Sign In', onPress: () => router.push('/auth') },
+          ]);
+          return;
+        }
+        
+        if (primaryResult.code === 'CONFIG_ERROR' || primaryResult.message === 'CONFIG_ERROR') {
+          console.log('[AddItem] CONFIG_ERROR - service not configured');
+          Alert.alert(
+            'Service Unavailable',
+            'The product identification service is not configured. Please contact support or try adding the item manually.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Add Manually', onPress: () => {
+                const fallbackData = {
+                  title: '',
+                  imageUrl: cameraImage,
+                  originalUrl: '',
+                  store: '',
+                  price: null,
+                  currency: 'USD',
+                };
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
+                  },
+                });
+              }},
+            ]
+          );
+          return;
+        }
+        
+        if (primaryResult.code === 'RATE_LIMIT_EXCEEDED' || primaryResult.message === 'RATE_LIMIT_EXCEEDED') {
+          console.log('[AddItem] RATE_LIMIT_EXCEEDED - too many requests');
+          Alert.alert(
+            'Too Many Requests',
+            'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Add Manually', onPress: () => {
+                const fallbackData = {
+                  title: '',
+                  imageUrl: cameraImage,
+                  originalUrl: '',
+                  store: '',
+                  price: null,
+                  currency: 'USD',
+                };
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
+                  },
+                });
+              }},
+            ]
+          );
+          return;
+        }
       }
 
       // Normalize primary response to UI model
@@ -481,13 +541,73 @@ export default function AddItemScreen() {
         });
         console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
 
-        // Handle AUTH_REQUIRED from fallback
-        if (fallbackResult.status === 'error' && (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED')) {
-          console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
-          Alert.alert('Session expired', 'Please sign in again', [
-            { text: 'OK', onPress: () => router.push('/auth') },
-          ]);
-          return;
+        // Handle specific error codes from fallback
+        if (fallbackResult.status === 'error') {
+          if (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED') {
+            console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
+            Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+              { text: 'Sign In', onPress: () => router.push('/auth') },
+            ]);
+            return;
+          }
+          
+          if (fallbackResult.code === 'CONFIG_ERROR' || fallbackResult.message === 'CONFIG_ERROR') {
+            console.log('[AddItem] FALLBACK CONFIG_ERROR - service not configured');
+            Alert.alert(
+              'Service Unavailable',
+              'The product identification service is not configured. Please contact support or try adding the item manually.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Add Manually', onPress: () => {
+                  const fallbackData = {
+                    title: '',
+                    imageUrl: cameraImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([fallbackData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                }},
+              ]
+            );
+            return;
+          }
+          
+          if (fallbackResult.code === 'RATE_LIMIT_EXCEEDED' || fallbackResult.message === 'RATE_LIMIT_EXCEEDED') {
+            console.log('[AddItem] FALLBACK RATE_LIMIT_EXCEEDED - too many requests');
+            Alert.alert(
+              'Too Many Requests',
+              'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+              [
+                { text: 'OK', style: 'cancel' },
+                { text: 'Add Manually', onPress: () => {
+                  const fallbackData = {
+                    title: '',
+                    imageUrl: cameraImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([fallbackData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                }},
+              ]
+            );
+            return;
+          }
         }
 
         // Normalize fallback response
@@ -530,7 +650,71 @@ export default function AddItemScreen() {
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromCamera:', error);
       
-      // Fallback: Allow manual entry with photo attached
+      // Handle specific error codes
+      if (error.message === 'AUTH_REQUIRED') {
+        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]);
+        return;
+      }
+      
+      if (error.message === 'CONFIG_ERROR') {
+        Alert.alert(
+          'Service Unavailable',
+          'The product identification service is not configured. Please contact support or try adding the item manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Manually', onPress: () => {
+              const fallbackData = {
+                title: '',
+                imageUrl: cameraImage,
+                originalUrl: '',
+                store: '',
+                price: null,
+                currency: 'USD',
+              };
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
+                },
+              });
+            }},
+          ]
+        );
+        return;
+      }
+      
+      if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        Alert.alert(
+          'Too Many Requests',
+          'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Add Manually', onPress: () => {
+              const fallbackData = {
+                title: '',
+                imageUrl: cameraImage,
+                originalUrl: '',
+                store: '',
+                price: null,
+                currency: 'USD',
+              };
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
+                },
+              });
+            }},
+          ]
+        );
+        return;
+      }
+      
+      // Generic error fallback
       Alert.alert(
         'Identification Failed',
         'Could not identify the product automatically. You can still add it manually with the photo.',
@@ -561,8 +745,9 @@ export default function AddItemScreen() {
         ]
       );
     } finally {
+      // CRITICAL: Always clear loading state
       setIdentifyingCamera(false);
-      console.log('[AddItem] handleIdentifyFromCamera called - END');
+      console.log('[AddItem] handleIdentifyFromCamera called - END (loading cleared)');
     }
   };
 
@@ -671,13 +856,73 @@ export default function AddItemScreen() {
       });
       console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
-      // Handle AUTH_REQUIRED - stop and redirect (no retry loops, no sign out)
-      if (primaryResult.status === 'error' && (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED')) {
-        console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
-        Alert.alert('Session expired', 'Please sign in again', [
-          { text: 'OK', onPress: () => router.push('/auth') },
-        ]);
-        return;
+      // Handle specific error codes with actionable messages
+      if (primaryResult.status === 'error') {
+        if (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED') {
+          console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
+          Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+            { text: 'Sign In', onPress: () => router.push('/auth') },
+          ]);
+          return;
+        }
+        
+        if (primaryResult.code === 'CONFIG_ERROR' || primaryResult.message === 'CONFIG_ERROR') {
+          console.log('[AddItem] CONFIG_ERROR - service not configured');
+          Alert.alert(
+            'Service Unavailable',
+            'The product identification service is not configured. Please contact support or try adding the item manually.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Add Manually', onPress: () => {
+                const fallbackData = {
+                  title: '',
+                  imageUrl: uploadImage,
+                  originalUrl: '',
+                  store: '',
+                  price: null,
+                  currency: 'USD',
+                };
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
+                  },
+                });
+              }},
+            ]
+          );
+          return;
+        }
+        
+        if (primaryResult.code === 'RATE_LIMIT_EXCEEDED' || primaryResult.message === 'RATE_LIMIT_EXCEEDED') {
+          console.log('[AddItem] RATE_LIMIT_EXCEEDED - too many requests');
+          Alert.alert(
+            'Too Many Requests',
+            'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+            [
+              { text: 'OK', style: 'cancel' },
+              { text: 'Add Manually', onPress: () => {
+                const fallbackData = {
+                  title: '',
+                  imageUrl: uploadImage,
+                  originalUrl: '',
+                  store: '',
+                  price: null,
+                  currency: 'USD',
+                };
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    identifiedItems: JSON.stringify([fallbackData]),
+                    wishlistId: selectedWishlistId,
+                  },
+                });
+              }},
+            ]
+          );
+          return;
+        }
       }
 
       // Normalize primary response to UI model
@@ -727,13 +972,73 @@ export default function AddItemScreen() {
         });
         console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
 
-        // Handle AUTH_REQUIRED from fallback
-        if (fallbackResult.status === 'error' && (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED')) {
-          console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
-          Alert.alert('Session expired', 'Please sign in again', [
-            { text: 'OK', onPress: () => router.push('/auth') },
-          ]);
-          return;
+        // Handle specific error codes from fallback
+        if (fallbackResult.status === 'error') {
+          if (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED') {
+            console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
+            Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+              { text: 'Sign In', onPress: () => router.push('/auth') },
+            ]);
+            return;
+          }
+          
+          if (fallbackResult.code === 'CONFIG_ERROR' || fallbackResult.message === 'CONFIG_ERROR') {
+            console.log('[AddItem] FALLBACK CONFIG_ERROR - service not configured');
+            Alert.alert(
+              'Service Unavailable',
+              'The product identification service is not configured. Please contact support or try adding the item manually.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Add Manually', onPress: () => {
+                  const fallbackData = {
+                    title: '',
+                    imageUrl: uploadImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([fallbackData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                }},
+              ]
+            );
+            return;
+          }
+          
+          if (fallbackResult.code === 'RATE_LIMIT_EXCEEDED' || fallbackResult.message === 'RATE_LIMIT_EXCEEDED') {
+            console.log('[AddItem] FALLBACK RATE_LIMIT_EXCEEDED - too many requests');
+            Alert.alert(
+              'Too Many Requests',
+              'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+              [
+                { text: 'OK', style: 'cancel' },
+                { text: 'Add Manually', onPress: () => {
+                  const fallbackData = {
+                    title: '',
+                    imageUrl: uploadImage,
+                    originalUrl: '',
+                    store: '',
+                    price: null,
+                    currency: 'USD',
+                  };
+                  router.push({
+                    pathname: '/import-preview',
+                    params: {
+                      identifiedItems: JSON.stringify([fallbackData]),
+                      wishlistId: selectedWishlistId,
+                    },
+                  });
+                }},
+              ]
+            );
+            return;
+          }
         }
 
         // Normalize fallback response
@@ -776,7 +1081,71 @@ export default function AddItemScreen() {
     } catch (error: any) {
       console.error('[AddItem] Error in handleIdentifyFromUpload:', error);
       
-      // Fallback: Allow manual entry with photo attached
+      // Handle specific error codes
+      if (error.message === 'AUTH_REQUIRED') {
+        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]);
+        return;
+      }
+      
+      if (error.message === 'CONFIG_ERROR') {
+        Alert.alert(
+          'Service Unavailable',
+          'The product identification service is not configured. Please contact support or try adding the item manually.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Manually', onPress: () => {
+              const fallbackData = {
+                title: '',
+                imageUrl: uploadImage,
+                originalUrl: '',
+                store: '',
+                price: null,
+                currency: 'USD',
+              };
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
+                },
+              });
+            }},
+          ]
+        );
+        return;
+      }
+      
+      if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        Alert.alert(
+          'Too Many Requests',
+          'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Add Manually', onPress: () => {
+              const fallbackData = {
+                title: '',
+                imageUrl: uploadImage,
+                originalUrl: '',
+                store: '',
+                price: null,
+                currency: 'USD',
+              };
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  identifiedItems: JSON.stringify([fallbackData]),
+                  wishlistId: selectedWishlistId,
+                },
+              });
+            }},
+          ]
+        );
+        return;
+      }
+      
+      // Generic error fallback
       Alert.alert(
         'Identification Failed',
         'Could not identify the product automatically. You can still add it manually with the photo.',
@@ -807,8 +1176,9 @@ export default function AddItemScreen() {
         ]
       );
     } finally {
+      // CRITICAL: Always clear loading state
       setIdentifyingUpload(false);
-      console.log('[AddItem] handleIdentifyFromUpload called - END');
+      console.log('[AddItem] handleIdentifyFromUpload called - END (loading cleared)');
     }
   };
 
@@ -916,10 +1286,61 @@ export default function AddItemScreen() {
     } catch (error: any) {
       console.error('[AddItem] Error in handleSearchByName:', error);
       
-      const errorMessage = 'Failed to perform search. Please try again.';
+      // Handle specific error codes
+      if (error.message === 'AUTH_REQUIRED') {
+        setSearchError('Session expired. Please sign in again.');
+        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
+          { text: 'Sign In', onPress: () => router.push('/auth') },
+        ]);
+        return;
+      }
+      
+      if (error.message === 'CONFIG_ERROR') {
+        const errorMessage = 'Product search service is not configured. Please contact support or add the item manually.';
+        setSearchError(errorMessage);
+        Alert.alert(
+          'Service Unavailable',
+          errorMessage,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after CONFIG_ERROR');
+                setSelectedMode('manual');
+                setManualName(searchQuery.trim());
+              },
+            },
+          ]
+        );
+        return;
+      }
+      
+      if (error.message === 'RATE_LIMIT_EXCEEDED') {
+        const errorMessage = 'Too many search requests. Please wait a few minutes and try again.';
+        setSearchError(errorMessage);
+        Alert.alert(
+          'Too Many Requests',
+          errorMessage,
+          [
+            { text: 'OK', style: 'cancel' },
+            {
+              text: 'Add Manually',
+              onPress: () => {
+                console.log('[AddItem] User chose to add manually after RATE_LIMIT_EXCEEDED');
+                setSelectedMode('manual');
+                setManualName(searchQuery.trim());
+              },
+            },
+          ]
+        );
+        return;
+      }
+      
+      // Generic error fallback
+      const errorMessage = 'Failed to perform search. Please check your connection and try again.';
       setSearchError(errorMessage);
       
-      // Fallback: Allow manual entry
       Alert.alert(
         'Search Error',
         errorMessage,
@@ -936,7 +1357,9 @@ export default function AddItemScreen() {
         ]
       );
     } finally {
+      // CRITICAL: Always clear loading state
       setSearching(false);
+      console.log('[AddItem] handleSearchByName - loading cleared');
     }
   };
 
