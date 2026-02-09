@@ -1,5 +1,16 @@
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import * as ImagePicker from 'expo-image-picker';
+import { ConfigurationError } from '@/components/design-system/ConfigurationError';
+import { StatusBar } from 'expo-status-bar';
+import Constants from 'expo-constants';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSmartLocation } from '@/contexts/SmartLocationContext';
+import { fetchWishlists } from '@/lib/supabase-helpers';
+import * as Clipboard from 'expo-clipboard';
+import { IconSymbol } from '@/components/IconSymbol';
+import { extractItem, identifyFromImage, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
 import {
   View,
   Text,
@@ -18,27 +29,14 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { useAppTheme } from '@/contexts/ThemeContext';
-import * as Clipboard from 'expo-clipboard';
-import { StatusBar } from 'expo-status-bar';
-import { extractItem, identifyFromImage, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
-import * as Linking from 'expo-linking';
-import { IconSymbol } from '@/components/IconSymbol';
-import * as ImagePicker from 'expo-image-picker';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
-import Constants from 'expo-constants';
-import { fetchWishlists } from '@/lib/supabase-helpers';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { useSmartLocation } from '@/contexts/SmartLocationContext';
-import * as FileSystem from 'expo-file-system/legacy';
 import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
-import { ConfigurationError } from '@/components/design-system/ConfigurationError';
+import * as Linking from 'expo-linking';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 
-console.log('[AddItemScreen] Module loaded successfully');
-
-type ModeType = 'share' | 'url' | 'camera' | 'upload' | 'search' | 'manual';
+type ModeType = 'share' | 'url' | 'camera' | 'upload' | 'search';
 
 interface Wishlist {
   id: string;
@@ -56,7 +54,179 @@ interface SearchResult {
   confidence: number;
 }
 
-// Helper to resolve image sources (handles both local require() and remote URLs)
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100,
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  subtitle: {
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  modeSelector: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
+  modeButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: spacing.xs,
+  },
+  content: {
+    paddingHorizontal: spacing.lg,
+  },
+  inputContainer: {
+    marginBottom: spacing.lg,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    fontSize: 16,
+    minHeight: 50,
+  },
+  button: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    borderWidth: 2,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+  },
+  loadingContainer: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  searchResultsContainer: {
+    marginTop: spacing.md,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+  },
+  searchResultImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: spacing.md,
+  },
+  searchResultInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  searchResultTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  searchResultStore: {
+    fontSize: 14,
+    opacity: 0.7,
+    marginBottom: spacing.xs,
+  },
+  searchResultPrice: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  modalText: {
+    fontSize: 16,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
+
 function resolveImageSource(source: string | number | ImageSourcePropType | undefined): ImageSourcePropType {
   if (!source) return { uri: '' };
   if (typeof source === 'string') return { uri: source };
@@ -65,8 +235,8 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
 
 function isValidUrl(urlString: string): boolean {
   try {
-    new URL(urlString);
-    return true;
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;
   }
@@ -79,2532 +249,898 @@ function extractUrlFromText(text: string): string | null {
 }
 
 export default function AddItemScreen() {
-  console.log('[AddItemScreen] Component rendering');
-  
-  const { user } = useAuth();
-  const insets = useSafeAreaInsets();
+  const { user, authLoading } = useAuth();
   const { theme } = useAppTheme();
-  const colors = createColors(theme);
-  const typography = createTypography(theme);
+  const colors = useMemo(() => createColors(theme), [theme]);
+  const typography = useMemo(() => createTypography(theme), [theme]);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { settings: smartLocationSettings, refreshSettings } = useSmartLocation();
+  const insets = useSafeAreaInsets();
+  const { userLocation } = useSmartLocation();
 
-  // Check environment configuration
-  const [configError, setConfigError] = useState<string | null>(null);
-
-  // Mode selection
-  const [selectedMode, setSelectedMode] = useState<ModeType>('share');
-
-  // Wishlist selection (always visible at top)
-  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
-  const [selectedWishlistId, setSelectedWishlistId] = useState('');
-  const [showWishlistPicker, setShowWishlistPicker] = useState(false);
-
-  // Mode 1: Share (instructions only)
-  const sharedUrl = params.url as string | undefined;
-
-  // Mode 2: URL
-  const [urlInput, setUrlInput] = useState('');
-  const [extracting, setExtracting] = useState(false);
-
-  // Mode 3: Camera
-  const [cameraImage, setCameraImage] = useState<string | null>(null);
-  const [identifyingCamera, setIdentifyingCamera] = useState(false);
-
-  // Mode 4: Upload
-  const [uploadImage, setUploadImage] = useState<string | null>(null);
-  const [identifyingUpload, setIdentifyingUpload] = useState(false);
-
-  // Mode 5: Search by Name
+  const [mode, setMode] = useState<ModeType>('url');
+  const [url, setUrl] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchBrand, setSearchBrand] = useState('');
-  const [searchModel, setSearchModel] = useState('');
-  const [searching, setSearching] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [showSearchResults, setShowSearchResults] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [wishlists, setWishlists] = useState<Wishlist[]>([]);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Mode 6: Manual Entry
-  const [manualName, setManualName] = useState('');
-  const [manualBrand, setManualBrand] = useState('');
-  const [manualNotes, setManualNotes] = useState('');
-  const [manualStoreLink, setManualStoreLink] = useState('');
-  const [manualPrice, setManualPrice] = useState('');
-  const [manualCurrency, setManualCurrency] = useState('USD');
-  const [manualImage, setManualImage] = useState<string | null>(null);
-  const [savingManual, setSavingManual] = useState(false);
-  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const isConfigured = isEnvironmentConfigured();
 
-  // Guard to prevent infinite redirect loop
-  const redirectedToAuth = useRef(false);
-  
+  // Load wishlists on mount
   useEffect(() => {
-    if (!user && !redirectedToAuth.current) {
-      console.log('[AddItem] No user, redirecting to auth');
-      redirectedToAuth.current = true;
-      router.replace('/auth');
-    }
-  }, [user, router]);
-
-  useEffect(() => {
-    // Check environment configuration on mount
-    if (!isEnvironmentConfigured()) {
-      const errorMessage = getConfigurationErrorMessage();
-      console.error('[AddItem] Environment not configured:', errorMessage);
-      setConfigError(errorMessage);
-    }
-  }, []);
-
-  // CRITICAL FIX: Refresh location settings when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      console.log('[AddItem] Screen focused, refreshing location settings');
-      refreshSettings();
-    }, [refreshSettings])
-  );
-
-  const fetchUserWishlists = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      console.log('[AddItem] Fetching wishlists for user:', user.id);
-      const data = await fetchWishlists(user.id);
-      console.log('[AddItem] Fetched wishlists:', data.length);
-      setWishlists(data);
-
-      // Set default wishlist
-      const defaultWishlist = data.find(w => w.isDefault) || data[0];
-      if (defaultWishlist) {
-        setSelectedWishlistId(defaultWishlist.id);
-        console.log('[AddItem] Selected default wishlist:', defaultWishlist.name);
-      }
-    } catch (error) {
-      console.error('[AddItem] Error fetching wishlists:', error);
-      Alert.alert('Error', 'Failed to load wishlists. Please try again.');
+    if (user) {
+      loadWishlists();
     }
   }, [user]);
 
-  useEffect(() => {
-    if (user) {
-      fetchUserWishlists();
-    }
-  }, [user, fetchUserWishlists]);
-
-  useEffect(() => {
-    // Handle shared URL from other apps
-    if (sharedUrl) {
-      console.log('[AddItem] Received shared URL:', sharedUrl);
-      setUrlInput(sharedUrl);
-      setSelectedMode('url');
-    }
-  }, [sharedUrl]);
-
-  const styles = useMemo(() => createStyles(colors, typography), [colors, typography]);
-
-  const handleRetryConfiguration = () => {
-    console.log('[AddItem] User tapped Retry Configuration');
-    // Check configuration again
-    if (isEnvironmentConfigured()) {
-      setConfigError(null);
-    } else {
-      const errorMessage = getConfigurationErrorMessage();
-      setConfigError(errorMessage);
+  const loadWishlists = async () => {
+    if (!user) return;
+    try {
+      const lists = await fetchWishlists(user.id);
+      setWishlists(lists);
+    } catch (error) {
+      console.error('Failed to load wishlists:', error);
     }
   };
 
-  // Get country from Settings - NEVER reset or remove it
-  const searchCountry = smartLocationSettings?.activeSearchCountry;
+  // Handle shared URL from params
+  useFocusEffect(
+    useCallback(() => {
+      if (params.url && typeof params.url === 'string') {
+        setUrl(params.url);
+        setMode('url');
+      }
+    }, [params.url])
+  );
 
-  // Mode 2: Extract from URL
+  const handleRetryConfiguration = () => {
+    Alert.alert(
+      'Configuration Required',
+      'Please configure your Supabase credentials in the app settings.',
+      [{ text: 'OK' }]
+    );
+  };
+
   const handleExtractUrl = async () => {
-    console.log('[AddItem] handleExtractUrl called');
-    
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!url.trim()) {
+      Alert.alert('Error', 'Please enter a URL');
+      return;
+    }
+
+    if (!isValidUrl(url.trim())) {
+      Alert.alert('Error', 'Please enter a valid URL');
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (!urlInput.trim()) {
-        console.log('[AddItem] URL input is empty');
-        Alert.alert('Missing URL', 'Please enter a product URL');
+      const countryCode = userLocation?.countryCode || 'US';
+      const result = await extractItem(url.trim(), countryCode);
+
+      if (result.error) {
+        Alert.alert('Error', result.error);
         return;
       }
 
-      if (!isValidUrl(urlInput.trim())) {
-        console.log('[AddItem] Invalid URL format:', urlInput);
-        Alert.alert('Invalid URL', 'Please enter a valid URL starting with http:// or https://');
-        return;
-      }
-
-      console.log('[AddItem] Using search country from Settings:', searchCountry);
-      
-      if (!searchCountry) {
-        console.log('[AddItem] No country set in Settings');
-        Alert.alert('Country Required', 'Please set your country in Settings first', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => router.push('/location') },
-        ]);
-        return;
-      }
-
-      // Check configuration before making API call
-      if (!isEnvironmentConfigured()) {
-        console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
-        return;
-      }
-
-      console.log('[AddItem] Extracting item from URL:', urlInput);
-      setExtracting(true);
-
-      const result = await extractItem(urlInput.trim(), searchCountry);
-      console.log('[AddItem] Extraction result:', result);
-
-      // Navigate to import preview with extracted data (even if partial)
-      const productData = {
-        itemName: result.title || '',
-        imageUrl: result.images?.[0] || '',
-        extractedImages: result.images || [],
-        storeName: '',
-        storeDomain: result.sourceDomain || '',
-        price: result.price || null,
-        currency: result.currency || 'USD',
-        countryAvailability: [searchCountry],
-        sourceUrl: urlInput.trim(),
-        inputType: 'url',
-      };
-
-      console.log('[AddItem] Navigating to import-preview with data');
+      // Navigate to import preview with extracted data
       router.push({
         pathname: '/import-preview',
         params: {
-          data: JSON.stringify(productData),
+          data: JSON.stringify({
+            itemName: result.title || 'Unknown Item',
+            imageUrl: result.images[0] || '',
+            extractedImages: JSON.stringify(result.images),
+            storeName: result.sourceDomain || '',
+            storeDomain: result.sourceDomain || '',
+            price: result.price || null,
+            currency: result.currency || 'USD',
+            countryAvailability: JSON.stringify([countryCode]),
+            sourceUrl: url.trim(),
+            inputType: 'url',
+          }),
         },
       });
     } catch (error: any) {
-      console.error('[AddItem] Error in handleExtractUrl:', error);
-      
-      // Fallback: Allow manual entry with URL attached
-      Alert.alert(
-        'Extraction Failed',
-        'Could not extract product details automatically. You can still add it manually.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after extraction failure');
-              // Navigate to import-preview with minimal data
-              const fallbackData = {
-                itemName: '',
-                imageUrl: '',
-                extractedImages: [],
-                storeName: '',
-                storeDomain: '',
-                price: null,
-                currency: 'USD',
-                countryAvailability: searchCountry ? [searchCountry] : [],
-                sourceUrl: urlInput.trim(),
-                inputType: 'url',
-              };
-              
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  data: JSON.stringify(fallbackData),
-                },
-              });
-            },
-          },
-        ]
-      );
+      console.error('Extract URL error:', error);
+      if (error.message === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to extract item from URL');
+      }
     } finally {
-      setExtracting(false);
+      setLoading(false);
     }
   };
 
-  // Mode 3: Camera
   const handleTakePhoto = async () => {
-    console.log('[AddItem] handleTakePhoto called');
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
 
-    try {
-      // Check permission status first
-      const { status: currentStatus } = await ImagePicker.getCameraPermissionsAsync();
-      console.log('[AddItem] Camera permission status:', currentStatus);
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
+      return;
+    }
 
-      if (currentStatus === 'undetermined') {
-        // Show pre-permission screen
-        console.log('[AddItem] Navigating to camera permission screen');
-        router.push('/permissions/camera');
-        return;
-      }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      quality: 0.8,
+    });
 
-      if (currentStatus !== 'granted') {
-        // Permission was denied, show settings prompt
-        console.log('[AddItem] Camera permission denied');
-        Alert.alert(
-          'Camera Permission Required',
-          'Camera access is required to take photos of products. Please enable it in Settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-
-      console.log('[AddItem] Launching camera');
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setCameraImage(result.assets[0].uri);
-        console.log('[AddItem] Photo taken successfully:', result.assets[0].uri);
-      } else {
-        console.log('[AddItem] Camera cancelled by user');
-      }
-    } catch (error) {
-      console.error('[AddItem] Error in handleTakePhoto:', error);
-      Alert.alert('Error', 'Failed to open camera. Please try again.');
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
+      setMode('camera');
     }
   };
 
   const handleIdentifyFromCamera = async () => {
-    console.log('[AddItem] handleIdentifyFromCamera called - START');
-    
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!imageUri) {
+      Alert.alert('Error', 'Please take a photo first');
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (!cameraImage) {
-        console.log('[AddItem] No camera image available');
-        Alert.alert('No Photo', 'Please take a photo first');
-        return;
-      }
-
-      // GUARD: Check auth state BEFORE calling identify-product-from-image
-      if (!user) {
-        console.log('[AddItem] No user - redirecting to login');
-        Alert.alert('Sign In Required', 'Please sign in to identify products', [
-          { text: 'OK', onPress: () => router.push('/auth') },
-        ]);
-        return;
-      }
-
-      console.log('[AddItem] Using search country from Settings:', searchCountry);
-      
-      if (!searchCountry) {
-        console.log('[AddItem] No country set in Settings');
-        Alert.alert('Country Required', 'Please set your country in Settings first', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => router.push('/location') },
-        ]);
-        return;
-      }
-
-      // Check configuration before making API call
-      if (!isEnvironmentConfigured()) {
-        console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
-        return;
-      }
-
-      console.log('[AddItem] Identifying product from camera image using primary/fallback pipeline');
-      setIdentifyingCamera(true);
-
-      // Convert image to base64
-      const base64 = await FileSystem.readAsStringAsync(cameraImage, {
+      // Read image as base64
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      // TODO: After stable, merge and remove identify-from-image.
-      // PRIMARY: Call identify-product-from-image first (OpenAI Lens + Store Search)
-      console.log('[AddItem] PRIMARY: Calling identify-product-from-image...');
+      const countryCode = userLocation?.countryCode || 'US';
+      const currencyCode = userLocation?.currencyCode || 'USD';
+
+      console.log('[AddScreen] Calling identifyProductFromImage (PRIMARY)');
+      
+      // PRIMARY: Try identify-product-from-image (OpenAI Lens + Store Search)
       const primaryResult = await identifyProductFromImage(base64, {
-        countryCode: searchCountry,
-        currency: smartLocationSettings?.currency || 'USD',
+        countryCode,
+        currency: currencyCode,
       });
-      console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
-      // Handle specific error codes with actionable messages
-      if (primaryResult.status === 'error') {
-        if (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED') {
-          console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
-          Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-            { text: 'Sign In', onPress: () => router.push('/auth') },
-          ]);
-          return;
-        }
-        
-        if (primaryResult.code === 'CONFIG_ERROR' || primaryResult.message === 'CONFIG_ERROR') {
-          console.log('[AddItem] CONFIG_ERROR - service not configured');
-          Alert.alert(
-            'Service Unavailable',
-            'The product identification service is not configured. Please contact support or try adding the item manually.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Add Manually', onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: cameraImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              }},
-            ]
-          );
-          return;
-        }
-        
-        if (primaryResult.code === 'RATE_LIMIT_EXCEEDED' || primaryResult.message === 'RATE_LIMIT_EXCEEDED') {
-          console.log('[AddItem] RATE_LIMIT_EXCEEDED - too many requests');
-          Alert.alert(
-            'Too Many Requests',
-            'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-            [
-              { text: 'OK', style: 'cancel' },
-              { text: 'Add Manually', onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: cameraImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              }},
-            ]
-          );
-          return;
-        }
+      if (primaryResult.status === 'error' && primaryResult.code === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
+        return;
       }
 
-      // Normalize primary response to UI model
-      let finalIdentifiedItems: Array<{
-        title: string;
-        imageUrl: string;
-        originalUrl: string;
-        store: string;
-        price: number | null;
-        currency: string;
-        confidence?: number;
-      }> = [];
-
-      // Check if primary succeeded with offers
       if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
-        console.log('[AddItem] PRIMARY succeeded with', primaryResult.offers.length, 'offers');
-        
-        // Normalize primary response
-        finalIdentifiedItems = primaryResult.offers.map(offer => ({
-          title: offer.title || primaryResult.identified?.title || 'Unknown Product',
-          imageUrl: offer.image_url || cameraImage,
-          originalUrl: offer.product_url || '',
-          store: offer.store || '',
-          price: offer.price || null,
-          currency: offer.currency || smartLocationSettings?.currency || 'USD',
-          confidence: primaryResult.identified?.confidence || 0,
-        }));
-
-        // Navigate to import-preview with normalized items AND identified product
-        console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+        console.log('[AddScreen] Primary pipeline successful, navigating to import-preview');
+        // Navigate to import preview with identified product and offers
         router.push({
           pathname: '/import-preview',
           params: {
-            identifiedItems: JSON.stringify(finalIdentifiedItems),
-            identifiedProduct: primaryResult.identified ? JSON.stringify(primaryResult.identified) : undefined,
-            wishlistId: selectedWishlistId,
+            identifiedProduct: JSON.stringify(primaryResult.identified),
+            offers: JSON.stringify(primaryResult.offers),
+            source: 'camera',
           },
         });
         return;
-      } else {
-        // FALLBACK: Primary failed or returned no offers - try identify-from-image
-        console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
-        
-        const fallbackResult = await identifyFromImage(base64, {
-          countryCode: searchCountry,
-          currencyCode: smartLocationSettings?.currency || 'USD',
-        });
-        console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
-
-        // Handle specific error codes from fallback
-        if (fallbackResult.status === 'error') {
-          if (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED') {
-            console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
-            Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-              { text: 'Sign In', onPress: () => router.push('/auth') },
-            ]);
-            return;
-          }
-          
-          if (fallbackResult.code === 'CONFIG_ERROR' || fallbackResult.message === 'CONFIG_ERROR') {
-            console.log('[AddItem] FALLBACK CONFIG_ERROR - service not configured');
-            Alert.alert(
-              'Service Unavailable',
-              'The product identification service is not configured. Please contact support or try adding the item manually.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Add Manually', onPress: () => {
-                  const fallbackData = {
-                    title: '',
-                    imageUrl: cameraImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([fallbackData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                }},
-              ]
-            );
-            return;
-          }
-          
-          if (fallbackResult.code === 'RATE_LIMIT_EXCEEDED' || fallbackResult.message === 'RATE_LIMIT_EXCEEDED') {
-            console.log('[AddItem] FALLBACK RATE_LIMIT_EXCEEDED - too many requests');
-            Alert.alert(
-              'Too Many Requests',
-              'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-              [
-                { text: 'OK', style: 'cancel' },
-                { text: 'Add Manually', onPress: () => {
-                  const fallbackData = {
-                    title: '',
-                    imageUrl: cameraImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([fallbackData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                }},
-              ]
-            );
-            return;
-          }
-        }
-
-        // Normalize fallback response
-        if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
-          console.log('[AddItem] FALLBACK succeeded with', fallbackResult.items.length, 'items');
-          
-          finalIdentifiedItems = fallbackResult.items.map(item => ({
-            title: item.title || 'Unknown Product',
-            imageUrl: item.imageUrl || cameraImage,
-            originalUrl: item.storeUrl || '',
-            store: item.storeName || '',
-            price: item.price || null,
-            currency: item.currency || smartLocationSettings?.currency || 'USD',
-            confidence: item.score || 0,
-          }));
-        } else {
-          // Both primary and fallback failed - navigate to no results UI
-          console.log('[AddItem] Both PRIMARY and FALLBACK failed');
-          router.push({
-            pathname: '/import-preview',
-            params: {
-              identifiedItems: JSON.stringify([]),
-              message: 'Could not identify the product. You can still add it manually with the photo.',
-              wishlistId: selectedWishlistId,
-            },
-          });
-          return;
-        }
       }
 
-      // Navigate to import-preview with normalized items (fallback succeeded)
-      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items from fallback');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          identifiedItems: JSON.stringify(finalIdentifiedItems),
-          wishlistId: selectedWishlistId,
-        },
+      console.log('[AddScreen] Primary pipeline failed or no offers, trying fallback');
+
+      // FALLBACK: Try identify-from-image (Google Lens / Bing Visual Search)
+      const fallbackResult = await identifyFromImage(base64, {
+        countryCode,
+        currencyCode,
       });
-    } catch (error: any) {
-      console.error('[AddItem] Error in handleIdentifyFromCamera:', error);
-      
-      // Handle specific error codes
-      if (error.message === 'AUTH_REQUIRED') {
-        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-          { text: 'Sign In', onPress: () => router.push('/auth') },
-        ]);
+
+      if (fallbackResult.status === 'error' && fallbackResult.code === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
         return;
       }
-      
-      if (error.message === 'CONFIG_ERROR') {
-        Alert.alert(
-          'Service Unavailable',
-          'The product identification service is not configured. Please contact support or try adding the item manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Add Manually', onPress: () => {
-              const fallbackData = {
-                title: '',
-                imageUrl: cameraImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            }},
-          ]
-        );
-        return;
-      }
-      
-      if (error.message === 'RATE_LIMIT_EXCEEDED') {
-        Alert.alert(
-          'Too Many Requests',
-          'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-          [
-            { text: 'OK', style: 'cancel' },
-            { text: 'Add Manually', onPress: () => {
-              const fallbackData = {
-                title: '',
-                imageUrl: cameraImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            }},
-          ]
-        );
-        return;
-      }
-      
-      // Generic error fallback
-      Alert.alert(
-        'Identification Failed',
-        'Could not identify the product automatically. You can still add it manually with the photo.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after error');
-              const fallbackData = {
-                title: '',
-                imageUrl: cameraImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            },
+
+      if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
+        console.log('[AddScreen] Fallback pipeline successful, navigating to import-preview');
+        // Normalize fallback results to the same structure
+        const normalizedItems = fallbackResult.items.map(item => ({
+          title: item.title,
+          imageUrl: item.imageUrl,
+          originalUrl: item.storeUrl || '',
+          store: item.storeName || '',
+          price: item.price || null,
+          currency: item.currency || currencyCode,
+          confidence: item.score || 0,
+        }));
+
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            identifiedItems: JSON.stringify(normalizedItems),
+            source: 'camera',
           },
+        });
+        return;
+      }
+
+      // Both pipelines failed
+      Alert.alert(
+        'No Products Found',
+        'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.',
+        [
+          { text: 'Try Again', onPress: () => setImageUri(null) },
+          { text: 'Add Manually', onPress: () => router.push('/add-manual') },
         ]
       );
+    } catch (error: any) {
+      console.error('Identify from camera error:', error);
+      if (error.message === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to identify product from image');
+      }
     } finally {
-      // CRITICAL: Always clear loading state
-      setIdentifyingCamera(false);
-      console.log('[AddItem] handleIdentifyFromCamera called - END (loading cleared)');
+      setLoading(false);
     }
   };
 
-  // Mode 4: Upload
   const handleUploadImage = async () => {
-    console.log('[AddItem] handleUploadImage called');
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
 
-    try {
-      // Check permission status first
-      const { status: currentStatus } = await ImagePicker.getMediaLibraryPermissionsAsync();
-      console.log('[AddItem] Photo library permission status:', currentStatus);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Photo library permission is required to upload images.');
+      return;
+    }
 
-      if (currentStatus === 'undetermined') {
-        // Show pre-permission screen
-        console.log('[AddItem] Navigating to photos permission screen');
-        router.push('/permissions/photos');
-        return;
-      }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      quality: 0.8,
+    });
 
-      if (currentStatus !== 'granted') {
-        // Permission was denied, show settings prompt
-        console.log('[AddItem] Photo library permission denied');
-        Alert.alert(
-          'Photo Library Permission Required',
-          'Photo library access is required to select images. Please enable it in Settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-
-      console.log('[AddItem] Launching image picker');
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
-        base64: true,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setUploadImage(result.assets[0].uri);
-        console.log('[AddItem] Image uploaded successfully:', result.assets[0].uri);
-      } else {
-        console.log('[AddItem] Image picker cancelled by user');
-      }
-    } catch (error) {
-      console.error('[AddItem] Error in handleUploadImage:', error);
-      Alert.alert('Error', 'Failed to open photo library. Please try again.');
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
+      setMode('upload');
     }
   };
 
   const handleIdentifyFromUpload = async () => {
-    console.log('[AddItem] handleIdentifyFromUpload called - START');
-    
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!imageUri) {
+      Alert.alert('Error', 'Please select an image first');
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (!uploadImage) {
-        console.log('[AddItem] No upload image available');
-        Alert.alert('No Image', 'Please upload an image first');
-        return;
-      }
-
-      // GUARD: Check auth state BEFORE calling identify-product-from-image
-      if (!user) {
-        console.log('[AddItem] No user - redirecting to login');
-        Alert.alert('Sign In Required', 'Please sign in to identify products', [
-          { text: 'OK', onPress: () => router.push('/auth') },
-        ]);
-        return;
-      }
-
-      console.log('[AddItem] Using search country from Settings:', searchCountry);
-      
-      if (!searchCountry) {
-        console.log('[AddItem] No country set in Settings');
-        Alert.alert('Country Required', 'Please set your country in Settings first', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => router.push('/location') },
-        ]);
-        return;
-      }
-
-      // Check configuration before making API call
-      if (!isEnvironmentConfigured()) {
-        console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
-        return;
-      }
-
-      console.log('[AddItem] Identifying product from uploaded image using primary/fallback pipeline');
-      setIdentifyingUpload(true);
-
-      // Convert image to base64
-      const base64 = await FileSystem.readAsStringAsync(uploadImage, {
+      // Read image as base64
+      const base64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      console.log('[AddItem] Image converted to base64, length:', base64.length);
 
-      // TODO: After stable, merge and remove identify-from-image.
-      // PRIMARY: Call identify-product-from-image first (OpenAI Lens + Store Search)
-      console.log('[AddItem] PRIMARY: Calling identify-product-from-image...');
+      const countryCode = userLocation?.countryCode || 'US';
+      const currencyCode = userLocation?.currencyCode || 'USD';
+
+      console.log('[AddScreen] Calling identifyProductFromImage (PRIMARY)');
+      
+      // PRIMARY: Try identify-product-from-image (OpenAI Lens + Store Search)
       const primaryResult = await identifyProductFromImage(base64, {
-        countryCode: searchCountry,
-        currency: smartLocationSettings?.currency || 'USD',
+        countryCode,
+        currency: currencyCode,
       });
-      console.log('[AddItem] PRIMARY result:', JSON.stringify(primaryResult, null, 2));
 
-      // Handle specific error codes with actionable messages
-      if (primaryResult.status === 'error') {
-        if (primaryResult.code === 'AUTH_REQUIRED' || primaryResult.message === 'AUTH_REQUIRED') {
-          console.log('[AddItem] AUTH_REQUIRED - stopping and redirecting to login (no sign out)');
-          Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-            { text: 'Sign In', onPress: () => router.push('/auth') },
-          ]);
-          return;
-        }
-        
-        if (primaryResult.code === 'CONFIG_ERROR' || primaryResult.message === 'CONFIG_ERROR') {
-          console.log('[AddItem] CONFIG_ERROR - service not configured');
-          Alert.alert(
-            'Service Unavailable',
-            'The product identification service is not configured. Please contact support or try adding the item manually.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Add Manually', onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: uploadImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              }},
-            ]
-          );
-          return;
-        }
-        
-        if (primaryResult.code === 'RATE_LIMIT_EXCEEDED' || primaryResult.message === 'RATE_LIMIT_EXCEEDED') {
-          console.log('[AddItem] RATE_LIMIT_EXCEEDED - too many requests');
-          Alert.alert(
-            'Too Many Requests',
-            'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-            [
-              { text: 'OK', style: 'cancel' },
-              { text: 'Add Manually', onPress: () => {
-                const fallbackData = {
-                  title: '',
-                  imageUrl: uploadImage,
-                  originalUrl: '',
-                  store: '',
-                  price: null,
-                  currency: 'USD',
-                };
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    identifiedItems: JSON.stringify([fallbackData]),
-                    wishlistId: selectedWishlistId,
-                  },
-                });
-              }},
-            ]
-          );
-          return;
-        }
+      if (primaryResult.status === 'error' && primaryResult.code === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
+        return;
       }
 
-      // Normalize primary response to UI model
-      let finalIdentifiedItems: Array<{
-        title: string;
-        imageUrl: string;
-        originalUrl: string;
-        store: string;
-        price: number | null;
-        currency: string;
-        confidence?: number;
-      }> = [];
-
-      // Check if primary succeeded with offers
       if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
-        console.log('[AddItem] PRIMARY succeeded with', primaryResult.offers.length, 'offers');
-        
-        // Normalize primary response
-        finalIdentifiedItems = primaryResult.offers.map(offer => ({
-          title: offer.title || primaryResult.identified?.title || 'Unknown Product',
-          imageUrl: offer.image_url || uploadImage,
-          originalUrl: offer.product_url || '',
-          store: offer.store || '',
-          price: offer.price || null,
-          currency: offer.currency || smartLocationSettings?.currency || 'USD',
-          confidence: primaryResult.identified?.confidence || 0,
-        }));
-
-        // Navigate to import-preview with normalized items AND identified product
-        console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items');
+        console.log('[AddScreen] Primary pipeline successful, navigating to import-preview');
+        // Navigate to import preview with identified product and offers
         router.push({
           pathname: '/import-preview',
           params: {
-            identifiedItems: JSON.stringify(finalIdentifiedItems),
-            identifiedProduct: primaryResult.identified ? JSON.stringify(primaryResult.identified) : undefined,
-            wishlistId: selectedWishlistId,
+            identifiedProduct: JSON.stringify(primaryResult.identified),
+            offers: JSON.stringify(primaryResult.offers),
+            source: 'upload',
           },
         });
         return;
-      } else {
-        // FALLBACK: Primary failed or returned no offers - try identify-from-image
-        console.log('[AddItem] PRIMARY failed or no offers - FALLBACK to identify-from-image');
-        
-        const fallbackResult = await identifyFromImage(base64, {
-          countryCode: searchCountry,
-          currencyCode: smartLocationSettings?.currency || 'USD',
-        });
-        console.log('[AddItem] FALLBACK result:', JSON.stringify(fallbackResult, null, 2));
-
-        // Handle specific error codes from fallback
-        if (fallbackResult.status === 'error') {
-          if (fallbackResult.code === 'AUTH_REQUIRED' || fallbackResult.message === 'AUTH_REQUIRED') {
-            console.log('[AddItem] FALLBACK AUTH_REQUIRED - stopping');
-            Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-              { text: 'Sign In', onPress: () => router.push('/auth') },
-            ]);
-            return;
-          }
-          
-          if (fallbackResult.code === 'CONFIG_ERROR' || fallbackResult.message === 'CONFIG_ERROR') {
-            console.log('[AddItem] FALLBACK CONFIG_ERROR - service not configured');
-            Alert.alert(
-              'Service Unavailable',
-              'The product identification service is not configured. Please contact support or try adding the item manually.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Add Manually', onPress: () => {
-                  const fallbackData = {
-                    title: '',
-                    imageUrl: uploadImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([fallbackData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                }},
-              ]
-            );
-            return;
-          }
-          
-          if (fallbackResult.code === 'RATE_LIMIT_EXCEEDED' || fallbackResult.message === 'RATE_LIMIT_EXCEEDED') {
-            console.log('[AddItem] FALLBACK RATE_LIMIT_EXCEEDED - too many requests');
-            Alert.alert(
-              'Too Many Requests',
-              'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-              [
-                { text: 'OK', style: 'cancel' },
-                { text: 'Add Manually', onPress: () => {
-                  const fallbackData = {
-                    title: '',
-                    imageUrl: uploadImage,
-                    originalUrl: '',
-                    store: '',
-                    price: null,
-                    currency: 'USD',
-                  };
-                  router.push({
-                    pathname: '/import-preview',
-                    params: {
-                      identifiedItems: JSON.stringify([fallbackData]),
-                      wishlistId: selectedWishlistId,
-                    },
-                  });
-                }},
-              ]
-            );
-            return;
-          }
-        }
-
-        // Normalize fallback response
-        if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
-          console.log('[AddItem] FALLBACK succeeded with', fallbackResult.items.length, 'items');
-          
-          finalIdentifiedItems = fallbackResult.items.map(item => ({
-            title: item.title || 'Unknown Product',
-            imageUrl: item.imageUrl || uploadImage,
-            originalUrl: item.storeUrl || '',
-            store: item.storeName || '',
-            price: item.price || null,
-            currency: item.currency || smartLocationSettings?.currency || 'USD',
-            confidence: item.score || 0,
-          }));
-        } else {
-          // Both primary and fallback failed - navigate to no results UI
-          console.log('[AddItem] Both PRIMARY and FALLBACK failed');
-          router.push({
-            pathname: '/import-preview',
-            params: {
-              identifiedItems: JSON.stringify([]),
-              message: 'Could not identify the product. You can still add it manually with the photo.',
-              wishlistId: selectedWishlistId,
-            },
-          });
-          return;
-        }
       }
 
-      // Navigate to import-preview with normalized items (fallback succeeded)
-      console.log('[AddItem] Navigating to import-preview with', finalIdentifiedItems.length, 'normalized items from fallback');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          identifiedItems: JSON.stringify(finalIdentifiedItems),
-          wishlistId: selectedWishlistId,
-        },
+      console.log('[AddScreen] Primary pipeline failed or no offers, trying fallback');
+
+      // FALLBACK: Try identify-from-image (Google Lens / Bing Visual Search)
+      const fallbackResult = await identifyFromImage(base64, {
+        countryCode,
+        currencyCode,
       });
-    } catch (error: any) {
-      console.error('[AddItem] Error in handleIdentifyFromUpload:', error);
-      
-      // Handle specific error codes
-      if (error.message === 'AUTH_REQUIRED') {
-        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-          { text: 'Sign In', onPress: () => router.push('/auth') },
-        ]);
+
+      if (fallbackResult.status === 'error' && fallbackResult.code === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
         return;
       }
-      
-      if (error.message === 'CONFIG_ERROR') {
-        Alert.alert(
-          'Service Unavailable',
-          'The product identification service is not configured. Please contact support or try adding the item manually.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Add Manually', onPress: () => {
-              const fallbackData = {
-                title: '',
-                imageUrl: uploadImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            }},
-          ]
-        );
-        return;
-      }
-      
-      if (error.message === 'RATE_LIMIT_EXCEEDED') {
-        Alert.alert(
-          'Too Many Requests',
-          'You have made too many identification requests. Please wait a few minutes and try again, or add the item manually.',
-          [
-            { text: 'OK', style: 'cancel' },
-            { text: 'Add Manually', onPress: () => {
-              const fallbackData = {
-                title: '',
-                imageUrl: uploadImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            }},
-          ]
-        );
-        return;
-      }
-      
-      // Generic error fallback
-      Alert.alert(
-        'Identification Failed',
-        'Could not identify the product automatically. You can still add it manually with the photo.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after error');
-              const fallbackData = {
-                title: '',
-                imageUrl: uploadImage,
-                originalUrl: '',
-                store: '',
-                price: null,
-                currency: 'USD',
-              };
-              
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  identifiedItems: JSON.stringify([fallbackData]),
-                  wishlistId: selectedWishlistId,
-                },
-              });
-            },
+
+      if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
+        console.log('[AddScreen] Fallback pipeline successful, navigating to import-preview');
+        // Normalize fallback results to the same structure
+        const normalizedItems = fallbackResult.items.map(item => ({
+          title: item.title,
+          imageUrl: item.imageUrl,
+          originalUrl: item.storeUrl || '',
+          store: item.storeName || '',
+          price: item.price || null,
+          currency: item.currency || currencyCode,
+          confidence: item.score || 0,
+        }));
+
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            identifiedItems: JSON.stringify(normalizedItems),
+            source: 'upload',
           },
+        });
+        return;
+      }
+
+      // Both pipelines failed
+      Alert.alert(
+        'No Products Found',
+        'We couldn\'t identify any products in this image. Try a different image or add the item manually.',
+        [
+          { text: 'Try Again', onPress: () => setImageUri(null) },
+          { text: 'Add Manually', onPress: () => router.push('/add-manual') },
         ]
       );
+    } catch (error: any) {
+      console.error('Identify from upload error:', error);
+      if (error.message === 'AUTH_REQUIRED') {
+        setShowAuthModal(true);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to identify product from image');
+      }
     } finally {
-      // CRITICAL: Always clear loading state
-      setIdentifyingUpload(false);
-      console.log('[AddItem] handleIdentifyFromUpload called - END (loading cleared)');
+      setLoading(false);
     }
   };
 
-  // Mode 5: Search by Name
   const handleSearchByName = async () => {
-    console.log('[AddItem] handleSearchByName called');
-    
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    if (!searchQuery.trim()) {
+      Alert.alert('Error', 'Please enter a search query');
+      return;
+    }
+
+    setLoading(true);
+    setSearchResults([]);
     try {
-      if (!searchQuery.trim()) {
-        console.log('[AddItem] Search query is empty');
-        Alert.alert('Missing Query', 'Please enter a product name');
-        return;
-      }
-
-      console.log('[AddItem] Using search country from Settings:', searchCountry);
-      
-      if (!searchCountry) {
-        console.log('[AddItem] No country set in Settings');
-        Alert.alert('Country Required', 'Please set your country in Settings first', [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => router.push('/location') },
-        ]);
-        return;
-      }
-
-      // Check configuration before making API call
-      if (!isEnvironmentConfigured()) {
-        console.error('[AddItem] Environment not configured');
-        Alert.alert('Configuration Error', getConfigurationErrorMessage());
-        return;
-      }
-
-      console.log('[AddItem] Searching for:', searchQuery);
-      setSearching(true);
-      setSearchResults([]);
-      setSearchError(null);
+      const countryCode = userLocation?.countryCode || 'US';
+      const currencyCode = userLocation?.currencyCode || 'USD';
 
       const result = await searchByName(searchQuery.trim(), {
-        countryCode: searchCountry,
+        countryCode,
+        currency: currencyCode,
+        limit: 10,
       });
-      console.log('[AddItem] Search results:', result);
 
-      // Broader check for API key configuration issues
-      if (result.error && result.error.toLowerCase().includes('api key')) {
-        console.error('[AddItem] API key configuration error detected');
-        const errorMessage = 'Product search service is not configured. Please contact support.';
-        setSearchError(errorMessage);
-        Alert.alert(
-          'Service Not Available',
-          errorMessage,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after configuration error');
-                setSelectedMode('manual');
-                setManualName(searchQuery.trim());
-              },
-            },
-          ]
-        );
+      if (result.error) {
+        if (result.error === 'AUTH_REQUIRED') {
+          setShowAuthModal(true);
+        } else {
+          Alert.alert('Error', result.error);
+        }
         return;
       }
 
-      // Handle case where result.error is set but results array is empty
-      if (result.error && (!result.results || result.results.length === 0)) {
-        console.log('[AddItem] Error with no results:', result.error);
-        const errorMessage = result.error || 'No products found. Try a different search or add manually.';
-        setSearchError(errorMessage);
-        Alert.alert('No Results', errorMessage, [
-          { text: 'OK', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after error with no results');
-              setSelectedMode('manual');
-              setManualName(searchQuery.trim());
-            },
-          },
-        ]);
+      if (result.results.length === 0) {
+        Alert.alert('No Results', 'No products found for your search query.');
         return;
       }
 
-      if (result.results && result.results.length > 0) {
-        console.log('[AddItem] Found', result.results.length, 'results');
-        setSearchResults(result.results);
-        setShowSearchResults(true);
-      } else {
-        console.log('[AddItem] No search results found');
-        const errorMessage = 'No products found. Try a different search or add manually.';
-        setSearchError(errorMessage);
-        Alert.alert('No Results', errorMessage, [
-          { text: 'OK', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after no results');
-              setSelectedMode('manual');
-              setManualName(searchQuery.trim());
-            },
-          },
-        ]);
-      }
+      setSearchResults(result.results);
     } catch (error: any) {
-      console.error('[AddItem] Error in handleSearchByName:', error);
-      
-      // Handle specific error codes
+      console.error('Search by name error:', error);
       if (error.message === 'AUTH_REQUIRED') {
-        setSearchError('Session expired. Please sign in again.');
-        Alert.alert('Session Expired', 'Your session has expired. Please sign in again to continue.', [
-          { text: 'Sign In', onPress: () => router.push('/auth') },
-        ]);
-        return;
+        setShowAuthModal(true);
+      } else {
+        Alert.alert('Error', error.message || 'Failed to search for products');
       }
-      
-      if (error.message === 'CONFIG_ERROR') {
-        const errorMessage = 'Product search service is not configured. Please contact support or add the item manually.';
-        setSearchError(errorMessage);
-        Alert.alert(
-          'Service Unavailable',
-          errorMessage,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after CONFIG_ERROR');
-                setSelectedMode('manual');
-                setManualName(searchQuery.trim());
-              },
-            },
-          ]
-        );
-        return;
-      }
-      
-      if (error.message === 'RATE_LIMIT_EXCEEDED') {
-        const errorMessage = 'Too many search requests. Please wait a few minutes and try again.';
-        setSearchError(errorMessage);
-        Alert.alert(
-          'Too Many Requests',
-          errorMessage,
-          [
-            { text: 'OK', style: 'cancel' },
-            {
-              text: 'Add Manually',
-              onPress: () => {
-                console.log('[AddItem] User chose to add manually after RATE_LIMIT_EXCEEDED');
-                setSelectedMode('manual');
-                setManualName(searchQuery.trim());
-              },
-            },
-          ]
-        );
-        return;
-      }
-      
-      // Generic error fallback
-      const errorMessage = 'Failed to perform search. Please check your connection and try again.';
-      setSearchError(errorMessage);
-      
-      Alert.alert(
-        'Search Error',
-        errorMessage,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add Manually',
-            onPress: () => {
-              console.log('[AddItem] User chose to add manually after search failure');
-              setSelectedMode('manual');
-              setManualName(searchQuery.trim());
-            },
-          },
-        ]
-      );
     } finally {
-      // CRITICAL: Always clear loading state
-      setSearching(false);
-      console.log('[AddItem] handleSearchByName - loading cleared');
+      setLoading(false);
     }
   };
 
   const handleSelectSearchResult = (result: SearchResult) => {
-    console.log('[AddItem] User selected search result:', result.title);
-    
-    try {
-      setShowSearchResults(false);
-
-      // Navigate to import-preview with search result data
-      const productData = {
-        itemName: result.title,
-        imageUrl: result.imageUrl || '',
-        extractedImages: result.imageUrl ? [result.imageUrl] : [],
-        storeName: '',
-        storeDomain: result.storeDomain,
-        price: result.price,
-        currency: result.currency || 'USD',
-        countryAvailability: searchCountry ? [searchCountry] : [],
-        sourceUrl: result.productUrl,
-        inputType: 'name',
-      };
-
-      console.log('[AddItem] Navigating to import-preview with search result data');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          data: JSON.stringify(productData),
-        },
-      });
-    } catch (error) {
-      console.error('[AddItem] Error in handleSelectSearchResult:', error);
-      Alert.alert('Error', 'Failed to process search result. Please try again.');
-    }
+    router.push({
+      pathname: '/import-preview',
+      params: {
+        data: JSON.stringify({
+          itemName: result.title,
+          imageUrl: result.imageUrl || '',
+          extractedImages: JSON.stringify([result.imageUrl]),
+          storeName: result.storeDomain,
+          storeDomain: result.storeDomain,
+          price: result.price || null,
+          currency: result.currency || 'USD',
+          countryAvailability: JSON.stringify([userLocation?.countryCode || 'US']),
+          sourceUrl: result.productUrl,
+          inputType: 'name',
+        }),
+      },
+    });
   };
 
-  // Mode 6: Manual Entry
   const handleManualImagePick = async () => {
-    console.log('[AddItem] handleManualImagePick called');
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Photo library permission is required to upload images.');
+      return;
+    }
 
-    try {
-      const { status } = await ImagePicker.getMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        const { status: newStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (newStatus !== 'granted') {
-          console.log('[AddItem] Photo library permission denied for manual entry');
-          Alert.alert('Permission Required', 'Photo library access is required to select images');
-          return;
-        }
-      }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      quality: 0.8,
+    });
 
-      console.log('[AddItem] Launching image picker for manual entry');
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setManualImage(result.assets[0].uri);
-        console.log('[AddItem] Manual image selected:', result.assets[0].uri);
-      } else {
-        console.log('[AddItem] Image picker cancelled by user');
-      }
-    } catch (error) {
-      console.error('[AddItem] Error in handleManualImagePick:', error);
-      Alert.alert('Error', 'Failed to select image. Please try again.');
+    if (!result.canceled && result.assets[0]) {
+      setImageUri(result.assets[0].uri);
     }
   };
 
-  const handleSaveManual = async () => {
-    console.log('[AddItem] handleSaveManual called');
-    
-    try {
-      if (!manualName.trim()) {
-        console.log('[AddItem] Manual name is empty');
-        Alert.alert('Missing Name', 'Please enter an item name');
-        return;
-      }
-
-      if (!selectedWishlistId) {
-        console.log('[AddItem] No wishlist selected');
-        Alert.alert('No Wishlist Selected', 'Please select a wishlist');
-        return;
-      }
-
-      console.log('[AddItem] Saving manual entry');
-      setSavingManual(true);
-
-      // Navigate to import preview with manual data
-      const productData = {
-        itemName: manualName.trim(),
-        imageUrl: manualImage || '',
-        extractedImages: manualImage ? [manualImage] : [],
-        storeName: '',
-        storeDomain: '',
-        price: manualPrice ? parseFloat(manualPrice) : null,
-        currency: manualCurrency,
-        countryAvailability: searchCountry ? [searchCountry] : [],
-        sourceUrl: manualStoreLink.trim() || '',
-        notes: manualNotes.trim() || '',
-        inputType: 'manual',
-      };
-
-      console.log('[AddItem] Navigating to import-preview with manual data');
-      router.push({
-        pathname: '/import-preview',
-        params: {
-          data: JSON.stringify(productData),
-        },
-      });
-    } catch (error: any) {
-      console.error('[AddItem] Error in handleSaveManual:', error);
-      Alert.alert('Error', 'Failed to save item. Please try again.');
-    } finally {
-      setSavingManual(false);
+  const handleSaveManual = () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
     }
+
+    router.push({
+      pathname: '/import-preview',
+      params: {
+        data: JSON.stringify({
+          itemName: '',
+          imageUrl: imageUri || '',
+          extractedImages: JSON.stringify([imageUri]),
+          storeName: '',
+          storeDomain: '',
+          price: null,
+          currency: userLocation?.currencyCode || 'USD',
+          countryAvailability: JSON.stringify([userLocation?.countryCode || 'US']),
+          sourceUrl: '',
+          inputType: 'manual',
+        }),
+      },
+    });
   };
 
-  // Show configuration error UI if environment is not configured
-  if (configError) {
-    return (
-      <View style={{ flex: 1 }}>
-        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-        <ConfigurationError message={configError} onRetry={handleRetryConfiguration} />
-      </View>
-    );
-  }
-
-  const renderShareMode = () => {
-    const deepLinkUrl = Linking.createURL('add');
-
-    return (
-      <View style={styles.modeContent}>
-        <View style={styles.instructionsCard}>
-          <IconSymbol
-            ios_icon_name="square.and.arrow.up"
-            android_material_icon_name="share"
-            size={64}
-            color={colors.accent}
-          />
-          <Text style={[styles.instructionsTitle, { color: colors.textPrimary }]}>
-            Share from any app
-          </Text>
-          <Text style={[styles.instructionsText, { color: colors.textSecondary }]}>
-            1. Open any shopping app or website{'\n'}
-            2. Tap the Share button{'\n'}
-            3. Select "My Wishlist"{'\n'}
-            4. We'll extract the product details automatically
-          </Text>
-        </View>
-
-        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <IconSymbol
-            ios_icon_name="info.circle"
-            android_material_icon_name="info"
-            size={20}
-            color={colors.accent}
-          />
-          <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-            If the app receives a shared link, it will automatically open Add Item with the URL prefilled.
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderUrlMode = () => (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.modeContent}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.modeInner}>
-          <Text style={[styles.modeTitle, { color: colors.textPrimary }]}>Paste Product URL</Text>
-          <Text style={[styles.modeSubtitle, { color: colors.textSecondary }]}>
-            Copy a product link from any website and paste it here
-          </Text>
-
-          <TextInput
-            style={[styles.urlInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={urlInput}
-            onChangeText={setUrlInput}
-            placeholder="https://example.com/product"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            multiline
-          />
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.accent }, extracting && styles.actionButtonDisabled]}
-            onPress={handleExtractUrl}
-            disabled={extracting}
-          >
-            {extracting ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator size="small" color={colors.textInverse} />
-              </View>
-            ) : (
-              <View style={styles.buttonContent}>
-                <IconSymbol
-                  ios_icon_name="wand.and.stars"
-                  android_material_icon_name="auto-fix-high"
-                  size={20}
-                  color={colors.textInverse}
-                />
-                <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Extract Item Details</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={20}
-              color={colors.accent}
-            />
-            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              After extraction, you'll be able to review and edit all details before saving.
-            </Text>
-          </View>
-        </View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+  const renderShareMode = () => (
+    <View style={styles.content}>
+      <Text style={[styles.label, { color: colors.text }]}>
+        Share a product link from any app to add it to your wishlist
+      </Text>
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: colors.primary }]}
+        onPress={() => {
+          Alert.alert(
+            'How to Share',
+            'Open any shopping app or website, find a product, tap the share button, and select "My Wishlist".',
+            [{ text: 'Got it' }]
+          );
+        }}
+      >
+        <Text style={[styles.buttonText, { color: colors.background }]}>
+          Learn How to Share
+        </Text>
+      </TouchableOpacity>
+    </View>
   );
 
-  const renderCameraMode = () => (
-    <View style={styles.modeContent}>
-      <Text style={[styles.modeTitle, { color: colors.textPrimary }]}>Take a Photo</Text>
-      <Text style={[styles.modeSubtitle, { color: colors.textSecondary }]}>
-        Take a photo of the product and we'll identify it
-      </Text>
+  const renderUrlMode = () => (
+    <View style={styles.content}>
+      <View style={styles.inputContainer}>
+        <Text style={[styles.label, { color: colors.text }]}>Product URL</Text>
+        <TextInput
+          style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          placeholder="https://example.com/product"
+          placeholderTextColor={colors.textSecondary}
+          value={url}
+          onChangeText={setUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+      </View>
 
-      {cameraImage ? (
-        <View style={styles.imagePreview}>
-          <Image
-            source={resolveImageSource(cameraImage)}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-          <TouchableOpacity
-            style={styles.removeImageButton}
-            onPress={() => setCameraImage(null)}
-          >
-            <IconSymbol
-              ios_icon_name="xmark.circle.fill"
-              android_material_icon_name="cancel"
-              size={32}
-              color={colors.error}
-            />
-          </TouchableOpacity>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Extracting product details...
+          </Text>
         </View>
       ) : (
         <TouchableOpacity
-          style={[styles.uploadArea, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={handleTakePhoto}
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={handleExtractUrl}
         >
-          <IconSymbol
-            ios_icon_name="camera"
-            android_material_icon_name="camera"
-            size={64}
-            color={colors.accent}
-          />
-          <Text style={[styles.uploadText, { color: colors.accent }]}>Take Photo</Text>
+          <Text style={[styles.buttonText, { color: colors.background }]}>
+            Add from URL
+          </Text>
         </TouchableOpacity>
       )}
+    </View>
+  );
 
-      {cameraImage && (
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.accent }, identifyingCamera && styles.actionButtonDisabled]}
-          onPress={handleIdentifyFromCamera}
-          disabled={identifyingCamera}
-        >
-          {identifyingCamera ? (
-            <View style={styles.buttonContent}>
-              <ActivityIndicator size="small" color={colors.textInverse} />
+  const renderCameraMode = () => (
+    <View style={styles.content}>
+      {imageUri ? (
+        <>
+          <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.text }]}>
+                Identifying product...
+              </Text>
             </View>
           ) : (
-            <View style={styles.buttonContent}>
-              <IconSymbol
-                ios_icon_name="sparkles"
-                android_material_icon_name="auto-fix-high"
-                size={20}
-                color={colors.textInverse}
-              />
-              <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Identify Product</Text>
-            </View>
+            <>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: colors.primary }]}
+                onPress={handleIdentifyFromCamera}
+              >
+                <Text style={[styles.buttonText, { color: colors.background }]}>
+                  Identify Product
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { borderColor: colors.border }]}
+                onPress={() => setImageUri(null)}
+              >
+                <Text style={[styles.buttonText, { color: colors.text }]}>
+                  Take Another Photo
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
+        </>
+      ) : (
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={handleTakePhoto}
+        >
+          <Text style={[styles.buttonText, { color: colors.background }]}>
+            Take Photo
+          </Text>
         </TouchableOpacity>
       )}
-
-      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <IconSymbol
-          ios_icon_name="info.circle"
-          android_material_icon_name="info"
-          size={20}
-          color={colors.accent}
-        />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          After identification, you'll be able to review and edit all details before saving.
-        </Text>
-      </View>
     </View>
   );
 
   const renderUploadMode = () => (
-    <View style={styles.modeContent}>
-      <Text style={[styles.modeTitle, { color: colors.textPrimary }]}>Upload Image</Text>
-      <Text style={[styles.modeSubtitle, { color: colors.textSecondary }]}>
-        Upload a product image from your gallery
-      </Text>
-
-      {uploadImage ? (
-        <View style={styles.imagePreview}>
-          <Image
-            source={resolveImageSource(uploadImage)}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-          <TouchableOpacity
-            style={styles.removeImageButton}
-            onPress={() => setUploadImage(null)}
-          >
-            <IconSymbol
-              ios_icon_name="xmark.circle.fill"
-              android_material_icon_name="cancel"
-              size={32}
-              color={colors.error}
-            />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <TouchableOpacity
-          style={[styles.uploadArea, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={handleUploadImage}
-        >
-          <IconSymbol
-            ios_icon_name="photo"
-            android_material_icon_name="image"
-            size={64}
-            color={colors.accent}
-          />
-          <Text style={[styles.uploadText, { color: colors.accent }]}>Choose from Gallery</Text>
-        </TouchableOpacity>
-      )}
-
-      {uploadImage && (
-        <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: colors.accent }, identifyingUpload && styles.actionButtonDisabled]}
-          onPress={handleIdentifyFromUpload}
-          disabled={identifyingUpload}
-        >
-          {identifyingUpload ? (
-            <View style={styles.buttonContent}>
-              <ActivityIndicator size="small" color={colors.textInverse} />
+    <View style={styles.content}>
+      {imageUri ? (
+        <>
+          <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.text }]}>
+                Identifying product...
+              </Text>
             </View>
           ) : (
-            <View style={styles.buttonContent}>
-              <IconSymbol
-                ios_icon_name="sparkles"
-                android_material_icon_name="auto-fix-high"
-                size={20}
-                color={colors.textInverse}
-              />
-              <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Identify Product</Text>
-            </View>
+            <>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: colors.primary }]}
+                onPress={handleIdentifyFromUpload}
+              >
+                <Text style={[styles.buttonText, { color: colors.background }]}>
+                  Identify Product
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { borderColor: colors.border }]}
+                onPress={() => setImageUri(null)}
+              >
+                <Text style={[styles.buttonText, { color: colors.text }]}>
+                  Choose Another Image
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
+        </>
+      ) : (
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={handleUploadImage}
+        >
+          <Text style={[styles.buttonText, { color: colors.background }]}>
+            Upload Image
+          </Text>
         </TouchableOpacity>
       )}
-
-      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <IconSymbol
-          ios_icon_name="info.circle"
-          android_material_icon_name="info"
-          size={20}
-          color={colors.accent}
-        />
-        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-          After identification, you'll be able to review and edit all details before saving.
-        </Text>
-      </View>
     </View>
   );
 
   const renderSearchMode = () => (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.modeContent}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.modeInner}>
-          <Text style={[styles.modeTitle, { color: colors.textPrimary }]}>Search by Name</Text>
-          <Text style={[styles.modeSubtitle, { color: colors.textSecondary }]}>
-            Enter the product name and optional details
+    <View style={styles.content}>
+      <View style={styles.inputContainer}>
+        <Text style={[styles.label, { color: colors.text }]}>Search for a product</Text>
+        <TextInput
+          style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.card }]}
+          placeholder="e.g., iPhone 15 Pro"
+          placeholderTextColor={colors.textSecondary}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          autoCapitalize="words"
+          autoCorrect={false}
+        />
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Searching for products...
           </Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: colors.primary }]}
+          onPress={handleSearchByName}
+        >
+          <Text style={[styles.buttonText, { color: colors.background }]}>
+            Search
+          </Text>
+        </TouchableOpacity>
+      )}
 
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Product Name *</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="e.g., iPhone 15 Pro"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Brand (optional)</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={searchBrand}
-            onChangeText={setSearchBrand}
-            placeholder="e.g., Apple"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Model (optional)</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={searchModel}
-            onChangeText={setSearchModel}
-            placeholder="e.g., 256GB"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.accent }, searching && styles.actionButtonDisabled]}
-            onPress={handleSearchByName}
-            disabled={searching}
-          >
-            {searching ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator size="small" color={colors.textInverse} />
+      {searchResults.length > 0 && (
+        <View style={styles.searchResultsContainer}>
+          {searchResults.map((result, index) => (
+            <TouchableOpacity
+              key={index}
+              style={[styles.searchResultItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => handleSelectSearchResult(result)}
+            >
+              {result.imageUrl && (
+                <Image
+                  source={resolveImageSource(result.imageUrl)}
+                  style={styles.searchResultImage}
+                />
+              )}
+              <View style={styles.searchResultInfo}>
+                <Text style={[styles.searchResultTitle, { color: colors.text }]} numberOfLines={2}>
+                  {result.title}
+                </Text>
+                <Text style={[styles.searchResultStore, { color: colors.textSecondary }]}>
+                  {result.storeDomain}
+                </Text>
+                {result.price && (
+                  <Text style={[styles.searchResultPrice, { color: colors.primary }]}>
+                    {result.currency} {result.price.toFixed(2)}
+                  </Text>
+                )}
               </View>
-            ) : (
-              <View style={styles.buttonContent}>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+
+  if (!isConfigured) {
+    return <ConfigurationError onRetry={handleRetryConfiguration} />;
+  }
+
+  if (authLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Loading...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+      
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView
+            style={styles.container}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.header}>
+              <Text style={[styles.title, { color: colors.text }]}>Add Item</Text>
+              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                Add items to your wishlist
+              </Text>
+            </View>
+
+            <View style={styles.modeSelector}>
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'url' ? colors.primary : colors.card,
+                    borderColor: mode === 'url' ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setMode('url')}
+              >
+                <IconSymbol
+                  ios_icon_name="link"
+                  android_material_icon_name="link"
+                  size={24}
+                  color={mode === 'url' ? colors.background : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'url' ? colors.background : colors.text },
+                  ]}
+                >
+                  URL
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'camera' ? colors.primary : colors.card,
+                    borderColor: mode === 'camera' ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setMode('camera')}
+              >
+                <IconSymbol
+                  ios_icon_name="camera"
+                  android_material_icon_name="camera"
+                  size={24}
+                  color={mode === 'camera' ? colors.background : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'camera' ? colors.background : colors.text },
+                  ]}
+                >
+                  Camera
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'upload' ? colors.primary : colors.card,
+                    borderColor: mode === 'upload' ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setMode('upload')}
+              >
+                <IconSymbol
+                  ios_icon_name="photo"
+                  android_material_icon_name="image"
+                  size={24}
+                  color={mode === 'upload' ? colors.background : colors.text}
+                />
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'upload' ? colors.background : colors.text },
+                  ]}
+                >
+                  Upload
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: mode === 'search' ? colors.primary : colors.card,
+                    borderColor: mode === 'search' ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setMode('search')}
+              >
                 <IconSymbol
                   ios_icon_name="magnifyingglass"
                   android_material_icon_name="search"
-                  size={20}
-                  color={colors.textInverse}
+                  size={24}
+                  color={mode === 'search' ? colors.background : colors.text}
                 />
-                <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Search</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={20}
-              color={colors.accent}
-            />
-            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              Search respects your country setting. Select a result to review before saving.
-            </Text>
-          </View>
-        </View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
-  );
-
-  const renderManualMode = () => (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.modeContent}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.modeInner}>
-          <Text style={[styles.modeTitle, { color: colors.textPrimary }]}>Manual Entry</Text>
-          <Text style={[styles.modeSubtitle, { color: colors.textSecondary }]}>
-            Add all details manually
-          </Text>
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Name *</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={manualName}
-            onChangeText={setManualName}
-            placeholder="Product name"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Brand (optional)</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={manualBrand}
-            onChangeText={setManualBrand}
-            placeholder="Brand name"
-            placeholderTextColor={colors.textTertiary}
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Store Link (optional)</Text>
-          <TextInput
-            style={[styles.textInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={manualStoreLink}
-            onChangeText={setManualStoreLink}
-            placeholder="https://..."
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            keyboardType="url"
-          />
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Price & Currency (optional)</Text>
-          <View style={styles.priceRow}>
-            <TextInput
-              style={[styles.textInput, styles.priceInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-              value={manualPrice}
-              onChangeText={setManualPrice}
-              placeholder="0.00"
-              placeholderTextColor={colors.textTertiary}
-              keyboardType="decimal-pad"
-            />
-            <TouchableOpacity
-              style={[styles.currencyButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => setShowCurrencyPicker(true)}
-            >
-              <Text style={[styles.currencyText, { color: colors.textPrimary }]}>{manualCurrency}</Text>
-              <IconSymbol
-                ios_icon_name="chevron.down"
-                android_material_icon_name="arrow-drop-down"
-                size={16}
-                color={colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Image (optional)</Text>
-          {manualImage ? (
-            <View style={styles.imagePreview}>
-              <Image
-                source={resolveImageSource(manualImage)}
-                style={styles.previewImage}
-                resizeMode="contain"
-              />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => setManualImage(null)}
-              >
-                <IconSymbol
-                  ios_icon_name="xmark.circle.fill"
-                  android_material_icon_name="cancel"
-                  size={32}
-                  color={colors.error}
-                />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.uploadArea, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={handleManualImagePick}
-            >
-              <IconSymbol
-                ios_icon_name="photo"
-                android_material_icon_name="image"
-                size={48}
-                color={colors.accent}
-              />
-              <Text style={[styles.uploadText, { color: colors.accent }]}>Add Image</Text>
-            </TouchableOpacity>
-          )}
-
-          <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Notes (optional)</Text>
-          <TextInput
-            style={[styles.textInput, styles.notesInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-            value={manualNotes}
-            onChangeText={setManualNotes}
-            placeholder="Add any notes"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-            numberOfLines={3}
-          />
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.accent }, savingManual && styles.actionButtonDisabled]}
-            onPress={handleSaveManual}
-            disabled={savingManual}
-          >
-            {savingManual ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator size="small" color={colors.textInverse} />
-              </View>
-            ) : (
-              <View style={styles.buttonContent}>
-                <IconSymbol
-                  ios_icon_name="checkmark"
-                  android_material_icon_name="check"
-                  size={20}
-                  color={colors.textInverse}
-                />
-                <Text style={[styles.actionButtonText, { color: colors.textInverse }]}>Continue to Preview</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <IconSymbol
-              ios_icon_name="info.circle"
-              android_material_icon_name="info"
-              size={20}
-              color={colors.accent}
-            />
-            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              You can save manually even if AI extraction fails. All fields are editable before final save.
-            </Text>
-          </View>
-        </View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
-  );
-
-  const selectedWishlist = wishlists.find(w => w.id === selectedWishlistId);
-  const selectedWishlistName = selectedWishlist?.name || 'Select wishlist';
-  const currencies = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD'];
-
-  // Get current country from Settings for display
-  const currentCountry = searchCountry;
-  const showCountryWarning = !currentCountry;
-
-  return (
-    <View style={{ flex: 1 }}>
-      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-        {/* Always-visible header with Wishlist - NO delivery address UI */}
-        <View style={[styles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerItem}>
-              <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>Add to:</Text>
-              <TouchableOpacity
-                style={[styles.headerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => setShowWishlistPicker(true)}
-              >
-                <Text style={[styles.headerButtonText, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {selectedWishlistName}
-                </Text>
-                <IconSymbol
-                  ios_icon_name="chevron.down"
-                  android_material_icon_name="arrow-drop-down"
-                  size={16}
-                  color={colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Country is set ONLY in Settings - show current country for reference */}
-          {showCountryWarning ? (
-            <View style={[styles.warningBanner, { backgroundColor: colors.errorLight, borderColor: colors.error }]}>
-              <IconSymbol
-                ios_icon_name="exclamationmark.triangle"
-                android_material_icon_name="warning"
-                size={16}
-                color={colors.error}
-              />
-              <Text style={[styles.warningText, { color: colors.error }]}>
-                Country not set
-              </Text>
-              <TouchableOpacity
-                style={[styles.settingsButton, { backgroundColor: colors.error }]}
-                onPress={() => router.push('/location')}
-              >
-                <Text style={[styles.settingsButtonText, { color: colors.textInverse }]}>
-                  Set in Settings
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.headerRow}>
-              <View style={[styles.headerItem, { flex: 1 }]}>
-                <Text style={[styles.headerLabel, { color: colors.textSecondary }]}>
-                  Country: {currentCountry}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.settingsButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                  onPress={() => router.push('/location')}
+                <Text
+                  style={[
+                    styles.modeButtonText,
+                    { color: mode === 'search' ? colors.background : colors.text },
+                  ]}
                 >
-                  <Text style={[styles.settingsButtonText, { color: colors.accent }]}>
-                    Change in Settings
-                  </Text>
-                  <IconSymbol
-                    ios_icon_name="chevron.right"
-                    android_material_icon_name="chevron-right"
-                    size={14}
-                    color={colors.accent}
-                  />
-                </TouchableOpacity>
-              </View>
+                  Search
+                </Text>
+              </TouchableOpacity>
             </View>
-          )}
-        </View>
 
-        {/* Mode Tabs */}
-        <View style={[styles.tabBar, { borderBottomColor: colors.border }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'share' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('share')}
-            >
-              <IconSymbol
-                ios_icon_name="square.and.arrow.up"
-                android_material_icon_name="share"
-                size={20}
-                color={selectedMode === 'share' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'share' ? colors.accent : colors.textSecondary }]}>
-                Share
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'url' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('url')}
-            >
-              <IconSymbol
-                ios_icon_name="link"
-                android_material_icon_name="link"
-                size={20}
-                color={selectedMode === 'url' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'url' ? colors.accent : colors.textSecondary }]}>
-                URL
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'camera' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('camera')}
-            >
-              <IconSymbol
-                ios_icon_name="camera"
-                android_material_icon_name="camera"
-                size={20}
-                color={selectedMode === 'camera' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'camera' ? colors.accent : colors.textSecondary }]}>
-                Camera
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'upload' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('upload')}
-            >
-              <IconSymbol
-                ios_icon_name="photo"
-                android_material_icon_name="image"
-                size={20}
-                color={selectedMode === 'upload' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'upload' ? colors.accent : colors.textSecondary }]}>
-                Upload
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'search' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('search')}
-            >
-              <IconSymbol
-                ios_icon_name="magnifyingglass"
-                android_material_icon_name="search"
-                size={20}
-                color={selectedMode === 'search' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'search' ? colors.accent : colors.textSecondary }]}>
-                Search
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tab, selectedMode === 'manual' && { borderBottomColor: colors.accent }]}
-              onPress={() => setSelectedMode('manual')}
-            >
-              <IconSymbol
-                ios_icon_name="pencil"
-                android_material_icon_name="edit"
-                size={20}
-                color={selectedMode === 'manual' ? colors.accent : colors.textSecondary}
-              />
-              <Text style={[styles.tabText, { color: selectedMode === 'manual' ? colors.accent : colors.textSecondary }]}>
-                Manual
-              </Text>
-            </TouchableOpacity>
+            {mode === 'share' && renderShareMode()}
+            {mode === 'url' && renderUrlMode()}
+            {mode === 'camera' && renderCameraMode()}
+            {mode === 'upload' && renderUploadMode()}
+            {mode === 'search' && renderSearchMode()}
           </ScrollView>
-        </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
 
-        {/* Mode Content */}
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {selectedMode === 'share' && renderShareMode()}
-          {selectedMode === 'url' && renderUrlMode()}
-          {selectedMode === 'camera' && renderCameraMode()}
-          {selectedMode === 'upload' && renderUploadMode()}
-          {selectedMode === 'search' && renderSearchMode()}
-          {selectedMode === 'manual' && renderManualMode()}
-        </ScrollView>
-
-        {/* Wishlist Picker Modal */}
-        <Modal
-          visible={showWishlistPicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowWishlistPicker(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowWishlistPicker(false)}>
-            <Pressable style={[styles.pickerModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Wishlist</Text>
-              <ScrollView style={styles.pickerList}>
-                {wishlists.map((wishlist) => (
-                  <TouchableOpacity
-                    key={wishlist.id}
-                    style={[
-                      styles.pickerOption,
-                      { backgroundColor: selectedWishlistId === wishlist.id ? colors.accentLight : 'transparent' },
-                    ]}
-                    onPress={() => {
-                      setSelectedWishlistId(wishlist.id);
-                      setShowWishlistPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>{wishlist.name}</Text>
-                    {selectedWishlistId === wishlist.id && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color={colors.accent}
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
+      {/* Auth Required Modal */}
+      <Modal
+        visible={showAuthModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAuthModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAuthModal(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.card }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>
+              Sign In Required
+            </Text>
+            <Text style={[styles.modalText, { color: colors.textSecondary }]}>
+              You need to be signed in to add items to your wishlist. Please sign in or create an account to continue.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.border }]}
+                onPress={() => setShowAuthModal(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  setShowAuthModal(false);
+                  router.push('/auth');
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.background }]}>
+                  Sign In
+                </Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
-        </Modal>
-
-        {/* Currency Picker Modal */}
-        <Modal
-          visible={showCurrencyPicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowCurrencyPicker(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowCurrencyPicker(false)}>
-            <Pressable style={[styles.pickerModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Select Currency</Text>
-              <ScrollView style={styles.pickerList}>
-                {currencies.map((curr) => (
-                  <TouchableOpacity
-                    key={curr}
-                    style={[
-                      styles.pickerOption,
-                      { backgroundColor: manualCurrency === curr ? colors.accentLight : 'transparent' },
-                    ]}
-                    onPress={() => {
-                      setManualCurrency(curr);
-                      setShowCurrencyPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>{curr}</Text>
-                    {manualCurrency === curr && (
-                      <IconSymbol
-                        ios_icon_name="checkmark"
-                        android_material_icon_name="check"
-                        size={20}
-                        color={colors.accent}
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        {/* Search Results Modal */}
-        <Modal
-          visible={showSearchResults}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowSearchResults(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowSearchResults(false)}>
-            <Pressable style={[styles.resultsModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.modalHandle} />
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Search Results</Text>
-
-              <ScrollView style={styles.resultsList}>
-                {searchResults.map((result, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[styles.resultCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-                    onPress={() => handleSelectSearchResult(result)}
-                  >
-                    {result.imageUrl && (
-                      <Image
-                        source={resolveImageSource(result.imageUrl)}
-                        style={styles.resultImage}
-                        resizeMode="cover"
-                      />
-                    )}
-                    <View style={styles.resultInfo}>
-                      <Text style={[styles.resultTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                        {result.title}
-                      </Text>
-                      <Text style={[styles.resultDomain, { color: colors.textSecondary }]}>
-                        {result.storeDomain}
-                      </Text>
-                      {result.price && (
-                        <Text style={[styles.resultPrice, { color: colors.accent }]}>
-                          {result.currency} {result.price.toFixed(2)}
-                        </Text>
-                      )}
-                    </View>
-                    <IconSymbol
-                      ios_icon_name="chevron.right"
-                      android_material_icon_name="chevron-right"
-                      size={20}
-                      color={colors.textTertiary}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      </SafeAreaView>
-    </View>
+        </Pressable>
+      </Modal>
+    </SafeAreaView>
   );
-}
-
-function createStyles(colors: ReturnType<typeof createColors>, typography: ReturnType<typeof createTypography>) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-    },
-    header: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderBottomWidth: 1,
-    },
-    headerRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    headerItem: {
-      flex: 1,
-    },
-    headerLabel: {
-      fontSize: 12,
-      fontWeight: '500',
-      marginBottom: spacing.xs / 2,
-    },
-    headerButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: 8,
-      borderWidth: 1,
-    },
-    headerButtonText: {
-      fontSize: 14,
-      flex: 1,
-      marginRight: spacing.xs,
-    },
-    warningBanner: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: 8,
-      borderWidth: 1,
-      marginBottom: spacing.sm,
-    },
-    warningText: {
-      fontSize: 13,
-      fontWeight: '500',
-      flex: 1,
-    },
-    settingsButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: 8,
-      borderWidth: 1,
-      marginTop: spacing.xs / 2,
-    },
-    settingsButtonText: {
-      fontSize: 13,
-      fontWeight: '500',
-    },
-    tabBar: {
-      borderBottomWidth: 1,
-    },
-    tabScrollContent: {
-      paddingHorizontal: spacing.sm,
-      gap: spacing.xs,
-    },
-    tab: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderBottomWidth: 3,
-      borderBottomColor: 'transparent',
-    },
-    tabText: {
-      fontSize: 14,
-      fontWeight: '500',
-    },
-    scrollView: {
-      flex: 1,
-    },
-    scrollContent: {
-      padding: spacing.lg,
-    },
-    modeContent: {
-      flex: 1,
-    },
-    modeInner: {
-      flex: 1,
-    },
-    modeTitle: {
-      fontSize: 24,
-      fontWeight: '600',
-      marginBottom: spacing.xs,
-    },
-    modeSubtitle: {
-      fontSize: 14,
-      marginBottom: spacing.lg,
-    },
-    instructionsCard: {
-      alignItems: 'center',
-      padding: spacing.xl,
-      marginBottom: spacing.lg,
-    },
-    instructionsTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
-    },
-    instructionsText: {
-      fontSize: 14,
-      textAlign: 'center',
-      lineHeight: 22,
-    },
-    infoCard: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.sm,
-      padding: spacing.md,
-      borderRadius: 12,
-      borderWidth: 1,
-      marginTop: spacing.md,
-    },
-    infoText: {
-      fontSize: 13,
-      flex: 1,
-      lineHeight: 18,
-    },
-    urlInput: {
-      borderRadius: 12,
-      padding: spacing.md,
-      fontSize: 16,
-      borderWidth: 1,
-      minHeight: 100,
-      textAlignVertical: 'top',
-      marginBottom: spacing.lg,
-    },
-    inputLabel: {
-      fontSize: 14,
-      fontWeight: '500',
-      marginBottom: spacing.xs,
-      marginTop: spacing.md,
-    },
-    textInput: {
-      borderRadius: 8,
-      padding: spacing.sm,
-      fontSize: 16,
-      borderWidth: 1,
-    },
-    priceRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    priceInput: {
-      flex: 1,
-    },
-    currencyButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-      paddingHorizontal: spacing.md,
-      borderRadius: 8,
-      borderWidth: 1,
-      minWidth: 100,
-      justifyContent: 'center',
-    },
-    currencyText: {
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    notesInput: {
-      minHeight: 80,
-      textAlignVertical: 'top',
-    },
-    imagePreview: {
-      width: '100%',
-      height: 250,
-      borderRadius: 12,
-      marginBottom: spacing.lg,
-      position: 'relative',
-    },
-    previewImage: {
-      width: '100%',
-      height: '100%',
-      borderRadius: 12,
-    },
-    removeImageButton: {
-      position: 'absolute',
-      top: spacing.sm,
-      right: spacing.sm,
-    },
-    uploadArea: {
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: spacing.xl,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderStyle: 'dashed',
-      marginBottom: spacing.lg,
-      minHeight: 200,
-    },
-    uploadText: {
-      fontSize: 16,
-      fontWeight: '500',
-      marginTop: spacing.sm,
-    },
-    actionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      padding: spacing.md,
-      borderRadius: 12,
-      marginTop: spacing.md,
-    },
-    actionButtonDisabled: {
-      opacity: 0.5,
-    },
-    buttonContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    actionButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-      justifyContent: 'flex-end',
-    },
-    pickerModal: {
-      marginHorizontal: spacing.lg,
-      marginVertical: 'auto',
-      borderRadius: 16,
-      padding: spacing.lg,
-      maxHeight: '60%',
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      marginBottom: spacing.md,
-    },
-    pickerList: {
-      maxHeight: 400,
-    },
-    pickerOption: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: spacing.md,
-      borderRadius: 8,
-      marginBottom: spacing.xs,
-    },
-    pickerOptionText: {
-      fontSize: 16,
-    },
-    resultsModal: {
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
-      padding: spacing.lg,
-      maxHeight: '80%',
-    },
-    modalHandle: {
-      width: 40,
-      height: 4,
-      backgroundColor: '#ccc',
-      borderRadius: 2,
-      alignSelf: 'center',
-      marginBottom: spacing.md,
-    },
-    resultsList: {
-      flex: 1,
-    },
-    resultCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: spacing.sm,
-      borderRadius: 12,
-      marginBottom: spacing.sm,
-      borderWidth: 1,
-    },
-    resultImage: {
-      width: 60,
-      height: 60,
-      borderRadius: 8,
-      marginRight: spacing.sm,
-    },
-    resultInfo: {
-      flex: 1,
-    },
-    resultTitle: {
-      fontSize: 14,
-      fontWeight: '500',
-      marginBottom: spacing.xs / 2,
-    },
-    resultDomain: {
-      fontSize: 12,
-      marginBottom: spacing.xs / 2,
-    },
-    resultPrice: {
-      fontSize: 14,
-      fontWeight: '600',
-    },
-  });
 }
