@@ -25,17 +25,8 @@ const SUPABASE_CONFIG = {
   },
 };
 
-// Backend configuration (locked per environment)
-// Supports both BACKEND_URL and EXPO_PUBLIC_API_BASE_URL for flexibility
-const BACKEND_CONFIG = {
-  DEV: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
-  PREVIEW: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
-  PROD: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
-};
-
 // Get current config
 const currentSupabaseConfig = SUPABASE_CONFIG[ENVIRONMENT];
-const currentBackendUrl = BACKEND_CONFIG[ENVIRONMENT];
 
 // App name with variant suffix
 const APP_NAME = IS_DEV ? 'My Wishlist (Dev)' : IS_PREVIEW ? 'My Wishlist (Preview)' : 'My Wishlist';
@@ -48,7 +39,7 @@ const BUNDLE_ID = IS_DEV ? `${BUNDLE_ID_BASE}.dev` : IS_PREVIEW ? `${BUNDLE_ID_B
 const PACKAGE_NAME_BASE = 'com.anonymous.MyWishlist';
 const PACKAGE_NAME = IS_DEV ? `${PACKAGE_NAME_BASE}.dev` : IS_PREVIEW ? `${PACKAGE_NAME_BASE}.preview` : PACKAGE_NAME_BASE;
 
-export default {
+module.exports = {
   expo: {
     name: APP_NAME,
     slug: 'My Wishlist',
@@ -158,9 +149,6 @@ export default {
       supabaseAnonKey: currentSupabaseConfig.anonKey,
       supabaseEdgeFunctionsUrl: currentSupabaseConfig.edgeFunctionsUrl,
       
-      // Backend Configuration (locked per environment)
-      backendUrl: currentBackendUrl,
-      
       // Natively Configuration
       nativelyEnvironment: 'supabase',
       nativelyPrimaryDataSource: 'supabase',
@@ -195,5 +183,4 @@ export default {
     },
     runtimeVersion: '1.0.0',
   },
-  scheme: 'My Wishlist',
 };
