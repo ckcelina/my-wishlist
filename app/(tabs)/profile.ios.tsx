@@ -60,6 +60,7 @@ export default function ProfileScreen() {
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
 
   // Extract user name from user metadata
   const userName = useMemo(() => {
@@ -218,6 +219,23 @@ export default function ProfileScreen() {
     console.log('[ProfileScreen] User tapped Edit Location');
     haptics.light();
     router.push('/location');
+  };
+
+  const handleLongPressStart = () => {
+    console.log('[ProfileScreen] Long press started on Help title');
+    const timer = setTimeout(() => {
+      console.log('[ProfileScreen] Long press detected - navigating to dev-test');
+      haptics.medium();
+      router.push('/dev-test');
+    }, 1500); // 1.5 seconds
+    setLongPressTimer(timer);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
   };
 
   const userEmailText = user?.email || '';
@@ -542,7 +560,13 @@ export default function ProfileScreen() {
 
           {/* Help Section */}
           <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>HELP</Text>
+            <TouchableOpacity
+              onPressIn={handleLongPressStart}
+              onPressOut={handleLongPressEnd}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.textSecondary }]}>HELP</Text>
+            </TouchableOpacity>
             
             <Card style={styles.card}>
               <PressableScale

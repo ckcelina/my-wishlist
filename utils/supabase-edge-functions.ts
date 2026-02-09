@@ -265,6 +265,47 @@ console.log('══════════════════════�
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
+ * SHARED HELPER: assertSupabaseSession
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Used before AI calls to ensure valid session exists.
+ * Throws AUTH_REQUIRED if session is missing or invalid.
+ * Returns the valid access token if successful.
+ */
+export async function assertSupabaseSession(): Promise<string> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  
+  if (sessionError) {
+    console.error('[assertSupabaseSession] Session error:', sessionError.message);
+    throw new Error('AUTH_REQUIRED');
+  }
+
+  if (!sessionData.session || !sessionData.session.access_token) {
+    console.warn('[assertSupabaseSession] No valid session found');
+    throw new Error('AUTH_REQUIRED');
+  }
+
+  const expiresAt = sessionData.session.expires_at;
+  const now = Math.floor(Date.now() / 1000);
+
+  // If token is near expiry, refresh it
+  if (expiresAt && expiresAt <= now + 60) {
+    console.log('[assertSupabaseSession] Token expiring soon, refreshing...');
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    
+    if (refreshError || !refreshData.session || !refreshData.session.access_token) {
+      console.error('[assertSupabaseSession] Refresh failed:', refreshError?.message);
+      throw new Error('AUTH_REQUIRED');
+    }
+
+    return refreshData.session.access_token;
+  }
+
+  return sessionData.session.access_token;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
  * PRODUCTION AUTH FIX - NO FORCED SIGN-OUTS
  * ═══════════════════════════════════════════════════════════════════════════
  * 

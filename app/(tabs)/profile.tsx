@@ -54,6 +54,7 @@ export default function ProfileScreen() {
   const [currencyPickerVisible, setCurrencyPickerVisible] = useState(false);
   const [location, setLocation] = useState<UserLocation | null>(null);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
 
   const { user, signOut } = useAuth();
   const router = useRouter();
@@ -399,6 +400,23 @@ export default function ProfileScreen() {
     router.push('/location');
   };
 
+  const handleLongPressStart = () => {
+    console.log('[ProfileScreen] Long press started on Settings title');
+    const timer = setTimeout(() => {
+      console.log('[ProfileScreen] Long press detected - navigating to dev-test');
+      haptics.medium();
+      router.push('/dev-test');
+    }, 1500); // 1.5 seconds
+    setLongPressTimer(timer);
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
   if (loading) {
     return (
       <>
@@ -625,7 +643,13 @@ export default function ProfileScreen() {
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(500)} style={styles.section}>
-            <Text style={styles.sectionTitle}>Developer Tools</Text>
+            <TouchableOpacity
+              onPressIn={handleLongPressStart}
+              onPressOut={handleLongPressEnd}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.sectionTitle}>Developer Tools</Text>
+            </TouchableOpacity>
             <Card>
               <TouchableOpacity 
                 style={styles.linkButton} 
