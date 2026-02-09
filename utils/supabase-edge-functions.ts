@@ -251,14 +251,14 @@ if (!isEnvironmentConfigured()) {
   console.log('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
 }
 
-// Check BACKEND_URL configuration (for global search)
+// Check BACKEND_URL configuration (for global search) - OPTIONAL
 const BACKEND_URL = appConfig.backendUrl || '';
-console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '❌ Missing');
+console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '⚠️ Not configured (optional)');
 
-if (!BACKEND_URL) {
-  console.error('❌ [Backend] BACKEND_URL is NOT configured in app.config.js');
-  console.error('   Global search and other backend features will NOT work.');
-  console.error('   Please set BACKEND_URL in app.config.js or .env file.');
+if (!BACKEND_URL && __DEV__) {
+  console.warn('⚠️ [Backend] BACKEND_URL is not configured in app.config.js');
+  console.warn('   This is optional. Backend API features (global search) will not work.');
+  console.warn('   To enable, set BACKEND_URL in app.config.js or .env file.');
 }
 
 console.log('═══════════════════════════════════════════════════════════════');

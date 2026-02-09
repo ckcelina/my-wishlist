@@ -149,6 +149,9 @@ module.exports = {
       supabaseAnonKey: currentSupabaseConfig.anonKey,
       supabaseEdgeFunctionsUrl: currentSupabaseConfig.edgeFunctionsUrl,
       
+      // Backend API URL (optional - for global search and other backend features)
+      backendUrl: process.env.BACKEND_URL || null,
+      
       // Natively Configuration
       nativelyEnvironment: 'supabase',
       nativelyPrimaryDataSource: 'supabase',

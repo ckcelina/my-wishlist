@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-} from 'react';
+} from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -19,6 +19,7 @@ import { colors, typography, spacing } from '@/styles/designSystem';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
+import { appConfig } from '@/utils/environmentConfig';
 
 interface DiagnosticResult {
   name: string;
@@ -306,15 +307,30 @@ export default function DiagnosticsEnhancedScreen() {
       }
 
       try {
-        // Make a test call to the Edge Function
+        console.log(`[Diagnostics] Checking Edge Function: ${functionName}`);
+        
+        // Get session for auth header
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        // Build headers with apikey and optional Authorization
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+        };
+        
+        // Add Authorization header if user is logged in
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+        
+        // Make a test call to the Edge Function using SUPABASE_URL
         const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': supabaseKey,
-          },
+          headers,
           body: JSON.stringify({}),
         });
+
+        console.log(`[Diagnostics] ${functionName} response status: ${response.status}`);
 
         // 200 = function works
         // 401 = function exists but requires auth (AVAILABLE)
@@ -329,7 +345,14 @@ export default function DiagnosticsEnhancedScreen() {
             message: 'Available',
             details: 'Function is deployed and responding',
           };
-        } else if (response.status === 401 || response.status === 400 || response.status === 405) {
+        } else if (response.status === 401) {
+          return {
+            name: `Edge Function: ${functionName}`,
+            status: 'pass',
+            message: 'Available (Auth Required)',
+            details: 'Function is deployed and requires authentication',
+          };
+        } else if (response.status === 400 || response.status === 405) {
           return {
             name: `Edge Function: ${functionName}`,
             status: 'pass',
@@ -352,11 +375,12 @@ export default function DiagnosticsEnhancedScreen() {
           };
         }
       } catch (error: any) {
+        console.error(`[Diagnostics] Error checking ${functionName}:`, error.message);
         return {
           name: `Edge Function: ${functionName}`,
           status: 'fail',
           message: 'Not available',
-          details: error.message || 'Function invocation failed',
+          details: error.message || 'Network error or DNS failure',
         };
       }
     };
@@ -714,30 +738,55 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 19: Edge Functions Base URL
+    // Test 19: Backend API URL (optional)
     try {
-      updateResult({ name: 'Edge Functions URL', status: 'pending', message: 'Checking...' });
+      updateResult({ name: 'Backend API URL', status: 'pending', message: 'Checking...' });
       
-      if (!supabaseUrl) {
+      const backendUrl = appConfig.backendUrl;
+      
+      if (!backendUrl) {
         updateResult({
-          name: 'Edge Functions URL',
-          status: 'fail',
-          message: 'Supabase URL not configured',
-          details: 'Check app.config.js',
+          name: 'Backend API URL',
+          status: 'warning',
+          message: 'Not configured',
+          details: 'Backend API features (global search) will not work. This is optional.',
         });
       } else {
-        const edgeFunctionsUrl = `${supabaseUrl}/functions/v1`;
-        updateResult({
-          name: 'Edge Functions URL',
-          status: 'pass',
-          message: 'Correctly configured',
-          details: edgeFunctionsUrl,
-        });
+        // Try to ping the backend
+        try {
+          const response = await fetch(`${backendUrl}/health`, {
+            method: 'GET',
+            signal: AbortSignal.timeout(5000),
+          });
+          
+          if (response.ok) {
+            updateResult({
+              name: 'Backend API URL',
+              status: 'pass',
+              message: 'Backend API reachable',
+              details: backendUrl,
+            });
+          } else {
+            updateResult({
+              name: 'Backend API URL',
+              status: 'warning',
+              message: 'Backend API unreachable',
+              details: `Status: ${response.status}`,
+            });
+          }
+        } catch (fetchError: any) {
+          updateResult({
+            name: 'Backend API URL',
+            status: 'warning',
+            message: 'Backend API unreachable',
+            details: fetchError.message || 'Network error',
+          });
+        }
       }
     } catch (error) {
       updateResult({
-        name: 'Edge Functions URL',
-        status: 'fail',
+        name: 'Backend API URL',
+        status: 'warning',
         message: 'Configuration check failed',
         details: error instanceof Error ? error.message : String(error),
       });
