@@ -50,16 +50,18 @@ interface ProductData {
   inputType: 'url' | 'camera' | 'image' | 'name' | 'manual';
 }
 
-// NEW: Simplified format from identify-product-from-image
-// Normalized UI model for Import Preview - receives data from both primary and fallback
+// NEW: Normalized UI model for Import Preview
+// Receives data from both identify-product-from-image (primary) and identify-from-image (fallback)
+// This interface ensures consistent UI rendering regardless of which pipeline was used
 interface IdentifiedItem {
   title: string;
   imageUrl: string;
-  originalUrl: string;
+  originalUrl: string; // product_url from offers
   store: string;
   price: number | null;
   currency: string;
   confidence?: number; // Optional confidence score (0-1)
+  brand?: string; // Optional brand from identified product
 }
 
 interface Wishlist {
@@ -456,13 +458,28 @@ export default function ImportPreviewScreen() {
       fontWeight: '500',
       marginBottom: spacing.xs / 2,
     },
+    offerBrand: {
+      fontSize: 13,
+      fontWeight: '500',
+      marginBottom: spacing.xs / 2,
+    },
     offerStore: {
       fontSize: 12,
       marginBottom: spacing.xs / 2,
     },
+    offerBottomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.xs / 2,
+    },
     offerPrice: {
       fontSize: 15,
       fontWeight: '600',
+    },
+    offerConfidence: {
+      fontSize: 12,
+      fontStyle: 'italic',
     },
     manualButton: {
       flexDirection: 'row',
@@ -628,42 +645,58 @@ export default function ImportPreviewScreen() {
               {identifiedItems.length === 1 ? 'Confirm product:' : 'Select the product you want to add:'}
             </Text>
 
-            {identifiedItems.map((item, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                onPress={() => handleSelectItem(item)}
-              >
-                {item.imageUrl && (
-                  <Image
-                    source={resolveImageSource(item.imageUrl)}
-                    style={styles.offerImage}
-                    resizeMode="cover"
+            {identifiedItems.map((item, index) => {
+              const confidencePercent = item.confidence ? Math.round(item.confidence * 100) : null;
+              
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.offerCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                  onPress={() => handleSelectItem(item)}
+                >
+                  {item.imageUrl && (
+                    <Image
+                      source={resolveImageSource(item.imageUrl)}
+                      style={styles.offerImage}
+                      resizeMode="cover"
+                    />
+                  )}
+                  <View style={styles.offerInfo}>
+                    <Text style={[styles.offerTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                      {item.title}
+                    </Text>
+                    {item.brand && (
+                      <Text style={[styles.offerBrand, { color: colors.textSecondary }]}>
+                        {item.brand}
+                      </Text>
+                    )}
+                    {item.store && (
+                      <Text style={[styles.offerStore, { color: colors.textTertiary }]}>
+                        {item.store}
+                      </Text>
+                    )}
+                    <View style={styles.offerBottomRow}>
+                      {item.price && item.currency && (
+                        <Text style={[styles.offerPrice, { color: colors.accent }]}>
+                          {item.currency} {item.price.toFixed(2)}
+                        </Text>
+                      )}
+                      {confidencePercent !== null && (
+                        <Text style={[styles.offerConfidence, { color: colors.textTertiary }]}>
+                          {confidencePercent}% match
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={colors.textTertiary}
                   />
-                )}
-                <View style={styles.offerInfo}>
-                  <Text style={[styles.offerTitle, { color: colors.textPrimary }]} numberOfLines={2}>
-                    {item.title}
-                  </Text>
-                  {item.store && (
-                    <Text style={[styles.offerStore, { color: colors.textTertiary }]}>
-                      {item.store}
-                    </Text>
-                  )}
-                  {item.price && item.currency && (
-                    <Text style={[styles.offerPrice, { color: colors.accent }]}>
-                      {item.currency} {item.price.toFixed(2)}
-                    </Text>
-                  )}
-                </View>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={colors.textTertiary}
-                />
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
 
             <TouchableOpacity
               style={[styles.manualButton, { backgroundColor: colors.surface, borderColor: colors.border }]}

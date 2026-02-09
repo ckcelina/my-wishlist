@@ -930,15 +930,23 @@ export async function searchByName(
 }
 
 /**
- * Identify a product from an image using OpenAI Lens pipeline
+ * Identify a product from an image using OpenAI Lens pipeline (PRIMARY)
  * 
  * PIPELINE:
  * 1. OpenAI Vision analyzes the image and returns structured product data
- * 2. Performs store search based on the identified product (placeholder for now)
+ * 2. Performs store search based on the identified product
  * 3. Returns identified product details and shopping offers
  * 
- * This is the NEW implementation that returns offers list (Lyst-style)
+ * This is the PRIMARY implementation that returns offers list (Lyst-style)
  * Use this for the enhanced product discovery flow
+ * 
+ * Returns:
+ * - status: 'ok' | 'no_results' | 'error'
+ * - identified: { title, brand, category, attributes, search_query, confidence }
+ * - offers: [{ store, title, price, currency, product_url, image_url, score }]
+ * - message: Optional error/info message
+ * - code: Optional error code (e.g., 'AUTH_REQUIRED')
+ * - debug: Optional debug info (provider, query_used)
  */
 export async function identifyProductFromImage(
   imageBase64?: string,
@@ -955,7 +963,7 @@ export async function identifyProductFromImage(
   }
 ): Promise<IdentifyProductFromImageResponse> {
   try {
-    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline');
+    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline (PRIMARY)');
 
     // GUARD: Check auth state BEFORE calling edge function
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -1005,7 +1013,11 @@ export async function identifyProductFromImage(
     );
 
     console.log('[identifyProductFromImage] Pipeline complete');
-    console.log('[identifyProductFromImage] Status:', response.status, 'Offers:', response.offers.length);
+    console.log('[identifyProductFromImage] Status:', response.status);
+    console.log('[identifyProductFromImage] Identified:', response.identified?.title || 'N/A');
+    console.log('[identifyProductFromImage] Brand:', response.identified?.brand || 'N/A');
+    console.log('[identifyProductFromImage] Confidence:', response.identified?.confidence || 0);
+    console.log('[identifyProductFromImage] Offers:', response.offers?.length || 0);
 
     return response;
   } catch (error: any) {
