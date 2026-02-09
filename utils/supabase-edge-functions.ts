@@ -176,8 +176,8 @@ export interface IdentifyProductFromImageRequest {
     width: number;
     height: number;
   };
-  countryCode?: string;
-  currency?: string;
+  country_code?: string;
+  currency_code?: string;
 }
 
 export interface IdentifyProductFromImageResponse {
@@ -732,6 +732,23 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
 let identifyInProgress = false;
 
 /**
+ * Normalize base64 input by stripping data URI prefix
+ * Ensures clean base64 string is sent to edge functions
+ */
+function normalizeBase64(base64String: string): string {
+  if (base64String.startsWith('data:image')) {
+    const parts = base64String.split(',');
+    if (parts.length > 1) {
+      if (__DEV__) {
+        console.log('[normalizeBase64] Stripped data URI prefix, original length:', base64String.length, 'new length:', parts[1].length);
+      }
+      return parts[1];
+    }
+  }
+  return base64String;
+}
+
+/**
  * Identify a product from an image using a robust Google Lens-style pipeline
  * 
  * PIPELINE:
@@ -751,6 +768,12 @@ let identifyInProgress = false;
  * - Prevents multiple parallel identify calls
  * - Checks auth state before calling edge function
  * - If AUTH_REQUIRED is thrown → stops and returns error (no retry loops)
+ * 
+ * PAYLOAD FORMAT (camelCase):
+ * - imageBase64 (not image_base64)
+ * - imageUrl (not image_url)
+ * - countryCode (not country_code)
+ * - currencyCode (not currency_code)
  */
 export async function identifyFromImage(
   imageBase64?: string,
@@ -824,16 +847,28 @@ export async function identifyFromImage(
       };
     }
 
+    // Normalize base64 input (strip data URI prefix if present)
+    const normalizedBase64 = normalizeBase64(imageBase64);
+
     console.log('[identifyFromImage] Calling Edge Function with image data');
+    if (__DEV__) {
+      console.log('[DEV] Calling identify-from-image with keys:', Object.keys({
+        imageBase64: normalizedBase64,
+        countryCode: options?.countryCode,
+        currencyCode: options?.currencyCode,
+        locale: options?.locale,
+        hints: options?.hints,
+      }).filter(k => k !== 'imageBase64').join(', '), '+ imageBase64');
+    }
 
     // Call Edge Function with image data using the safe wrapper
-    // This will throw AUTH_REQUIRED if auth fails - we catch it below
+    // CRITICAL: Use camelCase keys for identify-from-image
     const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
       'identify-from-image',
       {
-        imageBase64,
-        countryCode: options?.countryCode,
-        currencyCode: options?.currencyCode,
+        imageBase64: normalizedBase64, // camelCase
+        countryCode: options?.countryCode, // camelCase
+        currencyCode: options?.currencyCode, // camelCase
         locale: options?.locale,
         hints: options?.hints,
       },
@@ -947,6 +982,13 @@ export async function searchByName(
  * - message: Optional error/info message
  * - code: Optional error code (e.g., 'AUTH_REQUIRED')
  * - debug: Optional debug info (provider, query_used)
+ * 
+ * PAYLOAD FORMAT (snake_case):
+ * - image_base64 (not imageBase64)
+ * - image_url (not imageUrl)
+ * - crop_box (not cropBox)
+ * - country_code (not countryCode)
+ * - currency_code (not currency)
  */
 export async function identifyProductFromImage(
   imageBase64?: string,
@@ -998,16 +1040,30 @@ export async function identifyProductFromImage(
       };
     }
 
-    console.log('[identifyProductFromImage] Calling Edge Function');
+    // Normalize base64 input (strip data URI prefix if present)
+    const normalizedBase64 = imageBase64 ? normalizeBase64(imageBase64) : undefined;
 
+    console.log('[identifyProductFromImage] Calling Edge Function');
+    if (__DEV__) {
+      const payloadKeys = [
+        normalizedBase64 ? 'image_base64' : null,
+        options?.imageUrl ? 'image_url' : null,
+        options?.cropBox ? 'crop_box' : null,
+        options?.countryCode ? 'country_code' : null,
+        options?.currency ? 'currency_code' : null,
+      ].filter(Boolean);
+      console.log('[DEV] Calling identify-product-from-image with keys:', payloadKeys.join(', '));
+    }
+
+    // CRITICAL: Use snake_case keys for identify-product-from-image
     const response = await callEdgeFunctionSafely<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
       'identify-product-from-image',
       {
-        image_base64: imageBase64,
-        image_url: options?.imageUrl,
-        crop_box: options?.cropBox,
-        countryCode: options?.countryCode,
-        currency: options?.currency,
+        image_base64: normalizedBase64, // snake_case
+        image_url: options?.imageUrl, // snake_case
+        crop_box: options?.cropBox, // snake_case
+        country_code: options?.countryCode, // snake_case (converted from countryCode)
+        currency_code: options?.currency, // snake_case (converted from currency)
       },
       { showErrorAlert: false }
     );
