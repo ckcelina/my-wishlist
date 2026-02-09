@@ -102,7 +102,7 @@ export default function ImportPreviewScreen() {
     if (user) {
       loadWishlists();
     }
-  }, [user, loadWishlists]);
+  }, [user, loadWishlists, params, router]);
 
   const handleSelectItem = (item: IdentifiedItem) => {
     console.log('[ImportPreviewScreen] Selected item:', item.title);
