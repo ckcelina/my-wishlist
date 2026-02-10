@@ -179,14 +179,6 @@ export function isEnvironmentConfigured(): boolean {
 }
 
 /**
- * Check if backend URL is configured
- * This is REQUIRED for backend API features (global search, etc.)
- */
-export function isBackendConfigured(): boolean {
-  return !!appConfig.backendUrl;
-}
-
-/**
  * Get user-friendly error message for missing configuration
  */
 export function getConfigurationErrorMessage(): string {
@@ -200,14 +192,6 @@ export function getConfigurationErrorMessage(): string {
     return 'Authentication is not configured. Please contact support.';
   }
   return 'Configuration error. Please contact support.';
-}
-
-/**
- * Get user-friendly error message for missing backend URL
- * This is a CRITICAL error - backend features will not work
- */
-export function getBackendConfigurationErrorMessage(): string {
-  return 'Backend API is not configured. Global search and AI features are unavailable. Please check app.config.js and ensure BACKEND_URL is set.';
 }
 
 /**
@@ -237,13 +221,6 @@ export function verifyConfiguration(): {
     errors.push('Invalid supabaseUrl format - must be a Supabase URL');
   }
   
-  // Backend URL check (CRITICAL - now an error instead of warning)
-  if (!appConfig.backendUrl) {
-    errors.push('Missing backendUrl in app.json extra config - backend features will not work');
-  } else if (!appConfig.backendUrl.includes('supabase.co/functions/v1')) {
-    warnings.push('backendUrl does not point to Supabase Edge Functions - verify URL format');
-  }
-  
   // Parity checks (errors)
   if (appConfig.showDebugUI) {
     errors.push('showDebugUI is enabled - breaks production parity');
@@ -262,6 +239,10 @@ export function verifyConfiguration(): {
   }
   
   // Non-critical checks (warnings)
+  if (!appConfig.backendUrl) {
+    warnings.push('No backendUrl configured - backend features may not work');
+  }
+  
   if (!appConfig.affiliateIds.amazon && !appConfig.affiliateIds.ebay) {
     warnings.push('No affiliate IDs configured - monetization disabled');
   }
@@ -289,7 +270,7 @@ export function logConfiguration(): void {
   console.log('🔒 LOCKED CONFIGURATION:');
   console.log(`Supabase URL: ${appConfig.supabaseUrl || 'NOT CONFIGURED'}`);
   console.log(`Supabase Key: ${appConfig.supabaseAnonKey ? 'Configured' : 'NOT CONFIGURED'}`);
-  console.log(`Backend URL: ${appConfig.backendUrl || 'NOT CONFIGURED ❌'}`);
+  console.log(`Backend URL: ${appConfig.backendUrl || 'Not configured'}`);
   console.log('═══════════════════════════════════════════════════');
   console.log('🎯 PARITY VERIFICATION:');
   console.log(`Debug UI: ${appConfig.showDebugUI ? 'ENABLED ❌' : 'DISABLED ✅'}`);
@@ -308,7 +289,6 @@ export function logConfiguration(): void {
     console.log('✅✅✅ ALL CONFIGURATION CHECKS PASSED ✅✅✅');
     console.log('✅ Expo Go and production builds are identical');
     console.log('✅ No dev-only behavior differences');
-    console.log('✅ Backend URL configured and available');
   } else {
     console.log('❌ CONFIGURATION ERRORS:');
     verification.errors.forEach(error => console.log(`  ❌ ${error}`));

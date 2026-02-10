@@ -25,8 +25,17 @@ const SUPABASE_CONFIG = {
   },
 };
 
+// Backend configuration (locked per environment)
+// Supports both BACKEND_URL and EXPO_PUBLIC_API_BASE_URL for flexibility
+const BACKEND_CONFIG = {
+  DEV: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
+  PREVIEW: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
+  PROD: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
+};
+
 // Get current config
 const currentSupabaseConfig = SUPABASE_CONFIG[ENVIRONMENT];
+const currentBackendUrl = BACKEND_CONFIG[ENVIRONMENT];
 
 // App name with variant suffix
 const APP_NAME = IS_DEV ? 'My Wishlist (Dev)' : IS_PREVIEW ? 'My Wishlist (Preview)' : 'My Wishlist';
@@ -39,7 +48,7 @@ const BUNDLE_ID = IS_DEV ? `${BUNDLE_ID_BASE}.dev` : IS_PREVIEW ? `${BUNDLE_ID_B
 const PACKAGE_NAME_BASE = 'com.anonymous.MyWishlist';
 const PACKAGE_NAME = IS_DEV ? `${PACKAGE_NAME_BASE}.dev` : IS_PREVIEW ? `${PACKAGE_NAME_BASE}.preview` : PACKAGE_NAME_BASE;
 
-module.exports = {
+export default {
   expo: {
     name: APP_NAME,
     slug: 'My Wishlist',
@@ -149,21 +158,8 @@ module.exports = {
       supabaseAnonKey: currentSupabaseConfig.anonKey,
       supabaseEdgeFunctionsUrl: currentSupabaseConfig.edgeFunctionsUrl,
       
-      // ═══════════════════════════════════════════════════════
-      // 🚀 BACKEND_URL - SUPABASE EDGE FUNCTIONS BASE URL
-      // ═══════════════════════════════════════════════════════
-      // This points to the Supabase Edge Functions base URL.
-      // All Edge Functions are available at this endpoint.
-      // Format: https://<project-ref>.supabase.co/functions/v1
-      //
-      // This is REQUIRED for:
-      // - Global search functionality
-      // - AI-powered product identification
-      // - Price tracking and alerts
-      // - All backend API features
-      //
-      // If missing, the app will show configuration errors.
-      backendUrl: process.env.BACKEND_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
+      // Backend Configuration (locked per environment)
+      backendUrl: currentBackendUrl,
       
       // Natively Configuration
       nativelyEnvironment: 'supabase',
@@ -199,4 +195,5 @@ module.exports = {
     },
     runtimeVersion: '1.0.0',
   },
+  scheme: 'My Wishlist',
 };

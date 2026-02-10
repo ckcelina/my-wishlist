@@ -19,7 +19,6 @@ import { colors, typography, spacing } from '@/styles/designSystem';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
-import { appConfig, isBackendConfigured, getBackendConfigurationErrorMessage } from '@/utils/environmentConfig';
 
 interface DiagnosticResult {
   name: string;
@@ -47,24 +46,13 @@ export default function DiagnosticsEnhancedScreen() {
     });
   };
 
-  // Safe rendering helper - NEVER render objects directly
-  const renderValue = (value: any): string => {
-    if (value === null || value === undefined) {
-      return 'N/A';
-    }
-    if (typeof value === 'object') {
-      return JSON.stringify(value, null, 2);
-    }
-    return String(value);
-  };
-
   const runDiagnostics = async () => {
     console.log('[Diagnostics] Starting comprehensive diagnostics');
     setTesting(true);
     setResults([]);
     setProgress(0);
 
-    const totalTests = 19;
+    const totalTests = 19; // Updated count
     let currentTest = 0;
 
     const incrementProgress = () => {
@@ -72,20 +60,19 @@ export default function DiagnosticsEnhancedScreen() {
       setProgress((currentTest / totalTests) * 100);
     };
 
-    // Get Supabase configuration
-    const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
-    const supabaseKey = Constants.expoConfig?.extra?.supabaseAnonKey;
-
     // Test 1: Supabase Connection
     try {
       updateResult({ name: 'Supabase Connection', status: 'pending', message: 'Testing...' });
+      
+      const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl;
+      const supabaseKey = Constants.expoConfig?.extra?.supabaseAnonKey;
       
       if (!supabaseUrl || !supabaseKey) {
         updateResult({
           name: 'Supabase Connection',
           status: 'fail',
           message: 'Supabase credentials missing',
-          details: 'Check app.config.js extra config',
+          details: 'Check app.json extra config',
         });
       } else {
         const { data, error } = await supabase.from('wishlists').select('count').limit(1);
@@ -95,14 +82,14 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'Supabase Connection',
             status: 'fail',
             message: 'Connection failed',
-            details: renderValue(error.message),
+            details: error.message,
           });
         } else {
           updateResult({
             name: 'Supabase Connection',
             status: 'pass',
             message: 'Connected successfully',
-            details: `URL: ${supabaseUrl}`,
+            details: `URL: ${supabaseUrl.substring(0, 30)}...`,
           });
         }
       }
@@ -111,7 +98,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Supabase Connection',
         status: 'fail',
         message: 'Connection error',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -127,15 +114,14 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Authentication',
           status: 'fail',
           message: 'Auth check failed',
-          details: renderValue(error.message),
+          details: error.message,
         });
       } else if (session && user) {
-        const userIdPreview = user.id.substring(0, 8);
         updateResult({
           name: 'Authentication',
           status: 'pass',
           message: 'User authenticated',
-          details: `User ID: ${userIdPreview}...`,
+          details: `User ID: ${user.id.substring(0, 8)}...`,
         });
       } else {
         updateResult({
@@ -150,13 +136,13 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Authentication',
         status: 'fail',
         message: 'Auth error',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
 
     // Test 2.5: Auth Ping (Edge Function Auth Verification)
-    if (user && supabaseUrl && supabaseKey) {
+    if (user) {
       try {
         updateResult({ name: 'Edge Function Auth', status: 'pending', message: 'Testing auth-ping...' });
         
@@ -171,11 +157,11 @@ export default function DiagnosticsEnhancedScreen() {
           });
         } else {
           // Call auth-ping Edge Function directly
-          const response = await fetch(`${supabaseUrl}/functions/v1/auth-ping`, {
+          const response = await fetch(`${Constants.expoConfig?.extra?.supabaseUrl}/functions/v1/auth-ping`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'apikey': supabaseKey,
+              'apikey': Constants.expoConfig?.extra?.supabaseAnonKey,
               'Authorization': `Bearer ${session.access_token}`,
             },
             body: JSON.stringify({}),
@@ -184,19 +170,18 @@ export default function DiagnosticsEnhancedScreen() {
           const data = await response.json();
 
           if (response.ok && data.status === 'ok') {
-            const userIdPreview = data.userId.substring(0, 8);
             updateResult({
               name: 'Edge Function Auth',
               status: 'pass',
               message: 'Auth ping successful',
-              details: `User ID verified: ${userIdPreview}...`,
+              details: `User ID verified: ${data.userId.substring(0, 8)}...`,
             });
           } else {
             updateResult({
               name: 'Edge Function Auth',
               status: 'fail',
               message: 'Auth ping failed',
-              details: renderValue(data.message) || 'Session is not valid or function not deployed.',
+              details: data.message || 'Your app is pointing to the wrong Supabase project or session is not valid.',
             });
           }
         }
@@ -205,7 +190,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Edge Function Auth',
           status: 'fail',
           message: 'Auth ping error',
-          details: renderValue(error.message) || 'Failed to call auth-ping Edge Function',
+          details: error.message || 'Failed to call auth-ping Edge Function',
         });
       }
     } else {
@@ -260,7 +245,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Database Schema',
         status: 'fail',
         message: 'Schema check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -280,15 +265,14 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'Wishlists CRUD',
             status: 'fail',
             message: 'Fetch failed',
-            details: renderValue(fetchError.message),
+            details: fetchError.message,
           });
         } else {
-          const wishlistCount = wishlists?.length || 0;
           updateResult({
             name: 'Wishlists CRUD',
             status: 'pass',
             message: 'CRUD operations working',
-            details: `Found ${wishlistCount} wishlists`,
+            details: `Found ${wishlists?.length || 0} wishlists`,
           });
         }
       } catch (error) {
@@ -296,7 +280,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Wishlists CRUD',
           status: 'fail',
           message: 'CRUD test failed',
-          details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     } else {
@@ -309,118 +293,256 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Helper function to check Edge Function availability
-    const checkEdgeFunction = async (functionName: string): Promise<DiagnosticResult> => {
-      if (!supabaseUrl || !supabaseKey) {
-        return {
-          name: `Edge Function: ${functionName}`,
-          status: 'fail',
-          message: 'Supabase not configured',
-          details: 'Check app.config.js',
-        };
-      }
-
-      try {
-        console.log(`[Diagnostics] Checking Edge Function: ${functionName}`);
-        
-        // Get session for auth header
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        // Build headers with apikey and optional Authorization
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'apikey': supabaseKey,
-        };
-        
-        // Add Authorization header if user is logged in
-        if (session?.access_token) {
-          headers['Authorization'] = `Bearer ${session.access_token}`;
-        }
-        
-        // Make a test call to the Edge Function using SUPABASE_URL
-        const response = await fetch(`${supabaseUrl}/functions/v1/${functionName}`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({}),
-        });
-
-        console.log(`[Diagnostics] ${functionName} response status: ${response.status}`);
-
-        // 200 = function works
-        // 401 = function exists but requires auth (AVAILABLE)
-        // 400 = function exists but bad request (AVAILABLE)
-        // 405 = function exists but wrong method (AVAILABLE)
-        // 404 = function not deployed (NOT AVAILABLE)
-        
-        if (response.status === 200) {
-          return {
-            name: `Edge Function: ${functionName}`,
-            status: 'pass',
-            message: 'Available',
-            details: 'Function is deployed and responding',
-          };
-        } else if (response.status === 401) {
-          return {
-            name: `Edge Function: ${functionName}`,
-            status: 'pass',
-            message: 'Available (Auth Required)',
-            details: 'Function is deployed and requires authentication',
-          };
-        } else if (response.status === 400 || response.status === 405) {
-          return {
-            name: `Edge Function: ${functionName}`,
-            status: 'pass',
-            message: 'Available',
-            details: `Function is deployed (status ${response.status})`,
-          };
-        } else if (response.status === 404) {
-          return {
-            name: `Edge Function: ${functionName}`,
+    // Test 5: Edge Function - extract-item
+    try {
+      updateResult({ name: 'Edge Function: extract-item', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('extract-item', {
+        body: { url: 'https://example.com/test' },
+      });
+      
+      if (error) {
+        // Check if it's a 404 (function not deployed)
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: extract-item',
             status: 'fail',
             message: 'Not deployed',
             details: 'Function not found on server',
-          };
-        } else {
-          return {
-            name: `Edge Function: ${functionName}`,
+          });
+        } 
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: extract-item',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
+          updateResult({
+            name: 'Edge Function: extract-item',
             status: 'warning',
             message: 'Deployed but error',
-            details: `Status: ${response.status}`,
-          };
+            details: error.message,
+          });
         }
-      } catch (error: any) {
-        console.error(`[Diagnostics] Error checking ${functionName}:`, error.message);
-        return {
-          name: `Edge Function: ${functionName}`,
+      } else {
+        updateResult({
+          name: 'Edge Function: extract-item',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: extract-item',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: extract-item',
           status: 'fail',
           message: 'Not available',
-          details: renderValue(error.message) || 'Network error or DNS failure',
-        };
+          details: error.message || 'Function invocation failed',
+        });
       }
-    };
-
-    // Test 5: Edge Function - extract-item
-    updateResult({ name: 'Edge Function: extract-item', status: 'pending', message: 'Testing...' });
-    const extractItemResult = await checkEdgeFunction('extract-item');
-    updateResult(extractItemResult);
+    }
     incrementProgress();
 
-    // Test 6: Edge Function - identify-product-from-image (PRIMARY)
-    updateResult({ name: 'Edge Function: identify-product-from-image', status: 'pending', message: 'Testing...' });
-    const identifyProductFromImageResult = await checkEdgeFunction('identify-product-from-image');
-    updateResult(identifyProductFromImageResult);
+    // Test 6: Edge Function - identify-from-image
+    try {
+      updateResult({ name: 'Edge Function: identify-from-image', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('identify-from-image', {
+        body: { imageUrl: 'https://example.com/test.jpg' },
+      });
+      
+      if (error) {
+        // Check if it's a 404 (function not deployed)
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
+          updateResult({
+            name: 'Edge Function: identify-from-image',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: identify-from-image',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
+    }
     incrementProgress();
 
     // Test 7: Edge Function - find-alternatives
-    updateResult({ name: 'Edge Function: find-alternatives', status: 'pending', message: 'Testing...' });
-    const findAlternativesResult = await checkEdgeFunction('find-alternatives');
-    updateResult(findAlternativesResult);
+    try {
+      updateResult({ name: 'Edge Function: find-alternatives', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('find-alternatives', {
+        body: { title: 'Test Product' },
+      });
+      
+      if (error) {
+        // Check if it's a 404 (function not deployed)
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
+          updateResult({
+            name: 'Edge Function: find-alternatives',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: find-alternatives',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
+    }
     incrementProgress();
 
     // Test 8: Edge Function - import-wishlist
-    updateResult({ name: 'Edge Function: import-wishlist', status: 'pending', message: 'Testing...' });
-    const importWishlistResult = await checkEdgeFunction('import-wishlist');
-    updateResult(importWishlistResult);
+    try {
+      updateResult({ name: 'Edge Function: import-wishlist', status: 'pending', message: 'Testing...' });
+      
+      const { data, error } = await supabase.functions.invoke('import-wishlist', {
+        body: { wishlistUrl: 'https://example.com/wishlist' },
+      });
+      
+      if (error) {
+        // Check if it's a 404 (function not deployed)
+        if (error.message.includes('not found') || error.message.includes('404')) {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'fail',
+            message: 'Not deployed',
+            details: 'Function not found on server',
+          });
+        }
+        // 401, 405, 400 mean the function exists but requires auth or specific input
+        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed (requires auth or valid input)',
+          });
+        }
+        else {
+          updateResult({
+            name: 'Edge Function: import-wishlist',
+            status: 'warning',
+            message: 'Deployed but error',
+            details: error.message,
+          });
+        }
+      } else {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed and responding',
+        });
+      }
+    } catch (error: any) {
+      // Check if it's a 401, 405, or 400 error (function exists)
+      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'pass',
+          message: 'Available',
+          details: 'Function is deployed (requires auth or valid input)',
+        });
+      } else {
+        updateResult({
+          name: 'Edge Function: import-wishlist',
+          status: 'fail',
+          message: 'Not available',
+          details: error.message || 'Function invocation failed',
+        });
+      }
+    }
     incrementProgress();
 
     // Test 9: Notifications Permission
@@ -449,7 +571,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Notifications',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -480,7 +602,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Image Picker',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -496,15 +618,14 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Storage',
           status: 'fail',
           message: 'Storage check failed',
-          details: renderValue(error.message),
+          details: error.message,
         });
       } else {
-        const bucketCount = buckets?.length || 0;
         updateResult({
           name: 'Storage',
           status: 'pass',
           message: 'Storage accessible',
-          details: `Found ${bucketCount} buckets`,
+          details: `Found ${buckets?.length || 0} buckets`,
         });
       }
     } catch (error) {
@@ -512,7 +633,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Storage',
         status: 'fail',
         message: 'Storage error',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -543,18 +664,17 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Deep Linking',
         status: 'fail',
         message: 'Deep linking check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
 
     // Test 13: Platform Detection
-    const platformVersion = renderValue(Platform.Version);
     updateResult({
       name: 'Platform',
       status: 'pass',
       message: `Running on ${Platform.OS}`,
-      details: `Version: ${platformVersion}`,
+      details: `Version: ${Platform.Version}`,
     });
     incrementProgress();
 
@@ -565,7 +685,6 @@ export default function DiagnosticsEnhancedScreen() {
       const requiredVars = [
         'supabaseUrl',
         'supabaseAnonKey',
-        'backendUrl', // Now REQUIRED
       ];
       
       const missing = requiredVars.filter(
@@ -592,7 +711,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Environment',
         status: 'fail',
         message: 'Environment check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -647,15 +766,14 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'User Settings',
             status: 'fail',
             message: 'Settings check failed',
-            details: renderValue(error.message),
+            details: error.message,
           });
         } else if (data) {
-          const currency = renderValue(data.default_currency);
           updateResult({
             name: 'User Settings',
             status: 'pass',
             message: 'Settings exist',
-            details: `Currency: ${currency}`,
+            details: `Currency: ${data.default_currency}`,
           });
         } else {
           updateResult({
@@ -670,7 +788,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'User Settings',
           status: 'fail',
           message: 'Settings error',
-          details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+          details: error instanceof Error ? error.message : String(error),
         });
       }
     } else {
@@ -720,7 +838,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Share Sheet',
         status: 'fail',
         message: 'Config check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
@@ -751,45 +869,48 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Camera Permission',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        details: error instanceof Error ? error.message : String(error),
       });
     }
     incrementProgress();
 
-    // Test 19: Backend API URL (REQUIRED)
+    // Test 19: OpenAI Key Configuration (Edge Functions)
     try {
-      updateResult({ name: 'Backend API URL', status: 'pending', message: 'Checking...' });
+      updateResult({ name: 'OpenAI Configuration', status: 'pending', message: 'Checking...' });
       
-      const backendUrl = appConfig.backendUrl;
+      // Try a real extraction to see if OpenAI key is configured
+      const { data, error } = await supabase.functions.invoke('extract-item', {
+        body: { url: 'https://www.amazon.com/test' },
+      });
       
-      if (!backendUrl) {
+      if (error) {
         updateResult({
-          name: 'Backend API URL',
-          status: 'fail',
-          message: 'NOT CONFIGURED',
-          details: getBackendConfigurationErrorMessage(),
-        });
-      } else if (!backendUrl.includes('supabase.co/functions/v1')) {
-        updateResult({
-          name: 'Backend API URL',
+          name: 'OpenAI Configuration',
           status: 'warning',
-          message: 'Configured but invalid format',
-          details: `Expected Supabase Edge Functions URL, got: ${backendUrl}`,
+          message: 'Cannot verify',
+          details: 'Edge function error',
+        });
+      } else if (data && data.error && data.error.includes('configuration')) {
+        updateResult({
+          name: 'OpenAI Configuration',
+          status: 'fail',
+          message: 'OpenAI key not configured',
+          details: 'Set OPENAI_API_KEY in Supabase secrets',
         });
       } else {
         updateResult({
-          name: 'Backend API URL',
+          name: 'OpenAI Configuration',
           status: 'pass',
-          message: 'Configured correctly',
-          details: backendUrl,
+          message: 'OpenAI key configured',
+          details: 'AI features enabled',
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       updateResult({
-        name: 'Backend API URL',
-        status: 'fail',
-        message: 'Configuration check failed',
-        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
+        name: 'OpenAI Configuration',
+        status: 'warning',
+        message: 'Cannot verify',
+        details: 'Check Edge Functions',
       });
     }
     incrementProgress();

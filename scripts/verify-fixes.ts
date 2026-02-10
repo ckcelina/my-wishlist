@@ -6,8 +6,6 @@
  * npx ts-node scripts/verify-fixes.ts
  */
 
-import fs from 'fs';
-import path from 'path';
 import { supabase } from '../lib/supabase';
 
 interface VerificationResult {
@@ -155,6 +153,10 @@ async function verifyCircularImport() {
   console.log('\n🔍 Verifying circular import fix...');
   
   try {
+    // Check if add.tsx and add.ios.tsx exist
+    const fs = require('fs');
+    const path = require('path');
+    
     const addTsxPath = path.join(__dirname, '../app/(tabs)/add.tsx');
     const addIosTsxPath = path.join(__dirname, '../app/(tabs)/add.ios.tsx');
     

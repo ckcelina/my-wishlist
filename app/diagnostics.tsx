@@ -52,17 +52,6 @@ export default function DiagnosticsScreen() {
   const statusColor = connectionStatus?.connected ? '#4CAF50' : '#F44336';
   const statusText = connectionStatus?.connected ? 'Connected' : 'Not Connected';
 
-  // Safe rendering helpers - NEVER render objects directly
-  const renderValue = (value: any): string => {
-    if (value === null || value === undefined) {
-      return 'N/A';
-    }
-    if (typeof value === 'object') {
-      return JSON.stringify(value, null, 2);
-    }
-    return String(value);
-  };
-
   return (
     <>
       <Stack.Screen
@@ -111,12 +100,12 @@ export default function DiagnosticsScreen() {
                   </View>
                   
                   {connectionStatus?.error && (
-                    <Text style={styles.errorText}>{renderValue(connectionStatus.error)}</Text>
+                    <Text style={styles.errorText}>{connectionStatus.error}</Text>
                   )}
                 </View>
 
                 <View style={styles.detailsCard}>
-                  <DetailRow label="URL" value={renderValue(config.url)} />
+                  <DetailRow label="URL" value={config.url} />
                   <DetailRow label="Anon Key" value={config.hasAnonKey ? 'Configured' : 'Missing'} />
                   <DetailRow 
                     label="Auth" 
@@ -134,7 +123,7 @@ export default function DiagnosticsScreen() {
                 <Text style={styles.sectionTitle}>Backend API</Text>
                 
                 <View style={styles.detailsCard}>
-                  <DetailRow label="URL" value={renderValue(backendUrl) || 'Not configured'} />
+                  <DetailRow label="URL" value={backendUrl || 'Not configured'} />
                 </View>
               </View>
 
@@ -157,8 +146,8 @@ export default function DiagnosticsScreen() {
                       value={edgeFunctionStatus.importWishlist ? '✅ Available' : '❌ Not Available'} 
                     />
                     <DetailRow 
-                      label="identify-product-from-image" 
-                      value={edgeFunctionStatus.identifyProductFromImage ? '✅ Available' : '❌ Not Available'} 
+                      label="identify-from-image" 
+                      value={edgeFunctionStatus.identifyFromImage ? '✅ Available' : '❌ Not Available'} 
                     />
                   </View>
                 </View>
@@ -172,8 +161,8 @@ export default function DiagnosticsScreen() {
                   <DetailRow label="Authenticated" value={user ? 'Yes' : 'No'} />
                   {user && (
                     <>
-                      <DetailRow label="User ID" value={renderValue(user.id)} />
-                      <DetailRow label="Email" value={renderValue(user.email)} />
+                      <DetailRow label="User ID" value={user.id} />
+                      <DetailRow label="Email" value={user.email} />
                     </>
                   )}
                 </View>

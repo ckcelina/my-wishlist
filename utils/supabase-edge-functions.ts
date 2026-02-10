@@ -109,6 +109,40 @@ export interface ImportWishlistResponse {
   error?: string;
 }
 
+export interface IdentifyFromImageRequest {
+  imageBase64?: string;
+  imageUrl?: string;
+  countryCode?: string;
+  currencyCode?: string;
+  locale?: string;
+  hints?: string[];
+}
+
+export interface ProductCandidate {
+  title: string;
+  brand?: string | null;
+  model?: string | null;
+  category?: string | null;
+  imageUrl?: string;
+  storeUrl?: string;
+  price?: number | null;
+  currency?: string | null;
+  storeName?: string | null;
+  source?: string;
+  score?: number;
+  reason?: string;
+}
+
+export interface IdentifyFromImageResponse {
+  status: 'ok' | 'no_results' | 'error';
+  providerUsed: 'openai_vision' | 'serpapi_google_lens' | 'bing_visual_search' | 'none';
+  confidence: number; // 0.0 - 1.0
+  query: string;
+  items: ProductCandidate[];
+  message?: string;
+  code?: string;
+}
+
 export interface IdentifiedProduct {
   title: string;
   brand?: string;
@@ -187,10 +221,10 @@ const SUPABASE_URL = appConfig.supabaseUrl || '';
 const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
 // List of expected Edge Functions (case-sensitive)
-// NOTE: identify-from-image is DEPRECATED - use identify-product-from-image instead
 const EXPECTED_EDGE_FUNCTIONS = [
   'search-item',
-  'identify-product-from-image', // PRIMARY: OpenAI Lens pipeline with offers
+  'identify-from-image',
+  'identify-product-from-image', // NEW: OpenAI Lens pipeline with offers
   'extract-item',
   'find-alternatives',
   'import-wishlist',
@@ -217,14 +251,14 @@ if (!isEnvironmentConfigured()) {
   console.log('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
 }
 
-// Check BACKEND_URL configuration (for global search) - OPTIONAL
+// Check BACKEND_URL configuration (for global search)
 const BACKEND_URL = appConfig.backendUrl || '';
-console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '⚠️ Not configured (optional)');
+console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '❌ Missing');
 
-if (!BACKEND_URL && __DEV__) {
-  console.warn('⚠️ [Backend] BACKEND_URL is not configured in app.config.js');
-  console.warn('   This is optional. Backend API features (global search) will not work.');
-  console.warn('   To enable, set BACKEND_URL in app.config.js or .env file.');
+if (!BACKEND_URL) {
+  console.error('❌ [Backend] BACKEND_URL is NOT configured in app.config.js');
+  console.error('   Global search and other backend features will NOT work.');
+  console.error('   Please set BACKEND_URL in app.config.js or .env file.');
 }
 
 console.log('═══════════════════════════════════════════════════════════════');
@@ -754,6 +788,9 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
   }
 }
 
+// Track if identify-from-image is currently running to prevent parallel calls
+let identifyInProgress = false;
+
 /**
  * Normalize base64 input by stripping data URI prefix
  * Ensures clean base64 string is sent to edge functions
@@ -769,6 +806,168 @@ function normalizeBase64(base64String: string): string {
     }
   }
   return base64String;
+}
+
+/**
+ * Identify a product from an image using a robust Google Lens-style pipeline
+ * 
+ * PIPELINE:
+ * 1. Send image (base64 or URL) directly to Edge Function
+ * 2. Edge Function runs pipeline:
+ *    a) Validate auth (verify_jwt=true), reject images > 6MB
+ *    b) Check rate limit (20 searches/day per user)
+ *    c) FIRST TRY (optional): OpenAI Vision for high-confidence identification
+ *    d) FALLBACK: Visual search provider (SerpAPI Google Lens / Bing Visual Search)
+ *    e) Fetch product pages and extract schema.org / OpenGraph data
+ *    f) Score, dedupe, and return top 5-8 candidates
+ * 3. Returns structured JSON with status, items, and metadata
+ * 
+ * ALWAYS returns a response - never silently fails
+ * 
+ * GUARDS:
+ * - Prevents multiple parallel identify calls
+ * - Checks auth state before calling edge function
+ * - If AUTH_REQUIRED is thrown → stops and returns error (no retry loops)
+ * 
+ * PAYLOAD FORMAT (camelCase):
+ * - imageBase64 (not image_base64)
+ * - imageUrl (not image_url)
+ * - countryCode (not country_code)
+ * - currencyCode (not currency_code)
+ */
+export async function identifyFromImage(
+  imageBase64?: string,
+  options?: {
+    countryCode?: string;
+    currencyCode?: string;
+    locale?: string;
+    hints?: string[];
+  }
+): Promise<IdentifyFromImageResponse> {
+  try {
+    console.log('[identifyFromImage] Starting image identification');
+
+    // GUARD: Prevent multiple parallel identify calls
+    if (identifyInProgress) {
+      console.warn('[identifyFromImage] Identify already in progress - blocking parallel call');
+      return {
+        status: 'error',
+        message: 'Image identification already in progress. Please wait.',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
+    identifyInProgress = true;
+
+    // GUARD: Check auth state BEFORE calling edge function
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session || !session.access_token) {
+      console.error('[identifyFromImage] Invalid auth state - redirecting to login');
+      identifyInProgress = false;
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
+    // Get current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('[identifyFromImage] User not authenticated');
+      identifyInProgress = false;
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
+    if (!imageBase64) {
+      identifyInProgress = false;
+      return {
+        status: 'error',
+        message: 'imageBase64 is required',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+
+    // Normalize base64 input (strip data URI prefix if present)
+    const normalizedBase64 = normalizeBase64(imageBase64);
+
+    console.log('[identifyFromImage] Calling Edge Function with image data');
+    if (__DEV__) {
+      console.log('[DEV] Calling identify-from-image with keys:', Object.keys({
+        imageBase64: normalizedBase64,
+        countryCode: options?.countryCode,
+        currencyCode: options?.currencyCode,
+        locale: options?.locale,
+        hints: options?.hints,
+      }).filter(k => k !== 'imageBase64').join(', '), '+ imageBase64');
+    }
+
+    // Call Edge Function with image data using the safe wrapper
+    // CRITICAL: Use camelCase keys for identify-from-image
+    const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
+      'identify-from-image',
+      {
+        imageBase64: normalizedBase64, // camelCase
+        countryCode: options?.countryCode, // camelCase
+        currencyCode: options?.currencyCode, // camelCase
+        locale: options?.locale,
+        hints: options?.hints,
+      },
+      { showErrorAlert: false } // We'll handle errors ourselves
+    );
+
+    console.log('[identifyFromImage] Identification complete');
+    console.log('[identifyFromImage] Status:', response.status, 'Provider:', response.providerUsed, 'Items:', response.items.length);
+
+    identifyInProgress = false;
+    return response;
+  } catch (error: any) {
+    console.error('[identifyFromImage] Failed:', error);
+    identifyInProgress = false;
+    
+    // Check for AUTH_REQUIRED - stop and redirect (no retry loops)
+    if (error.message === 'AUTH_REQUIRED') {
+      console.log('[identifyFromImage] AUTH_REQUIRED caught - returning error status');
+      return {
+        status: 'error',
+        message: 'AUTH_REQUIRED',
+        code: 'AUTH_REQUIRED',
+        providerUsed: 'none',
+        confidence: 0,
+        query: '',
+        items: [],
+      };
+    }
+    
+    // Return safe fallback
+    return {
+      status: 'error',
+      message: error.message || 'Failed to identify product',
+      providerUsed: 'none',
+      confidence: 0,
+      query: '',
+      items: [],
+    };
+  }
 }
 
 /**
@@ -826,11 +1025,7 @@ export async function searchByName(
 }
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * PRIMARY IMAGE IDENTIFICATION FUNCTION
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Identify a product from an image using OpenAI Lens pipeline
+ * Identify a product from an image using OpenAI Lens pipeline (PRIMARY)
  * 
  * PIPELINE:
  * 1. OpenAI Vision analyzes the image and returns structured product data
@@ -962,30 +1157,4 @@ export async function identifyProductFromImage(
       offers: [],
     };
   }
-}
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DEPRECATED: identifyFromImage
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ⚠️ DEPRECATED: This function is deprecated and will be removed in a future version.
- * 
- * Use identifyProductFromImage() instead, which provides:
- * - Better OpenAI Vision integration
- * - Structured product data with offers
- * - Improved error handling
- * - Consistent snake_case API
- * 
- * This function is kept for backward compatibility only.
- */
-export async function identifyFromImage(): Promise<never> {
-  console.error('❌ [identifyFromImage] DEPRECATED: This function is no longer supported.');
-  console.error('   Use identifyProductFromImage() instead.');
-  console.error('   See utils/supabase-edge-functions.ts for migration guide.');
-  
-  throw new Error(
-    'identifyFromImage() is deprecated. Use identifyProductFromImage() instead. ' +
-    'See documentation for migration guide.'
-  );
 }
