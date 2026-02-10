@@ -47,13 +47,24 @@ export default function DiagnosticsEnhancedScreen() {
     });
   };
 
+  // Safe rendering helper - NEVER render objects directly
+  const renderValue = (value: any): string => {
+    if (value === null || value === undefined) {
+      return 'N/A';
+    }
+    if (typeof value === 'object') {
+      return JSON.stringify(value, null, 2);
+    }
+    return String(value);
+  };
+
   const runDiagnostics = async () => {
     console.log('[Diagnostics] Starting comprehensive diagnostics');
     setTesting(true);
     setResults([]);
     setProgress(0);
 
-    const totalTests = 19; // Updated count
+    const totalTests = 19;
     let currentTest = 0;
 
     const incrementProgress = () => {
@@ -84,7 +95,7 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'Supabase Connection',
             status: 'fail',
             message: 'Connection failed',
-            details: error.message,
+            details: renderValue(error.message),
           });
         } else {
           updateResult({
@@ -100,7 +111,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Supabase Connection',
         status: 'fail',
         message: 'Connection error',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -116,14 +127,15 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Authentication',
           status: 'fail',
           message: 'Auth check failed',
-          details: error.message,
+          details: renderValue(error.message),
         });
       } else if (session && user) {
+        const userIdPreview = user.id.substring(0, 8);
         updateResult({
           name: 'Authentication',
           status: 'pass',
           message: 'User authenticated',
-          details: `User ID: ${user.id.substring(0, 8)}...`,
+          details: `User ID: ${userIdPreview}...`,
         });
       } else {
         updateResult({
@@ -138,7 +150,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Authentication',
         status: 'fail',
         message: 'Auth error',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -172,18 +184,19 @@ export default function DiagnosticsEnhancedScreen() {
           const data = await response.json();
 
           if (response.ok && data.status === 'ok') {
+            const userIdPreview = data.userId.substring(0, 8);
             updateResult({
               name: 'Edge Function Auth',
               status: 'pass',
               message: 'Auth ping successful',
-              details: `User ID verified: ${data.userId.substring(0, 8)}...`,
+              details: `User ID verified: ${userIdPreview}...`,
             });
           } else {
             updateResult({
               name: 'Edge Function Auth',
               status: 'fail',
               message: 'Auth ping failed',
-              details: data.message || 'Session is not valid or function not deployed.',
+              details: renderValue(data.message) || 'Session is not valid or function not deployed.',
             });
           }
         }
@@ -192,7 +205,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Edge Function Auth',
           status: 'fail',
           message: 'Auth ping error',
-          details: error.message || 'Failed to call auth-ping Edge Function',
+          details: renderValue(error.message) || 'Failed to call auth-ping Edge Function',
         });
       }
     } else {
@@ -247,7 +260,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Database Schema',
         status: 'fail',
         message: 'Schema check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -267,14 +280,15 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'Wishlists CRUD',
             status: 'fail',
             message: 'Fetch failed',
-            details: fetchError.message,
+            details: renderValue(fetchError.message),
           });
         } else {
+          const wishlistCount = wishlists?.length || 0;
           updateResult({
             name: 'Wishlists CRUD',
             status: 'pass',
             message: 'CRUD operations working',
-            details: `Found ${wishlists?.length || 0} wishlists`,
+            details: `Found ${wishlistCount} wishlists`,
           });
         }
       } catch (error) {
@@ -282,7 +296,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Wishlists CRUD',
           status: 'fail',
           message: 'CRUD test failed',
-          details: error instanceof Error ? error.message : String(error),
+          details: error instanceof Error ? renderValue(error.message) : renderValue(error),
         });
       }
     } else {
@@ -380,7 +394,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: `Edge Function: ${functionName}`,
           status: 'fail',
           message: 'Not available',
-          details: error.message || 'Network error or DNS failure',
+          details: renderValue(error.message) || 'Network error or DNS failure',
         };
       }
     };
@@ -435,7 +449,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Notifications',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -466,7 +480,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Image Picker',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -482,14 +496,15 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'Storage',
           status: 'fail',
           message: 'Storage check failed',
-          details: error.message,
+          details: renderValue(error.message),
         });
       } else {
+        const bucketCount = buckets?.length || 0;
         updateResult({
           name: 'Storage',
           status: 'pass',
           message: 'Storage accessible',
-          details: `Found ${buckets?.length || 0} buckets`,
+          details: `Found ${bucketCount} buckets`,
         });
       }
     } catch (error) {
@@ -497,7 +512,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Storage',
         status: 'fail',
         message: 'Storage error',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -528,17 +543,18 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Deep Linking',
         status: 'fail',
         message: 'Deep linking check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
 
     // Test 13: Platform Detection
+    const platformVersion = renderValue(Platform.Version);
     updateResult({
       name: 'Platform',
       status: 'pass',
       message: `Running on ${Platform.OS}`,
-      details: `Version: ${Platform.Version}`,
+      details: `Version: ${platformVersion}`,
     });
     incrementProgress();
 
@@ -576,7 +592,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Environment',
         status: 'fail',
         message: 'Environment check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -631,14 +647,15 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'User Settings',
             status: 'fail',
             message: 'Settings check failed',
-            details: error.message,
+            details: renderValue(error.message),
           });
         } else if (data) {
+          const currency = renderValue(data.default_currency);
           updateResult({
             name: 'User Settings',
             status: 'pass',
             message: 'Settings exist',
-            details: `Currency: ${data.default_currency}`,
+            details: `Currency: ${currency}`,
           });
         } else {
           updateResult({
@@ -653,7 +670,7 @@ export default function DiagnosticsEnhancedScreen() {
           name: 'User Settings',
           status: 'fail',
           message: 'Settings error',
-          details: error instanceof Error ? error.message : String(error),
+          details: error instanceof Error ? renderValue(error.message) : renderValue(error),
         });
       }
     } else {
@@ -703,7 +720,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Share Sheet',
         status: 'fail',
         message: 'Config check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -734,7 +751,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Camera Permission',
         status: 'fail',
         message: 'Permission check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
@@ -772,7 +789,7 @@ export default function DiagnosticsEnhancedScreen() {
         name: 'Backend API URL',
         status: 'fail',
         message: 'Configuration check failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: error instanceof Error ? renderValue(error.message) : renderValue(error),
       });
     }
     incrementProgress();
