@@ -152,6 +152,42 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  resultCard: {
+    padding: spacing.lg,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+  },
+  resultTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
+  resultLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
+  },
+  resultValue: {
+    fontSize: 14,
+    marginBottom: spacing.sm,
+  },
+  labelChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+    marginRight: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  labelChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  labelsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: spacing.xs,
+  },
   searchResultsContainer: {
     marginTop: spacing.md,
   },
@@ -263,6 +299,12 @@ export default function AddItemScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [identificationResult, setIdentificationResult] = useState<{
+    brand?: string;
+    productName?: string;
+    labels: string[];
+    confidence?: number;
+  } | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [wishlists, setWishlists] = useState<Wishlist[]>([]);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -380,6 +422,7 @@ export default function AddItemScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
+      setIdentificationResult(null);
       setMode('camera');
     }
   };
@@ -396,6 +439,7 @@ export default function AddItemScreen() {
     }
 
     setLoading(true);
+    setIdentificationResult(null);
     try {
       console.log('[AddScreen] Reading image as base64');
       // Read image as base64
@@ -403,49 +447,40 @@ export default function AddItemScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      const countryCode = userLocation?.countryCode || 'US';
-      const currencyCode = userLocation?.currencyCode || 'USD';
-
-      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - OpenAI Lens + Store Search)');
+      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - Google Cloud Vision)');
       
-      // CANONICAL: Use ONLY identify-product-from-image (OpenAI Lens + Store Search)
+      // CANONICAL: Use ONLY identify-product-from-image (Google Cloud Vision)
       const result = await identifyProductFromImage(base64, {
-        countryCode,
-        currency: currencyCode,
+        mimeType: 'image/jpeg',
       });
 
-      console.log('[AddScreen] identifyProductFromImage result:', result.status);
+      console.log('[AddScreen] identifyProductFromImage result:', result.success);
 
-      if (result.status === 'error' && result.code === 'AUTH_REQUIRED') {
-        console.log('[AddScreen] AUTH_REQUIRED - showing auth modal');
-        setShowAuthModal(true);
-        return;
-      }
-
-      if (result.status === 'ok' && result.offers && result.offers.length > 0) {
-        console.log('[AddScreen] Success - found', result.offers.length, 'offers');
-        // Navigate to import preview with identified product and offers
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedProduct: JSON.stringify(result.identified),
-            offers: JSON.stringify(result.offers),
-            source: 'camera',
-          },
+      if (result.success) {
+        console.log('[AddScreen] Success - brand:', result.brand, 'product:', result.productName, 'labels:', result.labels.length);
+        setIdentificationResult({
+          brand: result.brand,
+          productName: result.productName,
+          labels: result.labels,
+          confidence: result.confidence,
         });
         return;
       }
 
       // No results or error
-      console.log('[AddScreen] No results or error:', result.message);
+      console.log('[AddScreen] No results:', result.reason, result.message);
+      const errorMessage = result.message || 'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.';
+      
       Alert.alert(
         'No Products Found',
-        result.message || 'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.',
+        errorMessage,
         [
           { text: 'Try Again', onPress: () => setImageUri(null) },
           { 
             text: 'Add Manually', 
             onPress: () => {
+              const countryCode = userLocation?.countryCode || 'US';
+              const currencyCode = userLocation?.currencyCode || 'USD';
               // Navigate to import preview with empty data for manual entry
               router.push({
                 pathname: '/import-preview',
@@ -500,6 +535,7 @@ export default function AddItemScreen() {
 
     if (!result.canceled && result.assets[0]) {
       setImageUri(result.assets[0].uri);
+      setIdentificationResult(null);
       setMode('upload');
     }
   };
@@ -516,6 +552,7 @@ export default function AddItemScreen() {
     }
 
     setLoading(true);
+    setIdentificationResult(null);
     try {
       console.log('[AddScreen] Reading image as base64');
       // Read image as base64
@@ -523,49 +560,40 @@ export default function AddItemScreen() {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      const countryCode = userLocation?.countryCode || 'US';
-      const currencyCode = userLocation?.currencyCode || 'USD';
-
-      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - OpenAI Lens + Store Search)');
+      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - Google Cloud Vision)');
       
-      // CANONICAL: Use ONLY identify-product-from-image (OpenAI Lens + Store Search)
+      // CANONICAL: Use ONLY identify-product-from-image (Google Cloud Vision)
       const result = await identifyProductFromImage(base64, {
-        countryCode,
-        currency: currencyCode,
+        mimeType: 'image/jpeg',
       });
 
-      console.log('[AddScreen] identifyProductFromImage result:', result.status);
+      console.log('[AddScreen] identifyProductFromImage result:', result.success);
 
-      if (result.status === 'error' && result.code === 'AUTH_REQUIRED') {
-        console.log('[AddScreen] AUTH_REQUIRED - showing auth modal');
-        setShowAuthModal(true);
-        return;
-      }
-
-      if (result.status === 'ok' && result.offers && result.offers.length > 0) {
-        console.log('[AddScreen] Success - found', result.offers.length, 'offers');
-        // Navigate to import preview with identified product and offers
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedProduct: JSON.stringify(result.identified),
-            offers: JSON.stringify(result.offers),
-            source: 'upload',
-          },
+      if (result.success) {
+        console.log('[AddScreen] Success - brand:', result.brand, 'product:', result.productName, 'labels:', result.labels.length);
+        setIdentificationResult({
+          brand: result.brand,
+          productName: result.productName,
+          labels: result.labels,
+          confidence: result.confidence,
         });
         return;
       }
 
       // No results or error
-      console.log('[AddScreen] No results or error:', result.message);
+      console.log('[AddScreen] No results:', result.reason, result.message);
+      const errorMessage = result.message || 'We couldn\'t identify any products in this image. Try a different image or add the item manually.';
+      
       Alert.alert(
         'No Products Found',
-        result.message || 'We couldn\'t identify any products in this image. Try a different image or add the item manually.',
+        errorMessage,
         [
           { text: 'Try Again', onPress: () => setImageUri(null) },
           { 
             text: 'Add Manually', 
             onPress: () => {
+              const countryCode = userLocation?.countryCode || 'US';
+              const currencyCode = userLocation?.currencyCode || 'USD';
               // Navigate to import preview with empty data for manual entry
               router.push({
                 pathname: '/import-preview',
@@ -694,20 +722,24 @@ export default function AddItemScreen() {
       return;
     }
 
+    const countryCode = userLocation?.countryCode || 'US';
+    const currencyCode = userLocation?.currencyCode || 'USD';
+
     router.push({
       pathname: '/import-preview',
       params: {
         data: JSON.stringify({
-          itemName: '',
+          itemName: identificationResult?.productName || identificationResult?.brand || '',
           imageUrl: imageUri || '',
           extractedImages: JSON.stringify([imageUri]),
           storeName: '',
           storeDomain: '',
           price: null,
-          currency: userLocation?.currencyCode || 'USD',
-          countryAvailability: JSON.stringify([userLocation?.countryCode || 'US']),
+          currency: currencyCode,
+          countryAvailability: JSON.stringify([countryCode]),
           sourceUrl: '',
           inputType: 'manual',
+          notes: identificationResult?.labels.join(', ') || '',
         }),
       },
     });
@@ -776,6 +808,60 @@ export default function AddItemScreen() {
       {imageUri ? (
         <>
           <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
+          
+          {identificationResult ? (
+            <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.resultTitle, { color: colors.text }]}>
+                Product Identified
+              </Text>
+              
+              {identificationResult.brand && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Brand:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {identificationResult.brand}
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.productName && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Product:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {identificationResult.productName}
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.confidence !== undefined && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Confidence:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {Math.round(identificationResult.confidence * 100)}%
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.labels.length > 0 && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Labels:</Text>
+                  <View style={styles.labelsContainer}>
+                    {identificationResult.labels.slice(0, 8).map((label, index) => (
+                      <View
+                        key={index}
+                        style={[styles.labelChip, { backgroundColor: colors.primary + '20' }]}
+                      >
+                        <Text style={[styles.labelChipText, { color: colors.primary }]}>
+                          {label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
+          ) : null}
+          
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
@@ -783,6 +869,28 @@ export default function AddItemScreen() {
                 Identifying product...
               </Text>
             </View>
+          ) : identificationResult ? (
+            <>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: colors.primary }]}
+                onPress={handleSaveManual}
+              >
+                <Text style={[styles.buttonText, { color: colors.background }]}>
+                  Add to Wishlist
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { borderColor: colors.border }]}
+                onPress={() => {
+                  setImageUri(null);
+                  setIdentificationResult(null);
+                }}
+              >
+                <Text style={[styles.buttonText, { color: colors.text }]}>
+                  Take Another Photo
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <TouchableOpacity
@@ -822,6 +930,60 @@ export default function AddItemScreen() {
       {imageUri ? (
         <>
           <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
+          
+          {identificationResult ? (
+            <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.resultTitle, { color: colors.text }]}>
+                Product Identified
+              </Text>
+              
+              {identificationResult.brand && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Brand:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {identificationResult.brand}
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.productName && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Product:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {identificationResult.productName}
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.confidence !== undefined && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Confidence:</Text>
+                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
+                    {Math.round(identificationResult.confidence * 100)}%
+                  </Text>
+                </>
+              )}
+              
+              {identificationResult.labels.length > 0 && (
+                <>
+                  <Text style={[styles.resultLabel, { color: colors.text }]}>Labels:</Text>
+                  <View style={styles.labelsContainer}>
+                    {identificationResult.labels.slice(0, 8).map((label, index) => (
+                      <View
+                        key={index}
+                        style={[styles.labelChip, { backgroundColor: colors.primary + '20' }]}
+                      >
+                        <Text style={[styles.labelChipText, { color: colors.primary }]}>
+                          {label}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
+          ) : null}
+          
           {loading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
@@ -829,6 +991,28 @@ export default function AddItemScreen() {
                 Identifying product...
               </Text>
             </View>
+          ) : identificationResult ? (
+            <>
+              <TouchableOpacity
+                style={[styles.button, { backgroundColor: colors.primary }]}
+                onPress={handleSaveManual}
+              >
+                <Text style={[styles.buttonText, { color: colors.background }]}>
+                  Add to Wishlist
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.secondaryButton, { borderColor: colors.border }]}
+                onPress={() => {
+                  setImageUri(null);
+                  setIdentificationResult(null);
+                }}
+              >
+                <Text style={[styles.buttonText, { color: colors.text }]}>
+                  Choose Another Image
+                </Text>
+              </TouchableOpacity>
+            </>
           ) : (
             <>
               <TouchableOpacity

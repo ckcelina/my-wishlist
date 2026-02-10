@@ -109,53 +109,23 @@ export interface ImportWishlistResponse {
   error?: string;
 }
 
-export interface IdentifiedProduct {
-  title: string;
-  brand?: string;
-  category?: string;
-  attributes?: {
-    color?: string;
-    material?: string;
-    model?: string;
-    keywords?: string[];
-  };
-  search_query: string;
-  confidence: number;
-}
-
-export interface ProductOffer {
-  store: string;
-  title: string;
-  price: number;
-  currency: string;
-  product_url: string;
-  image_url: string;
-  score: number;
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL IMAGE IDENTIFICATION - Google Cloud Vision
+// ═══════════════════════════════════════════════════════════════════════════
 
 export interface IdentifyProductFromImageRequest {
-  image_base64?: string;
-  image_url?: string;
-  crop_box?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  country_code?: string;
-  currency_code?: string;
+  imageBase64: string;
+  mimeType?: string;
 }
 
 export interface IdentifyProductFromImageResponse {
-  status: 'ok' | 'no_results' | 'error';
-  identified: IdentifiedProduct | null;
-  offers: ProductOffer[];
+  success: boolean;
+  brand?: string;
+  productName?: string;
+  labels: string[];
+  confidence?: number;
+  reason?: string;
   message?: string;
-  code?: string;
-  debug?: {
-    provider: string;
-    query_used: string;
-  };
 }
 
 export interface SearchByNameRequest {
@@ -195,11 +165,11 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 // - extract-item: Extract product details from a URL
 // - find-alternatives: Find alternative stores for a product
 // - import-wishlist: Import wishlist from a store URL
-// - identify-product-from-image: Identify products from images (CANONICAL - OpenAI Lens + Store Search)
+// - identify-product-from-image: Identify products from images (CANONICAL - Google Cloud Vision)
 // - alert-items-with-targets: Get items with price alert targets
 //
 // ❌ REMOVED DEPRECATED FUNCTIONS:
-// - identify-from-image (DEPRECATED - replaced by identify-product-from-image)
+// - identify-from-image (DEPRECATED - DELETED)
 // ═══════════════════════════════════════════════════════════════════════════
 export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
@@ -796,46 +766,38 @@ function normalizeBase64(base64String: string): string {
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * This is the PRIMARY and ONLY image identification function.
- * Uses OpenAI Lens pipeline with store search to return offers.
+ * Uses Google Cloud Vision API for image analysis.
  * 
  * PIPELINE:
- * 1. OpenAI Vision analyzes the image and returns structured product data
- * 2. Performs store search based on the identified product
- * 3. Returns identified product details and shopping offers
+ * 1. Google Cloud Vision analyzes the image using:
+ *    - LABEL_DETECTION: Identifies objects, concepts, and categories
+ *    - LOGO_DETECTION: Detects brand logos
+ *    - TEXT_DETECTION: Extracts text from images (optional)
+ * 2. Returns structured product identification data
  * 
  * Returns:
- * - status: 'ok' | 'no_results' | 'error'
- * - identified: { title, brand, category, attributes, search_query, confidence } | null
- * - offers: [{ store, title, price, currency, product_url, image_url, score }]
- * - message: Optional error/info message
- * - code: Optional error code (e.g., 'AUTH_REQUIRED')
- * - debug: Optional debug info (provider, query_used)
+ * - success: boolean (true if any detection found)
+ * - brand?: string (from logo detection)
+ * - productName?: string (from labels or text)
+ * - labels: string[] (all detected labels)
+ * - confidence?: number (0-1 score)
+ * - reason?: string ('no_match' if nothing detected)
+ * - message?: string (error message if failed)
  * 
- * PAYLOAD FORMAT (snake_case):
- * - image_base64 (not imageBase64)
- * - image_url (not imageUrl)
- * - crop_box (not cropBox)
- * - country_code (not countryCode)
- * - currency_code (not currency)
+ * PAYLOAD FORMAT:
+ * - imageBase64: string (base64-encoded image, data URI prefix optional)
+ * - mimeType?: string (optional, e.g., 'image/jpeg')
  * 
  * ALWAYS returns a response with standardized structure - never silently fails
  */
 export async function identifyProductFromImage(
-  imageBase64?: string,
+  imageBase64: string,
   options?: {
-    imageUrl?: string;
-    cropBox?: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    };
-    countryCode?: string;
-    currency?: string;
+    mimeType?: string;
   }
 ): Promise<IdentifyProductFromImageResponse> {
   try {
-    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline (CANONICAL)');
+    console.log('[identifyProductFromImage] Starting Google Cloud Vision pipeline (CANONICAL)');
 
     // GUARD: Check auth state BEFORE calling edge function
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -843,11 +805,9 @@ export async function identifyProductFromImage(
     if (sessionError || !session || !session.access_token) {
       console.error('[identifyProductFromImage] Invalid auth state');
       return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        identified: null,
-        offers: [],
+        success: false,
+        reason: 'Authentication failed',
+        labels: [],
       };
     }
 
@@ -856,66 +816,53 @@ export async function identifyProductFromImage(
     if (userError || !user) {
       console.error('[identifyProductFromImage] User not authenticated');
       return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        identified: null,
-        offers: [],
+        success: false,
+        reason: 'Authentication failed',
+        labels: [],
       };
     }
 
-    if (!imageBase64 && !options?.imageUrl) {
+    if (!imageBase64) {
       return {
-        status: 'error',
-        message: 'Either imageBase64 or imageUrl is required',
-        identified: null,
-        offers: [],
+        success: false,
+        reason: 'Missing imageBase64',
+        labels: [],
       };
     }
 
     // Normalize base64 input (strip data URI prefix if present)
-    const normalizedBase64 = imageBase64 ? normalizeBase64(imageBase64) : undefined;
+    const normalizedBase64 = normalizeBase64(imageBase64);
 
     console.log('[identifyProductFromImage] Calling Edge Function');
     if (__DEV__) {
-      const payloadKeys = [
-        normalizedBase64 ? 'image_base64' : null,
-        options?.imageUrl ? 'image_url' : null,
-        options?.cropBox ? 'crop_box' : null,
-        options?.countryCode ? 'country_code' : null,
-        options?.currency ? 'currency_code' : null,
-      ].filter(Boolean);
-      console.log('[DEV] Calling identify-product-from-image with keys:', payloadKeys.join(', '));
+      console.log('[DEV] Calling identify-product-from-image with Google Cloud Vision');
     }
 
-    // CRITICAL: Use snake_case keys for identify-product-from-image
     const response = await callEdgeFunctionSafely<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
       'identify-product-from-image',
       {
-        image_base64: normalizedBase64, // snake_case
-        image_url: options?.imageUrl, // snake_case
-        crop_box: options?.cropBox, // snake_case
-        country_code: options?.countryCode, // snake_case (converted from countryCode)
-        currency_code: options?.currency, // snake_case (converted from currency)
+        imageBase64: normalizedBase64,
+        mimeType: options?.mimeType,
       },
       { showErrorAlert: false }
     );
 
     console.log('[identifyProductFromImage] Pipeline complete');
-    console.log('[identifyProductFromImage] Status:', response.status);
-    console.log('[identifyProductFromImage] Identified:', response.identified?.title || 'N/A');
-    console.log('[identifyProductFromImage] Brand:', response.identified?.brand || 'N/A');
-    console.log('[identifyProductFromImage] Confidence:', response.identified?.confidence || 0);
-    console.log('[identifyProductFromImage] Offers:', response.offers?.length || 0);
+    console.log('[identifyProductFromImage] Success:', response.success);
+    console.log('[identifyProductFromImage] Brand:', response.brand || 'N/A');
+    console.log('[identifyProductFromImage] Product:', response.productName || 'N/A');
+    console.log('[identifyProductFromImage] Labels:', response.labels?.length || 0);
+    console.log('[identifyProductFromImage] Confidence:', response.confidence || 0);
 
     // Ensure standardized response structure
     return {
-      status: response.status,
-      identified: response.status === 'ok' ? response.identified : null,
-      offers: response.offers || [],
+      success: response.success,
+      brand: response.brand,
+      productName: response.productName,
+      labels: response.labels || [],
+      confidence: response.confidence,
+      reason: response.reason,
       message: response.message,
-      code: response.code,
-      debug: response.debug,
     };
   } catch (error: any) {
     console.error('[identifyProductFromImage] Failed:', error);
@@ -924,20 +871,18 @@ export async function identifyProductFromImage(
     if (error.message === 'AUTH_REQUIRED') {
       console.log('[identifyProductFromImage] AUTH_REQUIRED caught');
       return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        identified: null,
-        offers: [],
+        success: false,
+        reason: 'Authentication failed',
+        labels: [],
       };
     }
     
     // Return safe fallback with standardized structure
     return {
-      status: 'error',
+      success: false,
+      reason: 'internal_server_error',
       message: error.message || 'Failed to identify product',
-      identified: null,
-      offers: [],
+      labels: [],
     };
   }
 }
