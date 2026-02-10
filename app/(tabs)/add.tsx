@@ -454,34 +454,36 @@ export default function AddItemScreen() {
         mimeType: 'image/jpeg',
       });
 
-      console.log('[AddScreen] identifyProductFromImage result:', result.success);
+      console.log('[AddScreen] identifyProductFromImage result:', result.status);
 
-      if (result.success) {
-        console.log('[AddScreen] Success - brand:', result.brand, 'product:', result.productName, 'labels:', result.labels.length);
-        setIdentificationResult({
-          brand: result.brand,
-          productName: result.productName,
-          labels: result.labels,
-          confidence: result.confidence,
-        });
+      // Handle AUTH_REQUIRED error
+      if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
+        console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
+        Alert.alert('Session Expired', result.message || 'Please sign in again.', [
+          { text: 'OK', onPress: () => router.push('/auth') }
+        ]);
         return;
       }
 
-      // No results or error
-      console.log('[AddScreen] No results:', result.reason, result.message);
-      const errorMessage = result.message || 'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.';
-      
-      Alert.alert(
-        'No Products Found',
-        errorMessage,
-        [
+      // Handle IMAGE_TOO_LARGE error
+      if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
+        console.log('[AddScreen] IMAGE_TOO_LARGE');
+        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.', [
+          { text: 'Try Again', onPress: () => setImageUri(null) }
+        ]);
+        return;
+      }
+
+      // Handle VISION_FAILED error
+      if (result.status === 'error' && result.error === 'VISION_FAILED') {
+        console.log('[AddScreen] VISION_FAILED');
+        Alert.alert('Analysis Failed', result.message || 'Could not analyze image right now.', [
           { text: 'Try Again', onPress: () => setImageUri(null) },
           { 
             text: 'Add Manually', 
             onPress: () => {
               const countryCode = userLocation?.countryCode || 'US';
               const currencyCode = userLocation?.currencyCode || 'USD';
-              // Navigate to import preview with empty data for manual entry
               router.push({
                 pathname: '/import-preview',
                 params: {
@@ -501,8 +503,66 @@ export default function AddItemScreen() {
               });
             }
           },
-        ]
-      );
+        ]);
+        return;
+      }
+
+      // Handle success
+      if (result.status === 'ok' && result.items && result.items.length > 0) {
+        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length, 'confidence:', result.confidence);
+        
+        // Extract labels from items for display
+        const labels = result.items.map(item => item.title);
+        
+        setIdentificationResult({
+          brand: result.items[0].title, // Use first item as brand/product
+          productName: result.query,
+          labels: labels,
+          confidence: result.confidence,
+        });
+        return;
+      }
+
+      // Handle no results
+      if (result.status === 'no_results') {
+        console.log('[AddScreen] No results:', result.message);
+        Alert.alert(
+          'No Products Found',
+          result.message || 'No matches found. Try cropping or better lighting.',
+          [
+            { text: 'Try Again', onPress: () => setImageUri(null) },
+            { 
+              text: 'Add Manually', 
+              onPress: () => {
+                const countryCode = userLocation?.countryCode || 'US';
+                const currencyCode = userLocation?.currencyCode || 'USD';
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify({
+                      itemName: '',
+                      imageUrl: imageUri,
+                      extractedImages: JSON.stringify([imageUri]),
+                      storeName: '',
+                      storeDomain: '',
+                      price: null,
+                      currency: currencyCode,
+                      countryAvailability: JSON.stringify([countryCode]),
+                      sourceUrl: '',
+                      inputType: 'manual',
+                    }),
+                  },
+                });
+              }
+            },
+          ]
+        );
+        return;
+      }
+
+      // Fallback for unexpected response
+      console.warn('[AddScreen] Unexpected response:', result);
+      Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
       console.error('[AddScreen] Identify from camera error:', error);
       if (error.message === 'AUTH_REQUIRED') {
@@ -567,34 +627,36 @@ export default function AddItemScreen() {
         mimeType: 'image/jpeg',
       });
 
-      console.log('[AddScreen] identifyProductFromImage result:', result.success);
+      console.log('[AddScreen] identifyProductFromImage result:', result.status);
 
-      if (result.success) {
-        console.log('[AddScreen] Success - brand:', result.brand, 'product:', result.productName, 'labels:', result.labels.length);
-        setIdentificationResult({
-          brand: result.brand,
-          productName: result.productName,
-          labels: result.labels,
-          confidence: result.confidence,
-        });
+      // Handle AUTH_REQUIRED error
+      if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
+        console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
+        Alert.alert('Session Expired', result.message || 'Please sign in again.', [
+          { text: 'OK', onPress: () => router.push('/auth') }
+        ]);
         return;
       }
 
-      // No results or error
-      console.log('[AddScreen] No results:', result.reason, result.message);
-      const errorMessage = result.message || 'We couldn\'t identify any products in this image. Try a different image or add the item manually.';
-      
-      Alert.alert(
-        'No Products Found',
-        errorMessage,
-        [
+      // Handle IMAGE_TOO_LARGE error
+      if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
+        console.log('[AddScreen] IMAGE_TOO_LARGE');
+        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.', [
+          { text: 'Try Again', onPress: () => setImageUri(null) }
+        ]);
+        return;
+      }
+
+      // Handle VISION_FAILED error
+      if (result.status === 'error' && result.error === 'VISION_FAILED') {
+        console.log('[AddScreen] VISION_FAILED');
+        Alert.alert('Analysis Failed', result.message || 'Could not analyze image right now.', [
           { text: 'Try Again', onPress: () => setImageUri(null) },
           { 
             text: 'Add Manually', 
             onPress: () => {
               const countryCode = userLocation?.countryCode || 'US';
               const currencyCode = userLocation?.currencyCode || 'USD';
-              // Navigate to import preview with empty data for manual entry
               router.push({
                 pathname: '/import-preview',
                 params: {
@@ -614,8 +676,66 @@ export default function AddItemScreen() {
               });
             }
           },
-        ]
-      );
+        ]);
+        return;
+      }
+
+      // Handle success
+      if (result.status === 'ok' && result.items && result.items.length > 0) {
+        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length, 'confidence:', result.confidence);
+        
+        // Extract labels from items for display
+        const labels = result.items.map(item => item.title);
+        
+        setIdentificationResult({
+          brand: result.items[0].title, // Use first item as brand/product
+          productName: result.query,
+          labels: labels,
+          confidence: result.confidence,
+        });
+        return;
+      }
+
+      // Handle no results
+      if (result.status === 'no_results') {
+        console.log('[AddScreen] No results:', result.message);
+        Alert.alert(
+          'No Products Found',
+          result.message || 'No matches found. Try cropping or better lighting.',
+          [
+            { text: 'Try Again', onPress: () => setImageUri(null) },
+            { 
+              text: 'Add Manually', 
+              onPress: () => {
+                const countryCode = userLocation?.countryCode || 'US';
+                const currencyCode = userLocation?.currencyCode || 'USD';
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify({
+                      itemName: '',
+                      imageUrl: imageUri,
+                      extractedImages: JSON.stringify([imageUri]),
+                      storeName: '',
+                      storeDomain: '',
+                      price: null,
+                      currency: currencyCode,
+                      countryAvailability: JSON.stringify([countryCode]),
+                      sourceUrl: '',
+                      inputType: 'manual',
+                    }),
+                  },
+                });
+              }
+            },
+          ]
+        );
+        return;
+      }
+
+      // Fallback for unexpected response
+      console.warn('[AddScreen] Unexpected response:', result);
+      Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
       console.error('[AddScreen] Identify from upload error:', error);
       if (error.message === 'AUTH_REQUIRED') {

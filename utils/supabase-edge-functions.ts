@@ -114,18 +114,28 @@ export interface ImportWishlistResponse {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface IdentifyProductFromImageRequest {
-  imageBase64: string;
+  imageBase64?: string;
+  imageUrl?: string;
   mimeType?: string;
 }
 
+export interface ProductCandidate {
+  title: string;
+  storeUrl: string | null;
+  imageUrl: string | null;
+  source: 'google_vision';
+  score: number;
+  reason: string;
+}
+
 export interface IdentifyProductFromImageResponse {
-  success: boolean;
-  brand?: string;
-  productName?: string;
-  labels: string[];
+  status: 'ok' | 'no_results' | 'error';
+  providerUsed?: 'google_vision';
   confidence?: number;
-  reason?: string;
-  message?: string;
+  query?: string;
+  items?: ProductCandidate[];
+  message: string | null;
+  error?: 'AUTH_REQUIRED' | 'IMAGE_TOO_LARGE' | 'VISION_FAILED' | 'INVALID_INPUT';
 }
 
 export interface SearchByNameRequest {
@@ -770,22 +780,21 @@ function normalizeBase64(base64String: string): string {
  * 
  * PIPELINE:
  * 1. Google Cloud Vision analyzes the image using:
+ *    - WEB_DETECTION: Finds web pages with matching images
  *    - LABEL_DETECTION: Identifies objects, concepts, and categories
  *    - LOGO_DETECTION: Detects brand logos
- *    - TEXT_DETECTION: Extracts text from images (optional)
- * 2. Returns structured product identification data
+ * 2. Returns structured product identification data with candidates
  * 
- * Returns:
- * - success: boolean (true if any detection found)
- * - brand?: string (from logo detection)
- * - productName?: string (from labels or text)
- * - labels: string[] (all detected labels)
- * - confidence?: number (0-1 score)
- * - reason?: string ('no_match' if nothing detected)
- * - message?: string (error message if failed)
+ * STANDARDIZED RESPONSE SHAPE:
+ * - Success (200): { status: "ok", providerUsed: "google_vision", confidence: 0..1, query: string, items: [...], message: null }
+ * - No results (200): { status: "no_results", providerUsed: "google_vision", confidence: 0, query: "", items: [], message: "..." }
+ * - Auth error (401): { status: "error", error: "AUTH_REQUIRED", message: "Please sign in again." }
+ * - Image too large (413): { status: "error", error: "IMAGE_TOO_LARGE", message: "Image too large. Max 6MB." }
+ * - Vision failed (500): { status: "error", error: "VISION_FAILED", message: "Could not analyze image right now." }
  * 
  * PAYLOAD FORMAT:
- * - imageBase64: string (base64-encoded image, data URI prefix optional)
+ * - imageBase64?: string (base64-encoded image, data URI prefix optional)
+ * - imageUrl?: string (alternative to base64)
  * - mimeType?: string (optional, e.g., 'image/jpeg')
  * 
  * ALWAYS returns a response with standardized structure - never silently fails
@@ -805,9 +814,9 @@ export async function identifyProductFromImage(
     if (sessionError || !session || !session.access_token) {
       console.error('[identifyProductFromImage] Invalid auth state');
       return {
-        success: false,
-        reason: 'Authentication failed',
-        labels: [],
+        status: 'error',
+        error: 'AUTH_REQUIRED',
+        message: 'Please sign in again.',
       };
     }
 
@@ -816,17 +825,17 @@ export async function identifyProductFromImage(
     if (userError || !user) {
       console.error('[identifyProductFromImage] User not authenticated');
       return {
-        success: false,
-        reason: 'Authentication failed',
-        labels: [],
+        status: 'error',
+        error: 'AUTH_REQUIRED',
+        message: 'Please sign in again.',
       };
     }
 
     if (!imageBase64) {
       return {
-        success: false,
-        reason: 'Missing imageBase64',
-        labels: [],
+        status: 'error',
+        error: 'INVALID_INPUT',
+        message: 'Missing imageBase64.',
       };
     }
 
@@ -848,22 +857,13 @@ export async function identifyProductFromImage(
     );
 
     console.log('[identifyProductFromImage] Pipeline complete');
-    console.log('[identifyProductFromImage] Success:', response.success);
-    console.log('[identifyProductFromImage] Brand:', response.brand || 'N/A');
-    console.log('[identifyProductFromImage] Product:', response.productName || 'N/A');
-    console.log('[identifyProductFromImage] Labels:', response.labels?.length || 0);
+    console.log('[identifyProductFromImage] Status:', response.status);
+    console.log('[identifyProductFromImage] Query:', response.query || 'N/A');
+    console.log('[identifyProductFromImage] Items:', response.items?.length || 0);
     console.log('[identifyProductFromImage] Confidence:', response.confidence || 0);
 
-    // Ensure standardized response structure
-    return {
-      success: response.success,
-      brand: response.brand,
-      productName: response.productName,
-      labels: response.labels || [],
-      confidence: response.confidence,
-      reason: response.reason,
-      message: response.message,
-    };
+    // Return standardized response
+    return response;
   } catch (error: any) {
     console.error('[identifyProductFromImage] Failed:', error);
     
@@ -871,18 +871,17 @@ export async function identifyProductFromImage(
     if (error.message === 'AUTH_REQUIRED') {
       console.log('[identifyProductFromImage] AUTH_REQUIRED caught');
       return {
-        success: false,
-        reason: 'Authentication failed',
-        labels: [],
+        status: 'error',
+        error: 'AUTH_REQUIRED',
+        message: 'Please sign in again.',
       };
     }
     
     // Return safe fallback with standardized structure
     return {
-      success: false,
-      reason: 'internal_server_error',
-      message: error.message || 'Failed to identify product',
-      labels: [],
+      status: 'error',
+      error: 'VISION_FAILED',
+      message: error.message || 'Could not analyze image right now.',
     };
   }
 }
