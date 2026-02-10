@@ -109,40 +109,6 @@ export interface ImportWishlistResponse {
   error?: string;
 }
 
-export interface IdentifyFromImageRequest {
-  imageBase64?: string;
-  imageUrl?: string;
-  countryCode?: string;
-  currencyCode?: string;
-  locale?: string;
-  hints?: string[];
-}
-
-export interface ProductCandidate {
-  title: string;
-  brand?: string | null;
-  model?: string | null;
-  category?: string | null;
-  imageUrl?: string;
-  storeUrl?: string;
-  price?: number | null;
-  currency?: string | null;
-  storeName?: string | null;
-  source?: string;
-  score?: number;
-  reason?: string;
-}
-
-export interface IdentifyFromImageResponse {
-  status: 'ok' | 'no_results' | 'error';
-  providerUsed: 'openai_vision' | 'serpapi_google_lens' | 'bing_visual_search' | 'none';
-  confidence: number; // 0.0 - 1.0
-  query: string;
-  items: ProductCandidate[];
-  message?: string;
-  code?: string;
-}
-
 export interface IdentifiedProduct {
   title: string;
   brand?: string;
@@ -182,7 +148,7 @@ export interface IdentifyProductFromImageRequest {
 
 export interface IdentifyProductFromImageResponse {
   status: 'ok' | 'no_results' | 'error';
-  identified?: IdentifiedProduct;
+  identified: IdentifiedProduct | null;
   offers: ProductOffer[];
   message?: string;
   code?: string;
@@ -210,7 +176,6 @@ export interface SearchResult {
   confidence: number;
 }
 
-// Updated to match the new Edge Function response format
 export interface SearchByNameResponse {
   results: SearchResult[];
   error: string | null;
@@ -220,18 +185,12 @@ export interface SearchByNameResponse {
 const SUPABASE_URL = appConfig.supabaseUrl || '';
 const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
-// List of expected Edge Functions (case-sensitive)
+// List of expected Edge Functions (case-sensitive, exact names deployed in Supabase)
 const EXPECTED_EDGE_FUNCTIONS = [
-  'search-item',
-  'identify-from-image',
-  'identify-product-from-image', // NEW: OpenAI Lens pipeline with offers
   'extract-item',
   'find-alternatives',
   'import-wishlist',
-  'search-by-name',
-  'price-check',
-  'product-prices',
-  'auth-ping',
+  'identify-product-from-image', // CANONICAL: OpenAI Lens pipeline with offers
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -251,16 +210,13 @@ if (!isEnvironmentConfigured()) {
   console.log('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
 }
 
-// Check BACKEND_URL configuration (for global search)
+// Check BACKEND_URL configuration (for diagnostics)
 const BACKEND_URL = appConfig.backendUrl || '';
-console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '❌ Missing');
+console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '⚠️ Not set (optional)');
 
-if (!BACKEND_URL) {
-  console.error('❌ [Backend] BACKEND_URL is NOT configured in app.config.js');
-  console.error('   Global search and other backend features will NOT work.');
-  console.error('   Please set BACKEND_URL in app.config.js or .env file.');
-}
-
+console.log('═══════════════════════════════════════════════════════════════');
+console.log('📋 REGISTERED EDGE FUNCTIONS:');
+EXPECTED_EDGE_FUNCTIONS.forEach(fn => console.log(`   - ${fn}`));
 console.log('═══════════════════════════════════════════════════════════════');
 
 /**
@@ -306,13 +262,13 @@ export async function assertSupabaseSession(): Promise<string> {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PRODUCTION AUTH FIX - NO FORCED SIGN-OUTS
+ * CENTRALIZED EDGE FUNCTION CALLER - USES SUPABASE CLIENT'S INVOKE METHOD
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * This is the SINGLE wrapper for ALL Supabase Edge Function calls.
- * NO OTHER FILE is allowed to call fetch(functions/v1/...) directly.
+ * CRITICAL: This is the SINGLE wrapper for ALL Supabase Edge Function calls.
+ * Uses supabase.functions.invoke() for correct URL resolution and auth handling.
  * 
- * CRITICAL REQUIREMENTS:
+ * REQUIREMENTS:
  * 1. Always send header: apikey: SUPABASE_ANON_KEY
  * 2. Authorization header MUST be: Bearer <USER_ACCESS_TOKEN>
  * 3. Never set Authorization to the anon key
@@ -328,12 +284,6 @@ export async function assertSupabaseSession(): Promise<string> {
  *    - retry the edge call ONCE with the NEW access token
  * 8. If still 401:
  *    - throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
- * 
- * SAFE LOGGING (no tokens):
- * - function name
- * - status
- * - didRefresh (true/false)
- * - didRetry (true/false)
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
   functionName: string,
@@ -371,8 +321,6 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     console.warn(`[callEdgeFunctionSafely] Unknown function '${functionName}' - returning safe fallback`);
     throw new Error(`Edge Function '${functionName}' is not recognized`);
   }
-
-  const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
 
   // STEP 1: Always fetch session FIRST
   if (isDev) {
@@ -434,36 +382,36 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     currentAccessToken = refreshData.session.access_token;
   }
 
-  // STEP 4: Make the edge call with token
-  const makeRequest = async (token: string): Promise<Response> => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${token}`,
-    };
-
+  // STEP 4: Make the edge call using Supabase client's invoke method
+  const makeRequest = async (token: string): Promise<{ data: any; error: any; status?: number }> => {
     if (isDev) {
-      console.log(`[callEdgeFunctionSafely] Making request to ${functionName} (token length: ${token.length})`);
+      console.log(`[callEdgeFunctionSafely] Calling supabase.functions.invoke('${functionName}') with token length: ${token.length}`);
     }
 
-    return await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
+    // Use Supabase client's invoke method for correct URL resolution and auth handling
+    const result = await supabase.functions.invoke(functionName, {
+      body: payload,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY, // Always include anon key
+        'Authorization': `Bearer ${token}`, // User access token
+      },
     });
+
+    return result;
   };
 
   try {
     // First attempt
-    let response = await makeRequest(currentAccessToken);
-    finalStatus = response.status;
+    let result = await makeRequest(currentAccessToken);
+    finalStatus = result.error ? (result.error.message?.includes('401') ? 401 : 'error') : 200;
 
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] ${functionName} - initial response status: ${finalStatus}`);
     }
 
     // STEP 5: If response is 401 → attempt refresh ONCE and retry ONCE
-    if (response.status === 401 && !didRetry) {
+    if (result.error && result.error.message?.includes('401') && !didRetry) {
       console.warn(`[callEdgeFunctionSafely] 401 for ${functionName} - attempting session refresh and retry`);
       
       // Attempt refresh (if not already done)
@@ -488,10 +436,10 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
         currentAccessToken = retryRefreshData.session.access_token;
       }
 
-      // Retry with new token (rebuild headers)
+      // Retry with new token
       didRetry = true;
-      response = await makeRequest(currentAccessToken);
-      finalStatus = response.status;
+      result = await makeRequest(currentAccessToken);
+      finalStatus = result.error ? (result.error.message?.includes('401') ? 401 : 'error') : 200;
       
       if (isDev) {
         console.log(`[callEdgeFunctionSafely] ${functionName} - retry response status: ${finalStatus}`);
@@ -499,7 +447,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     }
 
     // STEP 6: If still 401 → throw AUTH_REQUIRED (do NOT sign out)
-    if (response.status === 401) {
+    if (result.error && result.error.message?.includes('401')) {
       console.error(`[callEdgeFunctionSafely] Still 401 for ${functionName} after refresh+retry - throwing AUTH_REQUIRED`);
       finalStatus = '401_after_retry';
       if (isDev) {
@@ -508,23 +456,12 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       throw new Error('AUTH_REQUIRED');
     }
 
-    // STEP 7: Handle rate limiting (429)
-    if (response.status === 429) {
-      console.error(`[callEdgeFunctionSafely] Rate limit exceeded for ${functionName}`);
-      finalStatus = '429';
-      if (isDev) {
-        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-      }
-      throw new Error('RATE_LIMIT_EXCEEDED');
-    }
-
-    // STEP 8: Handle other errors
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, response.status, errorText);
+    // STEP 7: Handle other errors
+    if (result.error) {
+      console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, result.error.message);
       
       // Handle 404 - function not deployed
-      if (response.status === 404) {
+      if (result.error.message?.includes('404') || result.error.message?.includes('not found')) {
         finalStatus = '404';
         if (isDev) {
           console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
@@ -541,7 +478,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       }
       
       // Handle 400 - check for CONFIG_ERROR in response body
-      if (response.status === 400 && errorText.toLowerCase().includes('config')) {
+      if (result.error.message?.includes('400') && result.error.message?.toLowerCase().includes('config')) {
         finalStatus = '400_config';
         if (isDev) {
           console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
@@ -556,20 +493,19 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
       if (showErrorAlert) {
         Alert.alert(
           'Request Failed',
-          `Unable to complete the request. Please try again. (Error ${response.status})`,
+          `Unable to complete the request. Please try again. (Error: ${result.error.message})`,
           [{ text: 'OK' }]
         );
       }
       
-      throw new Error(`Edge function failed: ${response.status} ${errorText}`);
+      throw new Error(`Edge function failed: ${result.error.message}`);
     }
 
-    // STEP 9: Parse and return response
-    const data = await response.json();
+    // STEP 8: Return response data
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - SUCCESS`);
     }
-    return data as TResponse;
+    return result.data as TResponse;
 
   } catch (error: any) {
     console.error(`[callEdgeFunctionSafely] Error calling ${functionName}:`, error.message);
@@ -578,7 +514,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     }
     
     // If it's a specific error code, propagate it (do NOT show alert here - let UI handle it)
-    if (error.message === 'AUTH_REQUIRED' || error.message === 'CONFIG_ERROR' || error.message === 'RATE_LIMIT_EXCEEDED') {
+    if (error.message === 'AUTH_REQUIRED' || error.message === 'CONFIG_ERROR') {
       throw error;
     }
     
@@ -592,60 +528,6 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     }
     
     throw error;
-  }
-}
-
-
-
-/**
- * Search for items across multiple stores using AI
- * Returns canonical product URL, offers, and images
- * Works identically in all environments
- */
-export async function searchItem(
-  query: string,
-  country: string,
-  city?: string
-): Promise<SearchItemResponse> {
-  try {
-    const response = await callEdgeFunctionSafely<SearchItemRequest, SearchItemResponse>(
-      'search-item',
-      { query, country, city },
-      { showErrorAlert: false } // Let UI handle errors
-    );
-
-    // Log warnings for partial results
-    if (response.meta.partial) {
-      console.warn('[searchItem] Partial result returned:', response.error);
-    }
-
-    // Log cache status
-    if (response.meta.cached) {
-      console.log('[searchItem] Result served from cache');
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('[searchItem] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[searchItem] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback
-    return {
-      canonical: '',
-      offers: [],
-      images: [],
-      meta: {
-        requestId: 'error',
-        durationMs: 0,
-        partial: true,
-        cached: false,
-      },
-      error: error.message || 'Failed to search for item',
-    };
   }
 }
 
@@ -788,9 +670,6 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
   }
 }
 
-// Track if identify-from-image is currently running to prevent parallel calls
-let identifyInProgress = false;
-
 /**
  * Normalize base64 input by stripping data URI prefix
  * Ensures clean base64 string is sent to edge functions
@@ -809,235 +688,21 @@ function normalizeBase64(base64String: string): string {
 }
 
 /**
- * Identify a product from an image using a robust Google Lens-style pipeline
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CANONICAL IMAGE IDENTIFICATION FUNCTION - identify-product-from-image
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PIPELINE:
- * 1. Send image (base64 or URL) directly to Edge Function
- * 2. Edge Function runs pipeline:
- *    a) Validate auth (verify_jwt=true), reject images > 6MB
- *    b) Check rate limit (20 searches/day per user)
- *    c) FIRST TRY (optional): OpenAI Vision for high-confidence identification
- *    d) FALLBACK: Visual search provider (SerpAPI Google Lens / Bing Visual Search)
- *    e) Fetch product pages and extract schema.org / OpenGraph data
- *    f) Score, dedupe, and return top 5-8 candidates
- * 3. Returns structured JSON with status, items, and metadata
- * 
- * ALWAYS returns a response - never silently fails
- * 
- * GUARDS:
- * - Prevents multiple parallel identify calls
- * - Checks auth state before calling edge function
- * - If AUTH_REQUIRED is thrown → stops and returns error (no retry loops)
- * 
- * PAYLOAD FORMAT (camelCase):
- * - imageBase64 (not image_base64)
- * - imageUrl (not image_url)
- * - countryCode (not country_code)
- * - currencyCode (not currency_code)
- */
-export async function identifyFromImage(
-  imageBase64?: string,
-  options?: {
-    countryCode?: string;
-    currencyCode?: string;
-    locale?: string;
-    hints?: string[];
-  }
-): Promise<IdentifyFromImageResponse> {
-  try {
-    console.log('[identifyFromImage] Starting image identification');
-
-    // GUARD: Prevent multiple parallel identify calls
-    if (identifyInProgress) {
-      console.warn('[identifyFromImage] Identify already in progress - blocking parallel call');
-      return {
-        status: 'error',
-        message: 'Image identification already in progress. Please wait.',
-        providerUsed: 'none',
-        confidence: 0,
-        query: '',
-        items: [],
-      };
-    }
-
-    identifyInProgress = true;
-
-    // GUARD: Check auth state BEFORE calling edge function
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session || !session.access_token) {
-      console.error('[identifyFromImage] Invalid auth state - redirecting to login');
-      identifyInProgress = false;
-      return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        providerUsed: 'none',
-        confidence: 0,
-        query: '',
-        items: [],
-      };
-    }
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.error('[identifyFromImage] User not authenticated');
-      identifyInProgress = false;
-      return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        providerUsed: 'none',
-        confidence: 0,
-        query: '',
-        items: [],
-      };
-    }
-
-    if (!imageBase64) {
-      identifyInProgress = false;
-      return {
-        status: 'error',
-        message: 'imageBase64 is required',
-        providerUsed: 'none',
-        confidence: 0,
-        query: '',
-        items: [],
-      };
-    }
-
-    // Normalize base64 input (strip data URI prefix if present)
-    const normalizedBase64 = normalizeBase64(imageBase64);
-
-    console.log('[identifyFromImage] Calling Edge Function with image data');
-    if (__DEV__) {
-      console.log('[DEV] Calling identify-from-image with keys:', Object.keys({
-        imageBase64: normalizedBase64,
-        countryCode: options?.countryCode,
-        currencyCode: options?.currencyCode,
-        locale: options?.locale,
-        hints: options?.hints,
-      }).filter(k => k !== 'imageBase64').join(', '), '+ imageBase64');
-    }
-
-    // Call Edge Function with image data using the safe wrapper
-    // CRITICAL: Use camelCase keys for identify-from-image
-    const response = await callEdgeFunctionSafely<IdentifyFromImageRequest, IdentifyFromImageResponse>(
-      'identify-from-image',
-      {
-        imageBase64: normalizedBase64, // camelCase
-        countryCode: options?.countryCode, // camelCase
-        currencyCode: options?.currencyCode, // camelCase
-        locale: options?.locale,
-        hints: options?.hints,
-      },
-      { showErrorAlert: false } // We'll handle errors ourselves
-    );
-
-    console.log('[identifyFromImage] Identification complete');
-    console.log('[identifyFromImage] Status:', response.status, 'Provider:', response.providerUsed, 'Items:', response.items.length);
-
-    identifyInProgress = false;
-    return response;
-  } catch (error: any) {
-    console.error('[identifyFromImage] Failed:', error);
-    identifyInProgress = false;
-    
-    // Check for AUTH_REQUIRED - stop and redirect (no retry loops)
-    if (error.message === 'AUTH_REQUIRED') {
-      console.log('[identifyFromImage] AUTH_REQUIRED caught - returning error status');
-      return {
-        status: 'error',
-        message: 'AUTH_REQUIRED',
-        code: 'AUTH_REQUIRED',
-        providerUsed: 'none',
-        confidence: 0,
-        query: '',
-        items: [],
-      };
-    }
-    
-    // Return safe fallback
-    return {
-      status: 'error',
-      message: error.message || 'Failed to identify product',
-      providerUsed: 'none',
-      confidence: 0,
-      query: '',
-      items: [],
-    };
-  }
-}
-
-/**
- * Search for products by name across multiple stores
- * Filters by user location if provided
- * Returns products with confidence scores
- * Works identically in all environments
- */
-export async function searchByName(
-  query: string,
-  options?: {
-    countryCode?: string;
-    city?: string;
-    currency?: string;
-    limit?: number;
-  }
-): Promise<SearchByNameResponse> {
-  try {
-    console.log('[searchByName] Searching for:', query);
-    console.log('[searchByName] Options:', options);
-    
-    const response = await callEdgeFunctionSafely<SearchByNameRequest, SearchByNameResponse>(
-      'search-by-name',
-      {
-        query,
-        countryCode: options?.countryCode,
-        city: options?.city,
-        currency: options?.currency,
-        limit: options?.limit,
-      },
-      { showErrorAlert: true }
-    );
-
-    // Log warnings for errors
-    if (response.error) {
-      console.warn('[searchByName] Error returned:', response.error);
-    }
-
-    console.log('[searchByName] Found', response.results.length, 'results');
-    return response;
-  } catch (error: any) {
-    console.error('[searchByName] Failed:', error);
-    
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[searchByName] Edge Function not deployed - returning safe fallback');
-    }
-    
-    // Return safe fallback with error message
-    return {
-      results: [],
-      error: error.message || 'Failed to search for products',
-    };
-  }
-}
-
-/**
- * Identify a product from an image using OpenAI Lens pipeline (PRIMARY)
+ * This is the PRIMARY and ONLY image identification function.
+ * Uses OpenAI Lens pipeline with store search to return offers.
  * 
  * PIPELINE:
  * 1. OpenAI Vision analyzes the image and returns structured product data
  * 2. Performs store search based on the identified product
  * 3. Returns identified product details and shopping offers
  * 
- * This is the PRIMARY implementation that returns offers list (Lyst-style)
- * Use this for the enhanced product discovery flow
- * 
  * Returns:
  * - status: 'ok' | 'no_results' | 'error'
- * - identified: { title, brand, category, attributes, search_query, confidence }
+ * - identified: { title, brand, category, attributes, search_query, confidence } | null
  * - offers: [{ store, title, price, currency, product_url, image_url, score }]
  * - message: Optional error/info message
  * - code: Optional error code (e.g., 'AUTH_REQUIRED')
@@ -1049,6 +714,8 @@ export async function searchByName(
  * - crop_box (not cropBox)
  * - country_code (not countryCode)
  * - currency_code (not currency)
+ * 
+ * ALWAYS returns a response with standardized structure - never silently fails
  */
 export async function identifyProductFromImage(
   imageBase64?: string,
@@ -1065,7 +732,7 @@ export async function identifyProductFromImage(
   }
 ): Promise<IdentifyProductFromImageResponse> {
   try {
-    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline (PRIMARY)');
+    console.log('[identifyProductFromImage] Starting OpenAI Lens pipeline (CANONICAL)');
 
     // GUARD: Check auth state BEFORE calling edge function
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -1076,6 +743,7 @@ export async function identifyProductFromImage(
         status: 'error',
         message: 'AUTH_REQUIRED',
         code: 'AUTH_REQUIRED',
+        identified: null,
         offers: [],
       };
     }
@@ -1088,6 +756,7 @@ export async function identifyProductFromImage(
         status: 'error',
         message: 'AUTH_REQUIRED',
         code: 'AUTH_REQUIRED',
+        identified: null,
         offers: [],
       };
     }
@@ -1096,6 +765,7 @@ export async function identifyProductFromImage(
       return {
         status: 'error',
         message: 'Either imageBase64 or imageUrl is required',
+        identified: null,
         offers: [],
       };
     }
@@ -1135,7 +805,15 @@ export async function identifyProductFromImage(
     console.log('[identifyProductFromImage] Confidence:', response.identified?.confidence || 0);
     console.log('[identifyProductFromImage] Offers:', response.offers?.length || 0);
 
-    return response;
+    // Ensure standardized response structure
+    return {
+      status: response.status,
+      identified: response.status === 'ok' ? response.identified : null,
+      offers: response.offers || [],
+      message: response.message,
+      code: response.code,
+      debug: response.debug,
+    };
   } catch (error: any) {
     console.error('[identifyProductFromImage] Failed:', error);
     
@@ -1146,15 +824,67 @@ export async function identifyProductFromImage(
         status: 'error',
         message: 'AUTH_REQUIRED',
         code: 'AUTH_REQUIRED',
+        identified: null,
         offers: [],
       };
     }
     
-    // Return safe fallback
+    // Return safe fallback with standardized structure
     return {
       status: 'error',
       message: error.message || 'Failed to identify product',
+      identified: null,
       offers: [],
     };
   }
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * DEPRECATED: identifyFromImage - DO NOT USE
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * This function has been DEPRECATED and removed.
+ * Use identifyProductFromImage() instead.
+ * 
+ * The old identify-from-image Edge Function is no longer supported.
+ * All image identification should use identify-product-from-image.
+ */
+export async function identifyFromImage(): Promise<never> {
+  console.error(
+    '❌ identifyFromImage() is DEPRECATED and has been removed. ' +
+    'Use identifyProductFromImage() instead. ' +
+    'The identify-from-image Edge Function is no longer supported.'
+  );
+  throw new Error(
+    'DEPRECATED: identifyFromImage() has been removed. Use identifyProductFromImage() instead.'
+  );
+}
+
+/**
+ * Search for products by name across multiple stores
+ * Filters by user location if provided
+ * Returns products with confidence scores
+ * Works identically in all environments
+ * 
+ * NOTE: This function is currently NOT in the EXPECTED_EDGE_FUNCTIONS list
+ * because search-by-name is not deployed. If you need this functionality,
+ * deploy the search-by-name Edge Function and add it to EXPECTED_EDGE_FUNCTIONS.
+ */
+export async function searchByName(
+  query: string,
+  options?: {
+    countryCode?: string;
+    city?: string;
+    currency?: string;
+    limit?: number;
+  }
+): Promise<SearchByNameResponse> {
+  console.warn('[searchByName] This function requires the search-by-name Edge Function to be deployed');
+  
+  // Return safe fallback since function is not deployed
+  return {
+    results: [],
+    error: 'search-by-name Edge Function is not deployed. Please deploy it to use this feature.',
+  };
 }

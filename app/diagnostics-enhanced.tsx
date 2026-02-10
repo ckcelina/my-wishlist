@@ -27,6 +27,21 @@ interface DiagnosticResult {
   details?: string;
 }
 
+// Helper to safely render any value as a string
+function renderValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch (e) {
+      return `[Unstringifiable Object: ${String(e)}]`;
+    }
+  }
+  return String(value);
+}
+
 export default function DiagnosticsEnhancedScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -52,7 +67,7 @@ export default function DiagnosticsEnhancedScreen() {
     setResults([]);
     setProgress(0);
 
-    const totalTests = 19; // Updated count
+    const totalTests = 15; // Updated count
     let currentTest = 0;
 
     const incrementProgress = () => {
@@ -137,68 +152,6 @@ export default function DiagnosticsEnhancedScreen() {
         status: 'fail',
         message: 'Auth error',
         details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 2.5: Auth Ping (Edge Function Auth Verification)
-    if (user) {
-      try {
-        updateResult({ name: 'Edge Function Auth', status: 'pending', message: 'Testing auth-ping...' });
-        
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session || !session.access_token) {
-          updateResult({
-            name: 'Edge Function Auth',
-            status: 'fail',
-            message: 'No valid session',
-            details: 'Session is missing. Try signing out and back in.',
-          });
-        } else {
-          // Call auth-ping Edge Function directly
-          const response = await fetch(`${Constants.expoConfig?.extra?.supabaseUrl}/functions/v1/auth-ping`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': Constants.expoConfig?.extra?.supabaseAnonKey,
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({}),
-          });
-
-          const data = await response.json();
-
-          if (response.ok && data.status === 'ok') {
-            updateResult({
-              name: 'Edge Function Auth',
-              status: 'pass',
-              message: 'Auth ping successful',
-              details: `User ID verified: ${data.userId.substring(0, 8)}...`,
-            });
-          } else {
-            updateResult({
-              name: 'Edge Function Auth',
-              status: 'fail',
-              message: 'Auth ping failed',
-              details: data.message || 'Your app is pointing to the wrong Supabase project or session is not valid.',
-            });
-          }
-        }
-      } catch (error: any) {
-        updateResult({
-          name: 'Edge Function Auth',
-          status: 'fail',
-          message: 'Auth ping error',
-          details: error.message || 'Failed to call auth-ping Edge Function',
-        });
-      }
-    } else {
-      updateResult({
-        name: 'Edge Function Auth',
-        status: 'warning',
-        message: 'Not logged in',
-        details: 'Sign in to test Edge Function authentication',
       });
     }
     incrementProgress();
@@ -293,257 +246,82 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 5: Edge Function - extract-item
-    try {
-      updateResult({ name: 'Edge Function: extract-item', status: 'pending', message: 'Testing...' });
-      
-      const { data, error } = await supabase.functions.invoke('extract-item', {
-        body: { url: 'https://example.com/test' },
-      });
-      
-      if (error) {
-        // Check if it's a 404 (function not deployed)
-        if (error.message.includes('not found') || error.message.includes('404')) {
-          updateResult({
-            name: 'Edge Function: extract-item',
-            status: 'fail',
-            message: 'Not deployed',
-            details: 'Function not found on server',
-          });
-        } 
-        // 401, 405, 400 mean the function exists but requires auth or specific input
-        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
-          updateResult({
-            name: 'Edge Function: extract-item',
-            status: 'pass',
-            message: 'Available',
-            details: 'Function is deployed (requires auth or valid input)',
-          });
-        }
-        else {
-          updateResult({
-            name: 'Edge Function: extract-item',
-            status: 'warning',
-            message: 'Deployed but error',
-            details: error.message,
-          });
-        }
-      } else {
-        updateResult({
-          name: 'Edge Function: extract-item',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed and responding',
-        });
-      }
-    } catch (error: any) {
-      // Check if it's a 401, 405, or 400 error (function exists)
-      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
-        updateResult({
-          name: 'Edge Function: extract-item',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed (requires auth or valid input)',
-        });
-      } else {
-        updateResult({
-          name: 'Edge Function: extract-item',
-          status: 'fail',
-          message: 'Not available',
-          details: error.message || 'Function invocation failed',
-        });
-      }
-    }
-    incrementProgress();
+    // Test 5-8: Edge Functions (extract-item, find-alternatives, import-wishlist, identify-product-from-image)
+    const edgeFunctions = [
+      'extract-item',
+      'find-alternatives',
+      'import-wishlist',
+      'identify-product-from-image',
+    ];
 
-    // Test 6: Edge Function - identify-from-image
-    try {
-      updateResult({ name: 'Edge Function: identify-from-image', status: 'pending', message: 'Testing...' });
-      
-      const { data, error } = await supabase.functions.invoke('identify-from-image', {
-        body: { imageUrl: 'https://example.com/test.jpg' },
-      });
-      
-      if (error) {
-        // Check if it's a 404 (function not deployed)
-        if (error.message.includes('not found') || error.message.includes('404')) {
+    for (const functionName of edgeFunctions) {
+      try {
+        updateResult({ name: `Edge Function: ${functionName}`, status: 'pending', message: 'Testing...' });
+        
+        // Try to invoke the function with minimal payload
+        const { data, error } = await supabase.functions.invoke(functionName, {
+          body: {},
+        });
+        
+        if (error) {
+          const errorMsg = renderValue(error.message || error);
+          
+          // Check if it's a 404 (function not deployed)
+          if (errorMsg.includes('not found') || errorMsg.includes('404')) {
+            updateResult({
+              name: `Edge Function: ${functionName}`,
+              status: 'fail',
+              message: 'Not Available',
+              details: 'Function not deployed on server',
+            });
+          } 
+          // 401, 405, 400 mean the function exists but requires auth or specific input
+          else if (errorMsg.includes('401') || errorMsg.includes('405') || errorMsg.includes('400')) {
+            updateResult({
+              name: `Edge Function: ${functionName}`,
+              status: 'pass',
+              message: 'Available',
+              details: 'Function is deployed (requires auth or valid input)',
+            });
+          }
+          else {
+            updateResult({
+              name: `Edge Function: ${functionName}`,
+              status: 'warning',
+              message: 'Deployed but error',
+              details: errorMsg,
+            });
+          }
+        } else {
           updateResult({
-            name: 'Edge Function: identify-from-image',
-            status: 'fail',
-            message: 'Not deployed',
-            details: 'Function not found on server',
+            name: `Edge Function: ${functionName}`,
+            status: 'pass',
+            message: 'Available',
+            details: 'Function is deployed and responding',
           });
         }
-        // 401, 405, 400 mean the function exists but requires auth or specific input
-        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
+      } catch (error: any) {
+        const errorMsg = renderValue(error.message || error);
+        
+        // Check if it's a 401, 405, or 400 error (function exists)
+        if (errorMsg.includes('401') || errorMsg.includes('405') || errorMsg.includes('400')) {
           updateResult({
-            name: 'Edge Function: identify-from-image',
+            name: `Edge Function: ${functionName}`,
             status: 'pass',
             message: 'Available',
             details: 'Function is deployed (requires auth or valid input)',
           });
-        }
-        else {
+        } else {
           updateResult({
-            name: 'Edge Function: identify-from-image',
-            status: 'warning',
-            message: 'Deployed but error',
-            details: error.message,
-          });
-        }
-      } else {
-        updateResult({
-          name: 'Edge Function: identify-from-image',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed and responding',
-        });
-      }
-    } catch (error: any) {
-      // Check if it's a 401, 405, or 400 error (function exists)
-      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
-        updateResult({
-          name: 'Edge Function: identify-from-image',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed (requires auth or valid input)',
-        });
-      } else {
-        updateResult({
-          name: 'Edge Function: identify-from-image',
-          status: 'fail',
-          message: 'Not available',
-          details: error.message || 'Function invocation failed',
-        });
-      }
-    }
-    incrementProgress();
-
-    // Test 7: Edge Function - find-alternatives
-    try {
-      updateResult({ name: 'Edge Function: find-alternatives', status: 'pending', message: 'Testing...' });
-      
-      const { data, error } = await supabase.functions.invoke('find-alternatives', {
-        body: { title: 'Test Product' },
-      });
-      
-      if (error) {
-        // Check if it's a 404 (function not deployed)
-        if (error.message.includes('not found') || error.message.includes('404')) {
-          updateResult({
-            name: 'Edge Function: find-alternatives',
+            name: `Edge Function: ${functionName}`,
             status: 'fail',
-            message: 'Not deployed',
-            details: 'Function not found on server',
+            message: 'Not Available',
+            details: errorMsg,
           });
         }
-        // 401, 405, 400 mean the function exists but requires auth or specific input
-        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
-          updateResult({
-            name: 'Edge Function: find-alternatives',
-            status: 'pass',
-            message: 'Available',
-            details: 'Function is deployed (requires auth or valid input)',
-          });
-        }
-        else {
-          updateResult({
-            name: 'Edge Function: find-alternatives',
-            status: 'warning',
-            message: 'Deployed but error',
-            details: error.message,
-          });
-        }
-      } else {
-        updateResult({
-          name: 'Edge Function: find-alternatives',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed and responding',
-        });
       }
-    } catch (error: any) {
-      // Check if it's a 401, 405, or 400 error (function exists)
-      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
-        updateResult({
-          name: 'Edge Function: find-alternatives',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed (requires auth or valid input)',
-        });
-      } else {
-        updateResult({
-          name: 'Edge Function: find-alternatives',
-          status: 'fail',
-          message: 'Not available',
-          details: error.message || 'Function invocation failed',
-        });
-      }
+      incrementProgress();
     }
-    incrementProgress();
-
-    // Test 8: Edge Function - import-wishlist
-    try {
-      updateResult({ name: 'Edge Function: import-wishlist', status: 'pending', message: 'Testing...' });
-      
-      const { data, error } = await supabase.functions.invoke('import-wishlist', {
-        body: { wishlistUrl: 'https://example.com/wishlist' },
-      });
-      
-      if (error) {
-        // Check if it's a 404 (function not deployed)
-        if (error.message.includes('not found') || error.message.includes('404')) {
-          updateResult({
-            name: 'Edge Function: import-wishlist',
-            status: 'fail',
-            message: 'Not deployed',
-            details: 'Function not found on server',
-          });
-        }
-        // 401, 405, 400 mean the function exists but requires auth or specific input
-        else if (error.message.includes('401') || error.message.includes('405') || error.message.includes('400')) {
-          updateResult({
-            name: 'Edge Function: import-wishlist',
-            status: 'pass',
-            message: 'Available',
-            details: 'Function is deployed (requires auth or valid input)',
-          });
-        }
-        else {
-          updateResult({
-            name: 'Edge Function: import-wishlist',
-            status: 'warning',
-            message: 'Deployed but error',
-            details: error.message,
-          });
-        }
-      } else {
-        updateResult({
-          name: 'Edge Function: import-wishlist',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed and responding',
-        });
-      }
-    } catch (error: any) {
-      // Check if it's a 401, 405, or 400 error (function exists)
-      if (error.message && (error.message.includes('401') || error.message.includes('405') || error.message.includes('400'))) {
-        updateResult({
-          name: 'Edge Function: import-wishlist',
-          status: 'pass',
-          message: 'Available',
-          details: 'Function is deployed (requires auth or valid input)',
-        });
-      } else {
-        updateResult({
-          name: 'Edge Function: import-wishlist',
-          status: 'fail',
-          message: 'Not available',
-          details: error.message || 'Function invocation failed',
-        });
-      }
-    }
-    incrementProgress();
 
     // Test 9: Notifications Permission
     try {
@@ -638,47 +416,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 12: Deep Linking
-    try {
-      updateResult({ name: 'Deep Linking', status: 'pending', message: 'Checking...' });
-      
-      const scheme = Constants.expoConfig?.scheme;
-      
-      if (scheme) {
-        updateResult({
-          name: 'Deep Linking',
-          status: 'pass',
-          message: 'Scheme configured',
-          details: `Scheme: ${scheme}`,
-        });
-      } else {
-        updateResult({
-          name: 'Deep Linking',
-          status: 'warning',
-          message: 'No scheme configured',
-          details: 'Check app.json',
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Deep Linking',
-        status: 'fail',
-        message: 'Deep linking check failed',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 13: Platform Detection
-    updateResult({
-      name: 'Platform',
-      status: 'pass',
-      message: `Running on ${Platform.OS}`,
-      details: `Version: ${Platform.Version}`,
-    });
-    incrementProgress();
-
-    // Test 14: Environment Variables
+    // Test 12: Environment Variables
     try {
       updateResult({ name: 'Environment', status: 'pending', message: 'Checking...' });
       
@@ -716,7 +454,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 15: Network Connectivity
+    // Test 13: Network Connectivity
     try {
       updateResult({ name: 'Network', status: 'pending', message: 'Testing...' });
       
@@ -750,7 +488,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 16: User Settings
+    // Test 14: User Settings
     if (user) {
       try {
         updateResult({ name: 'User Settings', status: 'pending', message: 'Checking...' });
@@ -801,118 +539,13 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 17: Share Sheet Configuration
-    try {
-      updateResult({ name: 'Share Sheet', status: 'pending', message: 'Checking...' });
-      
-      const intentFilters = Constants.expoConfig?.android?.intentFilters;
-      const associatedDomains = Constants.expoConfig?.ios?.associatedDomains;
-      
-      const hasAndroidConfig = intentFilters && intentFilters.length > 0;
-      const hasIOSConfig = associatedDomains && associatedDomains.length > 0;
-      
-      if (Platform.OS === 'android' && hasAndroidConfig) {
-        updateResult({
-          name: 'Share Sheet',
-          status: 'pass',
-          message: 'Android configured',
-          details: `${intentFilters.length} intent filters`,
-        });
-      } else if (Platform.OS === 'ios' && hasIOSConfig) {
-        updateResult({
-          name: 'Share Sheet',
-          status: 'pass',
-          message: 'iOS configured',
-          details: `${associatedDomains.length} domains`,
-        });
-      } else {
-        updateResult({
-          name: 'Share Sheet',
-          status: 'warning',
-          message: 'Configuration incomplete',
-          details: 'Check app.json',
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Share Sheet',
-        status: 'fail',
-        message: 'Config check failed',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 18: Camera Permission
-    try {
-      updateResult({ name: 'Camera Permission', status: 'pending', message: 'Checking...' });
-      
-      const { status } = await ImagePicker.getCameraPermissionsAsync();
-      
-      if (status === 'granted') {
-        updateResult({
-          name: 'Camera Permission',
-          status: 'pass',
-          message: 'Permission granted',
-          details: 'Camera access enabled',
-        });
-      } else {
-        updateResult({
-          name: 'Camera Permission',
-          status: 'warning',
-          message: 'Permission not granted',
-          details: `Status: ${status}`,
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Camera Permission',
-        status: 'fail',
-        message: 'Permission check failed',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 19: OpenAI Key Configuration (Edge Functions)
-    try {
-      updateResult({ name: 'OpenAI Configuration', status: 'pending', message: 'Checking...' });
-      
-      // Try a real extraction to see if OpenAI key is configured
-      const { data, error } = await supabase.functions.invoke('extract-item', {
-        body: { url: 'https://www.amazon.com/test' },
-      });
-      
-      if (error) {
-        updateResult({
-          name: 'OpenAI Configuration',
-          status: 'warning',
-          message: 'Cannot verify',
-          details: 'Edge function error',
-        });
-      } else if (data && data.error && data.error.includes('configuration')) {
-        updateResult({
-          name: 'OpenAI Configuration',
-          status: 'fail',
-          message: 'OpenAI key not configured',
-          details: 'Set OPENAI_API_KEY in Supabase secrets',
-        });
-      } else {
-        updateResult({
-          name: 'OpenAI Configuration',
-          status: 'pass',
-          message: 'OpenAI key configured',
-          details: 'AI features enabled',
-        });
-      }
-    } catch (error: any) {
-      updateResult({
-        name: 'OpenAI Configuration',
-        status: 'warning',
-        message: 'Cannot verify',
-        details: 'Check Edge Functions',
-      });
-    }
+    // Test 15: Platform Detection
+    updateResult({
+      name: 'Platform',
+      status: 'pass',
+      message: `Running on ${Platform.OS}`,
+      details: `Version: ${renderValue(Platform.Version)}`,
+    });
     incrementProgress();
 
     setTesting(false);
