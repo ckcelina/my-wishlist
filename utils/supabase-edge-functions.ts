@@ -191,8 +191,15 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 // This is the ONLY list of Edge Functions recognized by the app.
 // All diagnostics, availability checks, and function calls reference this list.
 // 
-// REMOVED: 'identify-from-image' (deprecated, replaced by identify-product-from-image)
-// ADDED: 'alert-items-with-targets' (for price drop alerts)
+// ✅ ACTIVE FUNCTIONS:
+// - extract-item: Extract product details from a URL
+// - find-alternatives: Find alternative stores for a product
+// - import-wishlist: Import wishlist from a store URL
+// - identify-product-from-image: Identify products from images (CANONICAL - OpenAI Lens + Store Search)
+// - alert-items-with-targets: Get items with price alert targets
+//
+// ❌ REMOVED DEPRECATED FUNCTIONS:
+// - identify-from-image (DEPRECATED - replaced by identify-product-from-image)
 // ═══════════════════════════════════════════════════════════════════════════
 export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
@@ -933,28 +940,6 @@ export async function identifyProductFromImage(
       offers: [],
     };
   }
-}
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * DEPRECATED: identifyFromImage - DO NOT USE
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This function has been DEPRECATED and removed.
- * Use identifyProductFromImage() instead.
- * 
- * The old identify-from-image Edge Function is no longer supported.
- * All image identification should use identify-product-from-image.
- */
-export async function identifyFromImage(): Promise<never> {
-  console.error(
-    '❌ identifyFromImage() is DEPRECATED and has been removed. ' +
-    'Use identifyProductFromImage() instead. ' +
-    'The identify-from-image Edge Function is no longer supported.'
-  );
-  throw new Error(
-    'DEPRECATED: identifyFromImage() has been removed. Use identifyProductFromImage() instead.'
-  );
 }
 
 /**
