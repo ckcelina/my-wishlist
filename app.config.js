@@ -149,8 +149,21 @@ module.exports = {
       supabaseAnonKey: currentSupabaseConfig.anonKey,
       supabaseEdgeFunctionsUrl: currentSupabaseConfig.edgeFunctionsUrl,
       
-      // Backend API URL (optional - for global search and other backend features)
-      backendUrl: process.env.BACKEND_URL || null,
+      // ═══════════════════════════════════════════════════════
+      // 🚀 BACKEND_URL - SUPABASE EDGE FUNCTIONS BASE URL
+      // ═══════════════════════════════════════════════════════
+      // This points to the Supabase Edge Functions base URL.
+      // All Edge Functions are available at this endpoint.
+      // Format: https://<project-ref>.supabase.co/functions/v1
+      //
+      // This is REQUIRED for:
+      // - Global search functionality
+      // - AI-powered product identification
+      // - Price tracking and alerts
+      // - All backend API features
+      //
+      // If missing, the app will show configuration errors.
+      backendUrl: process.env.BACKEND_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
       
       // Natively Configuration
       nativelyEnvironment: 'supabase',

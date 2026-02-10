@@ -19,7 +19,7 @@ import { colors, typography, spacing } from '@/styles/designSystem';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
-import { appConfig } from '@/utils/environmentConfig';
+import { appConfig, isBackendConfigured, getBackendConfigurationErrorMessage } from '@/utils/environmentConfig';
 
 interface DiagnosticResult {
   name: string;
@@ -549,6 +549,7 @@ export default function DiagnosticsEnhancedScreen() {
       const requiredVars = [
         'supabaseUrl',
         'supabaseAnonKey',
+        'backendUrl', // Now REQUIRED
       ];
       
       const missing = requiredVars.filter(
@@ -738,7 +739,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 19: Backend API URL (optional)
+    // Test 19: Backend API URL (REQUIRED)
     try {
       updateResult({ name: 'Backend API URL', status: 'pending', message: 'Checking...' });
       
@@ -747,46 +748,29 @@ export default function DiagnosticsEnhancedScreen() {
       if (!backendUrl) {
         updateResult({
           name: 'Backend API URL',
+          status: 'fail',
+          message: 'NOT CONFIGURED',
+          details: getBackendConfigurationErrorMessage(),
+        });
+      } else if (!backendUrl.includes('supabase.co/functions/v1')) {
+        updateResult({
+          name: 'Backend API URL',
           status: 'warning',
-          message: 'Not configured',
-          details: 'Backend API features (global search) will not work. This is optional.',
+          message: 'Configured but invalid format',
+          details: `Expected Supabase Edge Functions URL, got: ${backendUrl}`,
         });
       } else {
-        // Try to ping the backend
-        try {
-          const response = await fetch(`${backendUrl}/health`, {
-            method: 'GET',
-            signal: AbortSignal.timeout(5000),
-          });
-          
-          if (response.ok) {
-            updateResult({
-              name: 'Backend API URL',
-              status: 'pass',
-              message: 'Backend API reachable',
-              details: backendUrl,
-            });
-          } else {
-            updateResult({
-              name: 'Backend API URL',
-              status: 'warning',
-              message: 'Backend API unreachable',
-              details: `Status: ${response.status}`,
-            });
-          }
-        } catch (fetchError: any) {
-          updateResult({
-            name: 'Backend API URL',
-            status: 'warning',
-            message: 'Backend API unreachable',
-            details: fetchError.message || 'Network error',
-          });
-        }
+        updateResult({
+          name: 'Backend API URL',
+          status: 'pass',
+          message: 'Configured correctly',
+          details: backendUrl,
+        });
       }
     } catch (error) {
       updateResult({
         name: 'Backend API URL',
-        status: 'warning',
+        status: 'fail',
         message: 'Configuration check failed',
         details: error instanceof Error ? error.message : String(error),
       });
