@@ -408,23 +408,9 @@ export default function AddItemScreen() {
       return;
     }
 
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera permission is required to take photos.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: 'images',
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-      setIdentificationResult(null);
-      setMode('camera');
-    }
+    console.log('[AddScreen] Navigating to camera capture screen');
+    // Navigate to dedicated camera capture screen (Google Lens-style flow)
+    router.push('/camera-capture');
   };
 
   const handleIdentifyFromCamera = async () => {
