@@ -28,10 +28,24 @@ interface DiagnosticResult {
   details?: string;
 }
 
-// Helper to safely render any value as a string
-function renderValue(value: any): string {
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UI SAFETY HELPER - renderSafeValue
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Prevents "Objects are not valid as a React child" errors by converting
+ * any value to a safe string representation.
+ * 
+ * Rules:
+ * - null/undefined → "—"
+ * - object/array → JSON.stringify(value, null, 2)
+ * - otherwise → String(value)
+ * 
+ * Use this helper EVERYWHERE you render dynamic values in <Text> components.
+ */
+function renderSafeValue(value: any): string {
   if (value === null || value === undefined) {
-    return '-';
+    return '—';
   }
   if (typeof value === 'object') {
     try {
@@ -261,29 +275,44 @@ export default function DiagnosticsEnhancedScreen() {
         // Use the new checkEdgeFunctionAvailability function
         const availabilityResult = await checkEdgeFunctionAvailability(functionName);
         
-        console.log(`[Diagnostics] ${functionName} availability:`, availabilityResult.status);
+        console.log(`[Diagnostics] ${functionName} availability:`, availabilityResult.status, availabilityResult.statusCode);
         
-        // Map availability status to diagnostic status
-        if (availabilityResult.status === 'Available') {
+        // Map availability status to diagnostic status with detailed messages
+        if (availabilityResult.status === 'Working') {
           updateResult({
             name: `Edge Function: ${functionName}`,
             status: 'pass',
-            message: 'Available',
-            details: availabilityResult.message || 'Function is deployed and reachable',
+            message: `Working (${availabilityResult.statusCode || 200})`,
+            details: availabilityResult.message,
           });
-        } else if (availabilityResult.status === 'Available (Auth Required)' || availabilityResult.status === 'Available (Bad Request)') {
+        } else if (availabilityResult.status === 'Auth error') {
           updateResult({
             name: `Edge Function: ${functionName}`,
-            status: 'pass',
-            message: 'Available',
-            details: availabilityResult.message || 'Function is deployed (requires auth or valid input)',
+            status: 'warning',
+            message: `Auth error (${availabilityResult.statusCode || 401})`,
+            details: availabilityResult.message,
           });
-        } else {
+        } else if (availabilityResult.status === 'Not deployed') {
           updateResult({
             name: `Edge Function: ${functionName}`,
             status: 'fail',
-            message: 'Not Available',
-            details: availabilityResult.message || 'Function not deployed on server',
+            message: `Not deployed (${availabilityResult.statusCode || 404})`,
+            details: availabilityResult.message,
+          });
+        } else if (availabilityResult.status === 'Server error') {
+          updateResult({
+            name: `Edge Function: ${functionName}`,
+            status: 'fail',
+            message: `Server error (${availabilityResult.statusCode || 500})`,
+            details: availabilityResult.message,
+          });
+        } else {
+          // Network error
+          updateResult({
+            name: `Edge Function: ${functionName}`,
+            status: 'fail',
+            message: 'Network error',
+            details: availabilityResult.message,
           });
         }
       } catch (error: any) {
@@ -486,7 +515,7 @@ export default function DiagnosticsEnhancedScreen() {
             name: 'User Settings',
             status: 'pass',
             message: 'Settings exist',
-            details: `Currency: ${data.default_currency}`,
+            details: `Currency: ${renderSafeValue(data.default_currency)}`,
           });
         } else {
           updateResult({
@@ -618,7 +647,7 @@ export default function DiagnosticsEnhancedScreen() {
                 {result.message}
               </Text>
               {result.details && (
-                <Text style={styles.resultDetails}>{result.details}</Text>
+                <Text style={styles.resultDetails}>{renderSafeValue(result.details)}</Text>
               )}
             </View>
           );

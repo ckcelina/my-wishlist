@@ -235,21 +235,22 @@ console.log('══════════════════════�
  * Checks if an Edge Function is deployed and reachable by making a lightweight
  * request to its endpoint. Does NOT execute the function.
  * 
- * Returns:
- * - 'Available': Function responds with 200 (deployed and working)
- * - 'Available (Auth Required)': Function responds with 401 (deployed, needs auth)
- * - 'Available (Bad Request)': Function responds with 400/405 (deployed, needs valid input)
- * - 'Not Available': Function responds with 404 (not deployed)
- * - 'Not Available': Network error or DNS failure
+ * Returns detailed status with HTTP status code and message:
+ * - 200 → 'Working' (function deployed and responding)
+ * - 401 → 'Auth error' (function deployed, requires authentication)
+ * - 400/405 → 'Working' (function deployed, needs valid input)
+ * - 404 → 'Not deployed' (function not found on server)
+ * - 500+ → 'Server error (XXX)' (function deployed but erroring)
+ * - Network error → 'Network error: ...'
  * 
  * This function is used ONLY by diagnostics to check function availability.
- * It does NOT rely on local feature flags or hardcoded lists.
  */
 export async function checkEdgeFunctionAvailability(
   functionName: EdgeFunctionName
 ): Promise<{
-  status: 'Available' | 'Available (Auth Required)' | 'Available (Bad Request)' | 'Not Available';
-  message?: string;
+  status: 'Working' | 'Auth error' | 'Not deployed' | 'Server error' | 'Network error';
+  statusCode?: number;
+  message: string;
 }> {
   const functionsUrl = `${SUPABASE_URL}/functions/v1`;
   const url = `${functionsUrl}/${functionName}`;
@@ -269,35 +270,47 @@ export async function checkEdgeFunctionAvailability(
 
     if (response.status === 200) {
       return {
-        status: 'Available',
+        status: 'Working',
+        statusCode: 200,
         message: 'Function endpoint reachable and responding',
       };
     } else if (response.status === 401) {
       return {
-        status: 'Available (Auth Required)',
-        message: 'Function is deployed but requires authentication',
+        status: 'Auth error',
+        statusCode: 401,
+        message: 'Function requires authentication',
       };
     } else if (response.status === 400 || response.status === 405) {
+      // 400/405 means function exists but needs valid input - still "Working"
       return {
-        status: 'Available (Bad Request)',
-        message: 'Function is deployed but requires valid input',
+        status: 'Working',
+        statusCode: response.status,
+        message: `Function deployed (status ${response.status})`,
       };
     } else if (response.status === 404) {
       return {
-        status: 'Not Available',
-        message: 'Function not found (404) - not deployed on server',
+        status: 'Not deployed',
+        statusCode: 404,
+        message: 'Function not found - not deployed on server',
+      };
+    } else if (response.status >= 500) {
+      return {
+        status: 'Server error',
+        statusCode: response.status,
+        message: `Server error (${response.status})`,
       };
     } else {
       return {
-        status: 'Not Available',
-        message: `Unexpected status: ${response.status} ${response.statusText}`,
+        status: 'Working',
+        statusCode: response.status,
+        message: `Unexpected status (${response.status})`,
       };
     }
   } catch (error: any) {
     console.error(`[checkEdgeFunctionAvailability] Network error checking ${functionName}:`, error);
     return {
-      status: 'Not Available',
-      message: `Network or DNS error: ${error.message || 'Unknown error'}`,
+      status: 'Network error',
+      message: `Network error: ${error.message || 'Unknown error'}`,
     };
   }
 }
@@ -345,22 +358,25 @@ export async function assertSupabaseSession(): Promise<string> {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CENTRALIZED EDGE FUNCTION CALLER - USES SUPABASE CLIENT'S INVOKE METHOD
+ * CENTRALIZED EDGE FUNCTION CALLER - CORRECT AUTHENTICATION HEADERS
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * CRITICAL FIX: This function now correctly handles JWT authentication for ALL Edge Functions.
  * 
- * AUTHENTICATION FLOW:
+ * AUTHENTICATION FLOW (FIXED):
  * 1. ALWAYS fetch session FIRST using supabase.auth.getSession()
  * 2. If no session or no access_token → throw AUTH_REQUIRED immediately (do NOT call function)
  * 3. If token exists but near expiry (expires_at <= now+60s) → refresh session ONCE
- * 4. Call Edge Function using supabase.functions.invoke() with:
- *    - apikey header: SUPABASE_ANON_KEY (REQUIRED for all functions)
- *    - Authorization header: Bearer <USER_ACCESS_TOKEN> (REQUIRED for authenticated functions)
+ * 4. Call Edge Function using supabase.functions.invoke() with CORRECT headers:
+ *    - apikey: SUPABASE_ANON_KEY (ALWAYS included - this is the project API key)
+ *    - Authorization: Bearer <USER_ACCESS_TOKEN> (user's JWT, NOT the anon key)
  * 5. If response is 401 → attempt refresh ONCE and retry ONCE
  * 6. If still 401 → throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
  * 
- * CRITICAL: Uses supabase.functions.invoke() for correct URL resolution and auth handling.
+ * CRITICAL: NEVER send the anon key as a Bearer JWT. The anon key goes in the 'apikey' header.
+ * The user's access_token goes in the 'Authorization: Bearer' header.
+ * 
+ * Uses supabase.functions.invoke() for correct URL resolution and auth handling.
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
   functionName: EdgeFunctionName,
@@ -459,19 +475,22 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     currentAccessToken = refreshData.session.access_token;
   }
 
-  // STEP 4: Make the edge call using Supabase client's invoke method
+  // STEP 4: Make the edge call using Supabase client's invoke method with CORRECT headers
   const makeRequest = async (token: string): Promise<{ data: any; error: any; status?: number }> => {
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] Calling supabase.functions.invoke('${functionName}') with token length: ${token.length}`);
+      console.log(`[callEdgeFunctionSafely] Headers: apikey=${SUPABASE_ANON_KEY.substring(0, 20)}..., Authorization=Bearer ${token.substring(0, 20)}...`);
     }
 
-    // Use Supabase client's invoke method for correct URL resolution and auth handling
+    // CRITICAL: Use correct headers
+    // - apikey: SUPABASE_ANON_KEY (project API key, ALWAYS included)
+    // - Authorization: Bearer <USER_ACCESS_TOKEN> (user's JWT, NOT the anon key)
     const result = await supabase.functions.invoke(functionName, {
       body: payload,
       headers: {
         'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY, // Always include anon key
-        'Authorization': `Bearer ${token}`, // User access token
+        'apikey': SUPABASE_ANON_KEY, // Project API key (NOT as Bearer)
+        'Authorization': `Bearer ${token}`, // User access token (NOT the anon key)
       },
     });
 
