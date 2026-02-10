@@ -391,10 +391,10 @@ export default function DiagnosticsEnhancedScreen() {
     updateResult(extractItemResult);
     incrementProgress();
 
-    // Test 6: Edge Function - identify-from-image
-    updateResult({ name: 'Edge Function: identify-from-image', status: 'pending', message: 'Testing...' });
-    const identifyFromImageResult = await checkEdgeFunction('identify-from-image');
-    updateResult(identifyFromImageResult);
+    // Test 6: Edge Function - identify-product-from-image (PRIMARY)
+    updateResult({ name: 'Edge Function: identify-product-from-image', status: 'pending', message: 'Testing...' });
+    const identifyProductFromImageResult = await checkEdgeFunction('identify-product-from-image');
+    updateResult(identifyProductFromImageResult);
     incrementProgress();
 
     // Test 7: Edge Function - find-alternatives
