@@ -25,12 +25,12 @@ const SUPABASE_CONFIG = {
   },
 };
 
-// Backend configuration (locked per environment)
-// Supports both BACKEND_URL and EXPO_PUBLIC_API_BASE_URL for flexibility
+// Backend configuration - NOW USING SUPABASE EDGE FUNCTIONS
+// All environments point to Supabase Edge Functions (no more Specular)
 const BACKEND_CONFIG = {
-  DEV: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
-  PREVIEW: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
-  PROD: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dp5sm9gseg2u24kanaj9us8ayp8awmu3.app.specular.dev',
+  DEV: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
+  PREVIEW: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
+  PROD: process.env.EXPO_PUBLIC_API_BASE_URL || process.env.BACKEND_URL || 'https://dixgmnuayzblwpqyplsi.supabase.co/functions/v1',
 };
 
 // Get current config
@@ -158,7 +158,7 @@ export default {
       supabaseAnonKey: currentSupabaseConfig.anonKey,
       supabaseEdgeFunctionsUrl: currentSupabaseConfig.edgeFunctionsUrl,
       
-      // Backend Configuration (locked per environment)
+      // Backend Configuration - NOW USING SUPABASE EDGE FUNCTIONS (no more Specular)
       backendUrl: currentBackendUrl,
       
       // Natively Configuration
