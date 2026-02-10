@@ -1,16 +1,15 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import * as ImagePicker from 'expo-image-picker';
 import { ConfigurationError } from '@/components/design-system/ConfigurationError';
 import { StatusBar } from 'expo-status-bar';
-import Constants from 'expo-constants';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { fetchWishlists } from '@/lib/supabase-helpers';
 import * as Clipboard from 'expo-clipboard';
 import { IconSymbol } from '@/components/IconSymbol';
 import { extractItem, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import { takePhoto, pickFromLibrary } from '@/src/lib/imageCapture';
 import {
   View,
   Text,
@@ -29,11 +28,10 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createColors, createTypography, spacing } from '@/styles/designSystem';
 import { isEnvironmentConfigured, getConfigurationErrorMessage } from '@/utils/environmentConfig';
 import * as Linking from 'expo-linking';
-import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 
 type ModeType = 'share' | 'url' | 'camera' | 'upload' | 'search';
@@ -122,6 +120,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
   buttonText: {
     fontSize: 16,
@@ -278,12 +279,6 @@ function isValidUrl(urlString: string): boolean {
   }
 }
 
-function extractUrlFromText(text: string): string | null {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const match = text.match(urlRegex);
-  return match ? match[0] : null;
-}
-
 export default function AddItemScreen() {
   const { user, authLoading } = useAuth();
   const { theme } = useAppTheme();
@@ -324,7 +319,7 @@ export default function AddItemScreen() {
       const lists = await fetchWishlists(user.id);
       setWishlists(lists);
     } catch (error) {
-      console.error('Failed to load wishlists:', error);
+      console.error('[AddScreen] Failed to load wishlists:', error);
     }
   };
 
@@ -391,7 +386,7 @@ export default function AddItemScreen() {
         },
       });
     } catch (error: any) {
-      console.error('Extract URL error:', error);
+      console.error('[AddScreen] Extract URL error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
@@ -408,40 +403,27 @@ export default function AddItemScreen() {
       return;
     }
 
-    console.log('[AddScreen] Navigating to camera capture screen');
-    // Navigate to dedicated camera capture screen (Google Lens-style flow)
-    router.push('/camera-capture');
-  };
-
-  const handleIdentifyFromCamera = async () => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    if (!imageUri) {
-      Alert.alert('Error', 'Please take a photo first');
-      return;
-    }
-
+    console.log('[AddScreen] User tapped Take Photo button');
     setLoading(true);
-    setIdentificationResult(null);
+    
     try {
-      console.log('[AddScreen] Reading image as base64');
-      // Read image as base64
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - Google Cloud Vision)');
+      const img = await takePhoto();
       
-      // CANONICAL: Use ONLY identify-product-from-image (Google Cloud Vision)
-      const result = await identifyProductFromImage(base64, {
-        mimeType: 'image/jpeg',
+      if (!img) {
+        console.log('[AddScreen] User cancelled or permission denied');
+        return;
+      }
+      
+      console.log('[AddScreen] Photo captured successfully - size:', img.fileSizeBytes, 'bytes');
+      
+      // Call identifyProductFromImage with the captured image
+      console.log('[AddScreen] Calling identifyProductFromImage');
+      const result = await identifyProductFromImage(img.imageBase64, {
+        mimeType: img.mimeType,
       });
-
+      
       console.log('[AddScreen] identifyProductFromImage result:', result.status);
-
+      
       // Handle AUTH_REQUIRED error
       if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
         console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
@@ -450,73 +432,22 @@ export default function AddItemScreen() {
         ]);
         return;
       }
-
+      
       // Handle IMAGE_TOO_LARGE error
       if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
         console.log('[AddScreen] IMAGE_TOO_LARGE');
-        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.', [
-          { text: 'Try Again', onPress: () => setImageUri(null) }
-        ]);
+        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
         return;
       }
-
+      
       // Handle VISION_FAILED error
       if (result.status === 'error' && result.error === 'VISION_FAILED') {
         console.log('[AddScreen] VISION_FAILED');
-        Alert.alert('Analysis Failed', result.message || 'Could not analyze image right now.', [
-          { text: 'Try Again', onPress: () => setImageUri(null) },
-          { 
-            text: 'Add Manually', 
-            onPress: () => {
-              const countryCode = userLocation?.countryCode || 'US';
-              const currencyCode = userLocation?.currencyCode || 'USD';
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  data: JSON.stringify({
-                    itemName: '',
-                    imageUrl: imageUri,
-                    extractedImages: JSON.stringify([imageUri]),
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: currencyCode,
-                    countryAvailability: JSON.stringify([countryCode]),
-                    sourceUrl: '',
-                    inputType: 'manual',
-                  }),
-                },
-              });
-            }
-          },
-        ]);
-        return;
-      }
-
-      // Handle success
-      if (result.status === 'ok' && result.items && result.items.length > 0) {
-        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length, 'confidence:', result.confidence);
-        
-        // Extract labels from items for display
-        const labels = result.items.map(item => item.title);
-        
-        setIdentificationResult({
-          brand: result.items[0].title, // Use first item as brand/product
-          productName: result.query,
-          labels: labels,
-          confidence: result.confidence,
-        });
-        return;
-      }
-
-      // Handle no results
-      if (result.status === 'no_results') {
-        console.log('[AddScreen] No results:', result.message);
         Alert.alert(
-          'No Products Found',
-          result.message || 'No matches found. Try cropping or better lighting.',
+          'Analysis Failed',
+          result.message || 'Could not analyze image right now.',
           [
-            { text: 'Try Again', onPress: () => setImageUri(null) },
+            { text: 'Try Again' },
             { 
               text: 'Add Manually', 
               onPress: () => {
@@ -527,8 +458,8 @@ export default function AddItemScreen() {
                   params: {
                     data: JSON.stringify({
                       itemName: '',
-                      imageUrl: imageUri,
-                      extractedImages: JSON.stringify([imageUri]),
+                      imageUrl: '',
+                      extractedImages: JSON.stringify([]),
                       storeName: '',
                       storeDomain: '',
                       price: null,
@@ -545,16 +476,82 @@ export default function AddItemScreen() {
         );
         return;
       }
-
+      
+      // Handle success
+      if (result.status === 'ok' && result.items && result.items.length > 0) {
+        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length);
+        
+        // Navigate to import preview with identified product
+        const countryCode = userLocation?.countryCode || 'US';
+        const currencyCode = userLocation?.currencyCode || 'USD';
+        
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            data: JSON.stringify({
+              itemName: result.query || result.items[0].title,
+              imageUrl: result.items[0].imageUrl || '',
+              extractedImages: JSON.stringify([result.items[0].imageUrl]),
+              storeName: '',
+              storeDomain: '',
+              price: null,
+              currency: currencyCode,
+              countryAvailability: JSON.stringify([countryCode]),
+              sourceUrl: result.items[0].storeUrl || '',
+              inputType: 'camera',
+              notes: result.items.map(item => item.title).join(', '),
+            }),
+          },
+        });
+        return;
+      }
+      
+      // Handle no results
+      if (result.status === 'no_results') {
+        console.log('[AddScreen] No results:', result.message);
+        Alert.alert(
+          'No Products Found',
+          result.message || 'No matches found. Try better lighting or add manually.',
+          [
+            { text: 'Try Again' },
+            { 
+              text: 'Add Manually', 
+              onPress: () => {
+                const countryCode = userLocation?.countryCode || 'US';
+                const currencyCode = userLocation?.currencyCode || 'USD';
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify({
+                      itemName: '',
+                      imageUrl: '',
+                      extractedImages: JSON.stringify([]),
+                      storeName: '',
+                      storeDomain: '',
+                      price: null,
+                      currency: currencyCode,
+                      countryAvailability: JSON.stringify([countryCode]),
+                      sourceUrl: '',
+                      inputType: 'manual',
+                    }),
+                  },
+                });
+              }
+            },
+          ]
+        );
+        return;
+      }
+      
       // Fallback for unexpected response
       console.warn('[AddScreen] Unexpected response:', result);
       Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
-      console.error('[AddScreen] Identify from camera error:', error);
+      console.error('[AddScreen] Take photo error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
-        Alert.alert('Error', error.message || 'Failed to identify product from image');
+        Alert.alert('Error', error.message || 'Failed to process photo');
       }
     } finally {
       setLoading(false);
@@ -567,54 +564,27 @@ export default function AddItemScreen() {
       return;
     }
 
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Photo library permission is required to upload images.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-      setIdentificationResult(null);
-      setMode('upload');
-    }
-  };
-
-  const handleIdentifyFromUpload = async () => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    if (!imageUri) {
-      Alert.alert('Error', 'Please select an image first');
-      return;
-    }
-
+    console.log('[AddScreen] User tapped Upload Photo button');
     setLoading(true);
-    setIdentificationResult(null);
+    
     try {
-      console.log('[AddScreen] Reading image as base64');
-      // Read image as base64
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - Google Cloud Vision)');
+      const img = await pickFromLibrary();
       
-      // CANONICAL: Use ONLY identify-product-from-image (Google Cloud Vision)
-      const result = await identifyProductFromImage(base64, {
-        mimeType: 'image/jpeg',
+      if (!img) {
+        console.log('[AddScreen] User cancelled or permission denied');
+        return;
+      }
+      
+      console.log('[AddScreen] Image selected successfully - size:', img.fileSizeBytes, 'bytes');
+      
+      // Call identifyProductFromImage with the selected image
+      console.log('[AddScreen] Calling identifyProductFromImage');
+      const result = await identifyProductFromImage(img.imageBase64, {
+        mimeType: img.mimeType,
       });
-
+      
       console.log('[AddScreen] identifyProductFromImage result:', result.status);
-
+      
       // Handle AUTH_REQUIRED error
       if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
         console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
@@ -623,73 +593,22 @@ export default function AddItemScreen() {
         ]);
         return;
       }
-
+      
       // Handle IMAGE_TOO_LARGE error
       if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
         console.log('[AddScreen] IMAGE_TOO_LARGE');
-        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.', [
-          { text: 'Try Again', onPress: () => setImageUri(null) }
-        ]);
+        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
         return;
       }
-
+      
       // Handle VISION_FAILED error
       if (result.status === 'error' && result.error === 'VISION_FAILED') {
         console.log('[AddScreen] VISION_FAILED');
-        Alert.alert('Analysis Failed', result.message || 'Could not analyze image right now.', [
-          { text: 'Try Again', onPress: () => setImageUri(null) },
-          { 
-            text: 'Add Manually', 
-            onPress: () => {
-              const countryCode = userLocation?.countryCode || 'US';
-              const currencyCode = userLocation?.currencyCode || 'USD';
-              router.push({
-                pathname: '/import-preview',
-                params: {
-                  data: JSON.stringify({
-                    itemName: '',
-                    imageUrl: imageUri,
-                    extractedImages: JSON.stringify([imageUri]),
-                    storeName: '',
-                    storeDomain: '',
-                    price: null,
-                    currency: currencyCode,
-                    countryAvailability: JSON.stringify([countryCode]),
-                    sourceUrl: '',
-                    inputType: 'manual',
-                  }),
-                },
-              });
-            }
-          },
-        ]);
-        return;
-      }
-
-      // Handle success
-      if (result.status === 'ok' && result.items && result.items.length > 0) {
-        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length, 'confidence:', result.confidence);
-        
-        // Extract labels from items for display
-        const labels = result.items.map(item => item.title);
-        
-        setIdentificationResult({
-          brand: result.items[0].title, // Use first item as brand/product
-          productName: result.query,
-          labels: labels,
-          confidence: result.confidence,
-        });
-        return;
-      }
-
-      // Handle no results
-      if (result.status === 'no_results') {
-        console.log('[AddScreen] No results:', result.message);
         Alert.alert(
-          'No Products Found',
-          result.message || 'No matches found. Try cropping or better lighting.',
+          'Analysis Failed',
+          result.message || 'Could not analyze image right now.',
           [
-            { text: 'Try Again', onPress: () => setImageUri(null) },
+            { text: 'Try Again' },
             { 
               text: 'Add Manually', 
               onPress: () => {
@@ -700,8 +619,8 @@ export default function AddItemScreen() {
                   params: {
                     data: JSON.stringify({
                       itemName: '',
-                      imageUrl: imageUri,
-                      extractedImages: JSON.stringify([imageUri]),
+                      imageUrl: '',
+                      extractedImages: JSON.stringify([]),
                       storeName: '',
                       storeDomain: '',
                       price: null,
@@ -718,16 +637,82 @@ export default function AddItemScreen() {
         );
         return;
       }
-
+      
+      // Handle success
+      if (result.status === 'ok' && result.items && result.items.length > 0) {
+        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length);
+        
+        // Navigate to import preview with identified product
+        const countryCode = userLocation?.countryCode || 'US';
+        const currencyCode = userLocation?.currencyCode || 'USD';
+        
+        router.push({
+          pathname: '/import-preview',
+          params: {
+            data: JSON.stringify({
+              itemName: result.query || result.items[0].title,
+              imageUrl: result.items[0].imageUrl || '',
+              extractedImages: JSON.stringify([result.items[0].imageUrl]),
+              storeName: '',
+              storeDomain: '',
+              price: null,
+              currency: currencyCode,
+              countryAvailability: JSON.stringify([countryCode]),
+              sourceUrl: result.items[0].storeUrl || '',
+              inputType: 'upload',
+              notes: result.items.map(item => item.title).join(', '),
+            }),
+          },
+        });
+        return;
+      }
+      
+      // Handle no results
+      if (result.status === 'no_results') {
+        console.log('[AddScreen] No results:', result.message);
+        Alert.alert(
+          'No Products Found',
+          result.message || 'No matches found. Try a different image or add manually.',
+          [
+            { text: 'Try Again' },
+            { 
+              text: 'Add Manually', 
+              onPress: () => {
+                const countryCode = userLocation?.countryCode || 'US';
+                const currencyCode = userLocation?.currencyCode || 'USD';
+                router.push({
+                  pathname: '/import-preview',
+                  params: {
+                    data: JSON.stringify({
+                      itemName: '',
+                      imageUrl: '',
+                      extractedImages: JSON.stringify([]),
+                      storeName: '',
+                      storeDomain: '',
+                      price: null,
+                      currency: currencyCode,
+                      countryAvailability: JSON.stringify([countryCode]),
+                      sourceUrl: '',
+                      inputType: 'manual',
+                    }),
+                  },
+                });
+              }
+            },
+          ]
+        );
+        return;
+      }
+      
       // Fallback for unexpected response
       console.warn('[AddScreen] Unexpected response:', result);
       Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
-      console.error('[AddScreen] Identify from upload error:', error);
+      console.error('[AddScreen] Upload image error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
-        Alert.alert('Error', error.message || 'Failed to identify product from image');
+        Alert.alert('Error', error.message || 'Failed to process image');
       }
     } finally {
       setLoading(false);
@@ -773,7 +758,7 @@ export default function AddItemScreen() {
 
       setSearchResults(result.results);
     } catch (error: any) {
-      console.error('Search by name error:', error);
+      console.error('[AddScreen] Search by name error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
@@ -804,75 +789,6 @@ export default function AddItemScreen() {
     });
   };
 
-  const handleManualImagePick = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Photo library permission is required to upload images.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: 'images',
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-    }
-  };
-
-  const handleSaveManual = () => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
-
-    const countryCode = userLocation?.countryCode || 'US';
-    const currencyCode = userLocation?.currencyCode || 'USD';
-
-    router.push({
-      pathname: '/import-preview',
-      params: {
-        data: JSON.stringify({
-          itemName: identificationResult?.productName || identificationResult?.brand || '',
-          imageUrl: imageUri || '',
-          extractedImages: JSON.stringify([imageUri]),
-          storeName: '',
-          storeDomain: '',
-          price: null,
-          currency: currencyCode,
-          countryAvailability: JSON.stringify([countryCode]),
-          sourceUrl: '',
-          inputType: 'manual',
-          notes: identificationResult?.labels.join(', ') || '',
-        }),
-      },
-    });
-  };
-
-  const renderShareMode = () => (
-    <View style={styles.content}>
-      <Text style={[styles.label, { color: colors.text }]}>
-        Share a product link from any app to add it to your wishlist
-      </Text>
-      <TouchableOpacity
-        style={[styles.button, { backgroundColor: colors.primary }]}
-        onPress={() => {
-          Alert.alert(
-            'How to Share',
-            'Open any shopping app or website, find a product, tap the share button, and select "My Wishlist".',
-            [{ text: 'Got it' }]
-          );
-        }}
-      >
-        <Text style={[styles.buttonText, { color: colors.background }]}>
-          Learn How to Share
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   const renderUrlMode = () => (
     <View style={styles.content}>
       <View style={styles.inputContainer}>
@@ -886,6 +802,7 @@ export default function AddItemScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
+          editable={!loading}
         />
       </View>
 
@@ -911,117 +828,18 @@ export default function AddItemScreen() {
 
   const renderCameraMode = () => (
     <View style={styles.content}>
-      {imageUri ? (
-        <>
-          <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
-          
-          {identificationResult ? (
-            <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.resultTitle, { color: colors.text }]}>
-                Product Identified
-              </Text>
-              
-              {identificationResult.brand && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Brand:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {identificationResult.brand}
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.productName && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Product:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {identificationResult.productName}
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.confidence !== undefined && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Confidence:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {Math.round(identificationResult.confidence * 100)}%
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.labels.length > 0 && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Labels:</Text>
-                  <View style={styles.labelsContainer}>
-                    {identificationResult.labels.slice(0, 8).map((label, index) => (
-                      <View
-                        key={index}
-                        style={[styles.labelChip, { backgroundColor: colors.primary + '20' }]}
-                      >
-                        <Text style={[styles.labelChipText, { color: colors.primary }]}>
-                          {label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              )}
-            </View>
-          ) : null}
-          
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.text }]}>
-                Identifying product...
-              </Text>
-            </View>
-          ) : identificationResult ? (
-            <>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary }]}
-                onPress={handleSaveManual}
-              >
-                <Text style={[styles.buttonText, { color: colors.background }]}>
-                  Add to Wishlist
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => {
-                  setImageUri(null);
-                  setIdentificationResult(null);
-                }}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  Take Another Photo
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary }]}
-                onPress={handleIdentifyFromCamera}
-              >
-                <Text style={[styles.buttonText, { color: colors.background }]}>
-                  Identify Product
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => setImageUri(null)}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  Take Another Photo
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Processing photo...
+          </Text>
+        </View>
       ) : (
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.primary }]}
+          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]}
           onPress={handleTakePhoto}
+          disabled={loading}
         >
           <Text style={[styles.buttonText, { color: colors.background }]}>
             Take Photo
@@ -1033,120 +851,21 @@ export default function AddItemScreen() {
 
   const renderUploadMode = () => (
     <View style={styles.content}>
-      {imageUri ? (
-        <>
-          <Image source={resolveImageSource(imageUri)} style={styles.imagePreview} />
-          
-          {identificationResult ? (
-            <View style={[styles.resultCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={[styles.resultTitle, { color: colors.text }]}>
-                Product Identified
-              </Text>
-              
-              {identificationResult.brand && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Brand:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {identificationResult.brand}
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.productName && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Product:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {identificationResult.productName}
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.confidence !== undefined && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Confidence:</Text>
-                  <Text style={[styles.resultValue, { color: colors.textSecondary }]}>
-                    {Math.round(identificationResult.confidence * 100)}%
-                  </Text>
-                </>
-              )}
-              
-              {identificationResult.labels.length > 0 && (
-                <>
-                  <Text style={[styles.resultLabel, { color: colors.text }]}>Labels:</Text>
-                  <View style={styles.labelsContainer}>
-                    {identificationResult.labels.slice(0, 8).map((label, index) => (
-                      <View
-                        key={index}
-                        style={[styles.labelChip, { backgroundColor: colors.primary + '20' }]}
-                      >
-                        <Text style={[styles.labelChipText, { color: colors.primary }]}>
-                          {label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </>
-              )}
-            </View>
-          ) : null}
-          
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.text }]}>
-                Identifying product...
-              </Text>
-            </View>
-          ) : identificationResult ? (
-            <>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary }]}
-                onPress={handleSaveManual}
-              >
-                <Text style={[styles.buttonText, { color: colors.background }]}>
-                  Add to Wishlist
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => {
-                  setImageUri(null);
-                  setIdentificationResult(null);
-                }}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  Choose Another Image
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: colors.primary }]}
-                onPress={handleIdentifyFromUpload}
-              >
-                <Text style={[styles.buttonText, { color: colors.background }]}>
-                  Identify Product
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryButton, { borderColor: colors.border }]}
-                onPress={() => setImageUri(null)}
-              >
-                <Text style={[styles.buttonText, { color: colors.text }]}>
-                  Choose Another Image
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </>
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Processing image...
+          </Text>
+        </View>
       ) : (
         <TouchableOpacity
-          style={[styles.button, { backgroundColor: colors.primary }]}
+          style={[styles.button, { backgroundColor: colors.primary }, loading && styles.buttonDisabled]}
           onPress={handleUploadImage}
+          disabled={loading}
         >
           <Text style={[styles.buttonText, { color: colors.background }]}>
-            Upload Image
+            Upload Photo
           </Text>
         </TouchableOpacity>
       )}
@@ -1165,6 +884,7 @@ export default function AddItemScreen() {
           onChangeText={setSearchQuery}
           autoCapitalize="words"
           autoCorrect={false}
+          editable={!loading}
         />
       </View>
 
@@ -1269,6 +989,7 @@ export default function AddItemScreen() {
                   },
                 ]}
                 onPress={() => setMode('url')}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="link"
@@ -1295,6 +1016,7 @@ export default function AddItemScreen() {
                   },
                 ]}
                 onPress={() => setMode('camera')}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="camera"
@@ -1321,6 +1043,7 @@ export default function AddItemScreen() {
                   },
                 ]}
                 onPress={() => setMode('upload')}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="photo"
@@ -1347,6 +1070,7 @@ export default function AddItemScreen() {
                   },
                 ]}
                 onPress={() => setMode('search')}
+                disabled={loading}
               >
                 <IconSymbol
                   ios_icon_name="magnifyingglass"
@@ -1365,7 +1089,6 @@ export default function AddItemScreen() {
               </TouchableOpacity>
             </View>
 
-            {mode === 'share' && renderShareMode()}
             {mode === 'url' && renderUrlMode()}
             {mode === 'camera' && renderCameraMode()}
             {mode === 'upload' && renderUploadMode()}
