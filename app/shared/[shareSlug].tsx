@@ -53,6 +53,21 @@ function resolveImageSource(source: string | number | ImageSourcePropType | unde
   return source as ImageSourcePropType;
 }
 
+// Helper to safely render any value in Text components
+function renderValue(value: any): string {
+  if (value === null || value === undefined) {
+    return '-';
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return '[Object]';
+    }
+  }
+  return String(value);
+}
+
 export default function SharedWishlistViewScreen() {
   const { shareSlug } = useLocalSearchParams();
   const { theme, isDark } = useAppTheme();
@@ -63,6 +78,7 @@ export default function SharedWishlistViewScreen() {
   const [data, setData] = useState<SharedWishlistData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<Error | null>(null);
   const [reserveModalVisible, setReserveModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<SharedItem | null>(null);
   const [guestName, setGuestName] = useState('');
@@ -156,6 +172,11 @@ export default function SharedWishlistViewScreen() {
   const handleRetry = () => {
     console.log('SharedWishlistViewScreen: User tapped Retry');
     fetchSharedWishlist();
+  };
+
+  const handleRetryRender = () => {
+    console.log('SharedWishlistViewScreen: User tapped Retry Render');
+    setRenderError(null);
   };
 
   const wishlistName = data?.wishlist.name || 'Shared Wishlist';
@@ -285,59 +306,110 @@ export default function SharedWishlistViewScreen() {
       fontWeight: '600',
       color: '#FFFFFF',
     },
+    debugContainer: {
+      backgroundColor: colors.surface2,
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    debugTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.text,
+      marginBottom: 8,
+    },
+    debugText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      fontFamily: 'monospace',
+      marginBottom: 4,
+    },
+    renderErrorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 40,
+    },
+    renderErrorTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: '#EF4444',
+      marginBottom: 12,
+      textAlign: 'center',
+    },
+    renderErrorMessage: {
+      fontSize: 14,
+      color: colors.text,
+      marginBottom: 24,
+      textAlign: 'center',
+      fontFamily: 'monospace',
+      backgroundColor: colors.surface2,
+      padding: 12,
+      borderRadius: 8,
+    },
+    retryButton: {
+      backgroundColor: colors.accent,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: 8,
+    },
+    retryButtonText: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: '#FFFFFF',
+    },
   }), [colors]);
 
-  if (loading) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Loading...',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+  // Render guard for the body content
+  const renderBodyContent = () => {
+    // If there's a render error, show fallback UI
+    if (renderError) {
+      const errorMessage = renderError.message || 'Unknown render error';
+      return (
+        <View style={styles.renderErrorContainer}>
+          <IconSymbol
+            ios_icon_name="exclamationmark.triangle"
+            android_material_icon_name="warning"
+            size={48}
+            color="#EF4444"
+          />
+          <Text style={styles.renderErrorTitle}>Share Mode failed to render</Text>
+          <Text style={styles.renderErrorMessage}>{errorMessage}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetryRender}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    try {
+      // Loading state
+      if (loading) {
+        const loadingBoolText = String(loading);
+        return (
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={colors.accent} />
             <Text style={styles.loadingText}>Loading shared wishlist...</Text>
           </View>
-        </SafeAreaView>
-      </>
-    );
-  }
+        );
+      }
 
-  if (error) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Error',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+      // Error state
+      if (error) {
+        const errorText = renderValue(error);
+        return (
           <ErrorState
-            message={error}
+            message={errorText}
             onRetry={handleRetry}
           />
-        </SafeAreaView>
-      </>
-    );
-  }
+        );
+      }
 
-  if (!data) {
-    return (
-      <>
-        <Stack.Screen
-          options={{
-            headerShown: true,
-            title: 'Not Found',
-            headerBackTitle: 'Back',
-          }}
-        />
-        <SafeAreaView style={styles.container} edges={['bottom']}>
+      // Empty state (no data)
+      if (!data) {
+        return (
           <EmptyState
             icon="link"
             title="Wishlist not found"
@@ -345,37 +417,47 @@ export default function SharedWishlistViewScreen() {
             actionLabel="Try Again"
             onAction={handleRetry}
           />
-        </SafeAreaView>
-      </>
-    );
-  }
+        );
+      }
 
-  return (
-    <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: wishlistName,
-          headerBackTitle: 'Back',
-        }}
-      />
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      // Main UI rendering logic for the shared wishlist
+      const wishlistId = renderValue(data.wishlist.id);
+      const loadingBool = renderValue(loading);
+      const errorStr = renderValue(error);
+      const shareLink = data.wishlist.id ? `app.com/shared/${shareSlug}` : '-';
+      const shareLinkText = renderValue(shareLink);
+      const collaboratorsLength = renderValue(0); // No collaborators yet
+
+      const visibilityIcon = data.wishlist.visibility === 'public' ? 'globe' : 'link';
+      const visibilityAndroidIcon = data.wishlist.visibility === 'public' ? 'public' : 'link';
+      const visibilityLabel = data.wishlist.visibility === 'public' ? 'Public' : 'Unlisted';
+
+      return (
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
         >
+          {/* Debug UI */}
+          <View style={styles.debugContainer}>
+            <Text style={styles.debugTitle}>🔍 Debug Info</Text>
+            <Text style={styles.debugText}>wishlistId: {wishlistId}</Text>
+            <Text style={styles.debugText}>loading: {loadingBool}</Text>
+            <Text style={styles.debugText}>error: {errorStr}</Text>
+            <Text style={styles.debugText}>shareLink: {shareLinkText}</Text>
+            <Text style={styles.debugText}>collaborators length: {collaboratorsLength}</Text>
+          </View>
+
+          {/* Actual Share UI */}
           <View style={styles.header}>
             <Text style={styles.wishlistName}>{data.wishlist.name}</Text>
             <View style={styles.visibilityBadge}>
               <IconSymbol
-                ios_icon_name={data.wishlist.visibility === 'public' ? 'globe' : 'link'}
-                android_material_icon_name={data.wishlist.visibility === 'public' ? 'public' : 'link'}
+                ios_icon_name={visibilityIcon}
+                android_material_icon_name={visibilityAndroidIcon}
                 size={14}
                 color={colors.textSecondary}
               />
-              <Text style={styles.visibilityText}>
-                {data.wishlist.visibility === 'public' ? 'Public' : 'Unlisted'}
-              </Text>
+              <Text style={styles.visibilityText}>{visibilityLabel}</Text>
             </View>
             <Text style={styles.itemCount}>{itemCountText}</Text>
           </View>
@@ -438,6 +520,31 @@ export default function SharedWishlistViewScreen() {
               })
           )}
         </ScrollView>
+      );
+    } catch (e: any) {
+      console.error('SharedWishlistViewScreen: Render error caught:', e);
+      // Set render error state to trigger fallback UI on next render
+      setRenderError(e);
+      // Return minimal fallback to prevent further errors
+      return (
+        <View style={styles.centerContainer}>
+          <Text style={styles.loadingText}>Recovering from error...</Text>
+        </View>
+      );
+    }
+  };
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: wishlistName,
+          headerBackTitle: 'Back',
+        }}
+      />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        {renderBodyContent()}
       </SafeAreaView>
     </>
   );
