@@ -247,7 +247,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 5-8: Edge Functions (using CANONICAL_EDGE_FUNCTIONS and checkEdgeFunctionAvailability)
+    // Test 5-9: Edge Functions (using CANONICAL_EDGE_FUNCTIONS and checkEdgeFunctionAvailability)
     console.log('[Diagnostics] Testing Edge Functions from canonical registry');
     
     for (const functionName of CANONICAL_EDGE_FUNCTIONS) {
@@ -298,7 +298,7 @@ export default function DiagnosticsEnhancedScreen() {
       incrementProgress();
     }
 
-    // Test 9: Notifications Permission
+    // Test 10: Notifications Permission
     try {
       updateResult({ name: 'Notifications', status: 'pending', message: 'Checking...' });
       
@@ -329,7 +329,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 10: Image Picker Permission
+    // Test 11: Image Picker Permission
     try {
       updateResult({ name: 'Image Picker', status: 'pending', message: 'Checking...' });
       
@@ -360,7 +360,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 11: Storage (Supabase Storage)
+    // Test 12: Storage (Supabase Storage)
     try {
       updateResult({ name: 'Storage', status: 'pending', message: 'Testing...' });
       
@@ -391,7 +391,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 12: Environment Variables
+    // Test 13: Environment Variables
     try {
       updateResult({ name: 'Environment', status: 'pending', message: 'Checking...' });
       
@@ -429,7 +429,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 13: Network Connectivity
+    // Test 14: Network Connectivity
     try {
       updateResult({ name: 'Network', status: 'pending', message: 'Testing...' });
       
@@ -463,7 +463,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 14: User Settings
+    // Test 15: User Settings
     if (user) {
       try {
         updateResult({ name: 'User Settings', status: 'pending', message: 'Checking...' });
@@ -512,15 +512,6 @@ export default function DiagnosticsEnhancedScreen() {
         details: 'Sign in to test',
       });
     }
-    incrementProgress();
-
-    // Test 15: Platform Detection
-    updateResult({
-      name: 'Platform',
-      status: 'pass',
-      message: `Running on ${Platform.OS}`,
-      details: `Version: ${renderValue(Platform.Version)}`,
-    });
     incrementProgress();
 
     setTesting(false);

@@ -192,12 +192,14 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 // All diagnostics, availability checks, and function calls reference this list.
 // 
 // REMOVED: 'identify-from-image' (deprecated, replaced by identify-product-from-image)
+// ADDED: 'alert-items-with-targets' (for price drop alerts)
 // ═══════════════════════════════════════════════════════════════════════════
 export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
   'find-alternatives',
   'import-wishlist',
   'identify-product-from-image',
+  'alert-items-with-targets',
 ] as const;
 
 // Type for valid function names
@@ -346,25 +348,19 @@ export async function assertSupabaseSession(): Promise<string> {
  * CENTRALIZED EDGE FUNCTION CALLER - USES SUPABASE CLIENT'S INVOKE METHOD
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL: This is the SINGLE wrapper for ALL Supabase Edge Function calls.
- * Uses supabase.functions.invoke() for correct URL resolution and auth handling.
+ * CRITICAL FIX: This function now correctly handles JWT authentication for ALL Edge Functions.
  * 
- * REQUIREMENTS:
- * 1. Always send header: apikey: SUPABASE_ANON_KEY
- * 2. Authorization header MUST be: Bearer <USER_ACCESS_TOKEN>
- * 3. Never set Authorization to the anon key
- * 4. If no session or no access_token:
- *    - throw AUTH_REQUIRED immediately (do NOT call the edge function)
- * 5. If token exists but is near expiry (expires_at <= now+60s):
- *    - attempt supabase.auth.refreshSession() ONCE
- *    - re-read session/token
- *    - if still missing => throw AUTH_REQUIRED
- * 6. Call edge function once
- * 7. If response is 401:
- *    - attempt refreshSession() ONCE (if not already attempted)
- *    - retry the edge call ONCE with the NEW access token
- * 8. If still 401:
- *    - throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
+ * AUTHENTICATION FLOW:
+ * 1. ALWAYS fetch session FIRST using supabase.auth.getSession()
+ * 2. If no session or no access_token → throw AUTH_REQUIRED immediately (do NOT call function)
+ * 3. If token exists but near expiry (expires_at <= now+60s) → refresh session ONCE
+ * 4. Call Edge Function using supabase.functions.invoke() with:
+ *    - apikey header: SUPABASE_ANON_KEY (REQUIRED for all functions)
+ *    - Authorization header: Bearer <USER_ACCESS_TOKEN> (REQUIRED for authenticated functions)
+ * 5. If response is 401 → attempt refresh ONCE and retry ONCE
+ * 6. If still 401 → throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
+ * 
+ * CRITICAL: Uses supabase.functions.invoke() for correct URL resolution and auth handling.
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
   functionName: EdgeFunctionName,
