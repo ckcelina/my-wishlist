@@ -19,6 +19,7 @@ import { colors, typography, spacing } from '@/styles/designSystem';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
+import { CANONICAL_EDGE_FUNCTIONS, checkEdgeFunctionAvailability } from '@/utils/supabase-edge-functions';
 
 interface DiagnosticResult {
   name: string;
@@ -246,79 +247,53 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 5-8: Edge Functions (extract-item, find-alternatives, import-wishlist, identify-product-from-image)
-    const edgeFunctions = [
-      'extract-item',
-      'find-alternatives',
-      'import-wishlist',
-      'identify-product-from-image',
-    ];
-
-    for (const functionName of edgeFunctions) {
+    // Test 5-8: Edge Functions (using CANONICAL_EDGE_FUNCTIONS and checkEdgeFunctionAvailability)
+    console.log('[Diagnostics] Testing Edge Functions from canonical registry');
+    
+    for (const functionName of CANONICAL_EDGE_FUNCTIONS) {
       try {
-        updateResult({ name: `Edge Function: ${functionName}`, status: 'pending', message: 'Testing...' });
-        
-        // Try to invoke the function with minimal payload
-        const { data, error } = await supabase.functions.invoke(functionName, {
-          body: {},
+        updateResult({ 
+          name: `Edge Function: ${functionName}`, 
+          status: 'pending', 
+          message: 'Checking availability...' 
         });
         
-        if (error) {
-          const errorMsg = renderValue(error.message || error);
-          
-          // Check if it's a 404 (function not deployed)
-          if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-            updateResult({
-              name: `Edge Function: ${functionName}`,
-              status: 'fail',
-              message: 'Not Available',
-              details: 'Function not deployed on server',
-            });
-          } 
-          // 401, 405, 400 mean the function exists but requires auth or specific input
-          else if (errorMsg.includes('401') || errorMsg.includes('405') || errorMsg.includes('400')) {
-            updateResult({
-              name: `Edge Function: ${functionName}`,
-              status: 'pass',
-              message: 'Available',
-              details: 'Function is deployed (requires auth or valid input)',
-            });
-          }
-          else {
-            updateResult({
-              name: `Edge Function: ${functionName}`,
-              status: 'warning',
-              message: 'Deployed but error',
-              details: errorMsg,
-            });
-          }
-        } else {
-          updateResult({
-            name: `Edge Function: ${functionName}`,
-            status: 'pass',
-            message: 'Available',
-            details: 'Function is deployed and responding',
-          });
-        }
-      } catch (error: any) {
-        const errorMsg = renderValue(error.message || error);
+        // Use the new checkEdgeFunctionAvailability function
+        const availabilityResult = await checkEdgeFunctionAvailability(functionName);
         
-        // Check if it's a 401, 405, or 400 error (function exists)
-        if (errorMsg.includes('401') || errorMsg.includes('405') || errorMsg.includes('400')) {
+        console.log(`[Diagnostics] ${functionName} availability:`, availabilityResult.status);
+        
+        // Map availability status to diagnostic status
+        if (availabilityResult.status === 'Available') {
           updateResult({
             name: `Edge Function: ${functionName}`,
             status: 'pass',
             message: 'Available',
-            details: 'Function is deployed (requires auth or valid input)',
+            details: availabilityResult.message || 'Function is deployed and reachable',
+          });
+        } else if (availabilityResult.status === 'Available (Auth Required)' || availabilityResult.status === 'Available (Bad Request)') {
+          updateResult({
+            name: `Edge Function: ${functionName}`,
+            status: 'pass',
+            message: 'Available',
+            details: availabilityResult.message || 'Function is deployed (requires auth or valid input)',
           });
         } else {
           updateResult({
             name: `Edge Function: ${functionName}`,
             status: 'fail',
             message: 'Not Available',
-            details: errorMsg,
+            details: availabilityResult.message || 'Function not deployed on server',
           });
         }
+      } catch (error: any) {
+        console.error(`[Diagnostics] Error checking ${functionName}:`, error);
+        updateResult({
+          name: `Edge Function: ${functionName}`,
+          status: 'fail',
+          message: 'Check failed',
+          details: error.message || 'Unknown error',
+        });
       }
       incrementProgress();
     }

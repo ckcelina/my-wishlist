@@ -185,13 +185,23 @@ export interface SearchByNameResponse {
 const SUPABASE_URL = appConfig.supabaseUrl || '';
 const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
-// List of expected Edge Functions (case-sensitive, exact names deployed in Supabase)
-const EXPECTED_EDGE_FUNCTIONS = [
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔧 CANONICAL EDGE FUNCTION REGISTRY - SINGLE SOURCE OF TRUTH
+// ═══════════════════════════════════════════════════════════════════════════
+// This is the ONLY list of Edge Functions recognized by the app.
+// All diagnostics, availability checks, and function calls reference this list.
+// 
+// REMOVED: 'identify-from-image' (deprecated, replaced by identify-product-from-image)
+// ═══════════════════════════════════════════════════════════════════════════
+export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
   'find-alternatives',
   'import-wishlist',
-  'identify-product-from-image', // CANONICAL: OpenAI Lens pipeline with offers
-];
+  'identify-product-from-image',
+] as const;
+
+// Type for valid function names
+export type EdgeFunctionName = typeof CANONICAL_EDGE_FUNCTIONS[number];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CONFIGURATION VERIFICATION - Log configuration status on module load
@@ -210,14 +220,85 @@ if (!isEnvironmentConfigured()) {
   console.log('   SUPABASE_ANON_KEY:', SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing');
 }
 
-// Check BACKEND_URL configuration (for diagnostics)
-const BACKEND_URL = appConfig.backendUrl || '';
-console.log('   BACKEND_URL:', BACKEND_URL ? `✅ Set (${BACKEND_URL})` : '⚠️ Not set (optional)');
-
 console.log('═══════════════════════════════════════════════════════════════');
 console.log('📋 REGISTERED EDGE FUNCTIONS:');
-EXPECTED_EDGE_FUNCTIONS.forEach(fn => console.log(`   - ${fn}`));
+CANONICAL_EDGE_FUNCTIONS.forEach(fn => console.log(`   - ${fn}`));
 console.log('═══════════════════════════════════════════════════════════════');
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * EDGE FUNCTION AVAILABILITY CHECK - FOR DIAGNOSTICS
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Checks if an Edge Function is deployed and reachable by making a lightweight
+ * request to its endpoint. Does NOT execute the function.
+ * 
+ * Returns:
+ * - 'Available': Function responds with 200 (deployed and working)
+ * - 'Available (Auth Required)': Function responds with 401 (deployed, needs auth)
+ * - 'Available (Bad Request)': Function responds with 400/405 (deployed, needs valid input)
+ * - 'Not Available': Function responds with 404 (not deployed)
+ * - 'Not Available': Network error or DNS failure
+ * 
+ * This function is used ONLY by diagnostics to check function availability.
+ * It does NOT rely on local feature flags or hardcoded lists.
+ */
+export async function checkEdgeFunctionAvailability(
+  functionName: EdgeFunctionName
+): Promise<{
+  status: 'Available' | 'Available (Auth Required)' | 'Available (Bad Request)' | 'Not Available';
+  message?: string;
+}> {
+  const functionsUrl = `${SUPABASE_URL}/functions/v1`;
+  const url = `${functionsUrl}/${functionName}`;
+
+  try {
+    console.log(`[checkEdgeFunctionAvailability] Checking ${functionName} at ${url}`);
+    
+    // Use GET to avoid executing the function
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'apikey': SUPABASE_ANON_KEY,
+      },
+    });
+
+    console.log(`[checkEdgeFunctionAvailability] ${functionName} responded with status: ${response.status}`);
+
+    if (response.status === 200) {
+      return {
+        status: 'Available',
+        message: 'Function endpoint reachable and responding',
+      };
+    } else if (response.status === 401) {
+      return {
+        status: 'Available (Auth Required)',
+        message: 'Function is deployed but requires authentication',
+      };
+    } else if (response.status === 400 || response.status === 405) {
+      return {
+        status: 'Available (Bad Request)',
+        message: 'Function is deployed but requires valid input',
+      };
+    } else if (response.status === 404) {
+      return {
+        status: 'Not Available',
+        message: 'Function not found (404) - not deployed on server',
+      };
+    } else {
+      return {
+        status: 'Not Available',
+        message: `Unexpected status: ${response.status} ${response.statusText}`,
+      };
+    }
+  } catch (error: any) {
+    console.error(`[checkEdgeFunctionAvailability] Network error checking ${functionName}:`, error);
+    return {
+      status: 'Not Available',
+      message: `Network or DNS error: ${error.message || 'Unknown error'}`,
+    };
+  }
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -286,7 +367,7 @@ export async function assertSupabaseSession(): Promise<string> {
  *    - throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
-  functionName: string,
+  functionName: EdgeFunctionName,
   payload: TRequest,
   options?: { showErrorAlert?: boolean }
 ): Promise<TResponse> {
@@ -316,9 +397,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     throw new Error('CONFIG_ERROR');
   }
 
-  // Verify function name is expected (case-sensitive)
-  if (!EXPECTED_EDGE_FUNCTIONS.includes(functionName)) {
-    console.warn(`[callEdgeFunctionSafely] Unknown function '${functionName}' - returning safe fallback`);
+  // Verify function name is in canonical list
+  if (!CANONICAL_EDGE_FUNCTIONS.includes(functionName)) {
+    console.warn(`[callEdgeFunctionSafely] Unknown function '${functionName}' - not in canonical list`);
     throw new Error(`Edge Function '${functionName}' is not recognized`);
   }
 
@@ -867,9 +948,9 @@ export async function identifyFromImage(): Promise<never> {
  * Returns products with confidence scores
  * Works identically in all environments
  * 
- * NOTE: This function is currently NOT in the EXPECTED_EDGE_FUNCTIONS list
+ * NOTE: This function is currently NOT in the CANONICAL_EDGE_FUNCTIONS list
  * because search-by-name is not deployed. If you need this functionality,
- * deploy the search-by-name Edge Function and add it to EXPECTED_EDGE_FUNCTIONS.
+ * deploy the search-by-name Edge Function and add it to CANONICAL_EDGE_FUNCTIONS.
  */
 export async function searchByName(
   query: string,
