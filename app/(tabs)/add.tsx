@@ -10,7 +10,7 @@ import { useSmartLocation } from '@/contexts/SmartLocationContext';
 import { fetchWishlists } from '@/lib/supabase-helpers';
 import * as Clipboard from 'expo-clipboard';
 import { IconSymbol } from '@/components/IconSymbol';
-import { extractItem, identifyFromImage, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
+import { extractItem, identifyProductFromImage, searchByName } from '@/utils/supabase-edge-functions';
 import {
   View,
   Text,
@@ -397,6 +397,7 @@ export default function AddItemScreen() {
 
     setLoading(true);
     try {
+      console.log('[AddScreen] Reading image as base64');
       // Read image as base64
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -405,80 +406,70 @@ export default function AddItemScreen() {
       const countryCode = userLocation?.countryCode || 'US';
       const currencyCode = userLocation?.currencyCode || 'USD';
 
-      console.log('[AddScreen] Calling identifyProductFromImage (PRIMARY)');
+      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - OpenAI Lens + Store Search)');
       
-      // PRIMARY: Try identify-product-from-image (OpenAI Lens + Store Search)
-      const primaryResult = await identifyProductFromImage(base64, {
+      // CANONICAL: Use ONLY identify-product-from-image (OpenAI Lens + Store Search)
+      const result = await identifyProductFromImage(base64, {
         countryCode,
         currency: currencyCode,
       });
 
-      if (primaryResult.status === 'error' && primaryResult.code === 'AUTH_REQUIRED') {
+      console.log('[AddScreen] identifyProductFromImage result:', result.status);
+
+      if (result.status === 'error' && result.code === 'AUTH_REQUIRED') {
+        console.log('[AddScreen] AUTH_REQUIRED - showing auth modal');
         setShowAuthModal(true);
         return;
       }
 
-      if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
-        console.log('[AddScreen] Primary pipeline successful, navigating to import-preview');
+      if (result.status === 'ok' && result.offers && result.offers.length > 0) {
+        console.log('[AddScreen] Success - found', result.offers.length, 'offers');
         // Navigate to import preview with identified product and offers
         router.push({
           pathname: '/import-preview',
           params: {
-            identifiedProduct: JSON.stringify(primaryResult.identified),
-            offers: JSON.stringify(primaryResult.offers),
+            identifiedProduct: JSON.stringify(result.identified),
+            offers: JSON.stringify(result.offers),
             source: 'camera',
           },
         });
         return;
       }
 
-      console.log('[AddScreen] Primary pipeline failed or no offers, trying fallback');
-
-      // FALLBACK: Try identify-from-image (Google Lens / Bing Visual Search)
-      const fallbackResult = await identifyFromImage(base64, {
-        countryCode,
-        currencyCode,
-      });
-
-      if (fallbackResult.status === 'error' && fallbackResult.code === 'AUTH_REQUIRED') {
-        setShowAuthModal(true);
-        return;
-      }
-
-      if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
-        console.log('[AddScreen] Fallback pipeline successful, navigating to import-preview');
-        // Normalize fallback results to the same structure
-        const normalizedItems = fallbackResult.items.map(item => ({
-          title: item.title,
-          imageUrl: item.imageUrl,
-          originalUrl: item.storeUrl || '',
-          store: item.storeName || '',
-          price: item.price || null,
-          currency: item.currency || currencyCode,
-          confidence: item.score || 0,
-        }));
-
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify(normalizedItems),
-            source: 'camera',
-          },
-        });
-        return;
-      }
-
-      // Both pipelines failed
+      // No results or error
+      console.log('[AddScreen] No results or error:', result.message);
       Alert.alert(
         'No Products Found',
-        'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.',
+        result.message || 'We couldn\'t identify any products in this image. Try taking a clearer photo or add the item manually.',
         [
           { text: 'Try Again', onPress: () => setImageUri(null) },
-          { text: 'Add Manually', onPress: () => router.push('/add-manual') },
+          { 
+            text: 'Add Manually', 
+            onPress: () => {
+              // Navigate to import preview with empty data for manual entry
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  data: JSON.stringify({
+                    itemName: '',
+                    imageUrl: imageUri,
+                    extractedImages: JSON.stringify([imageUri]),
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: currencyCode,
+                    countryAvailability: JSON.stringify([countryCode]),
+                    sourceUrl: '',
+                    inputType: 'manual',
+                  }),
+                },
+              });
+            }
+          },
         ]
       );
     } catch (error: any) {
-      console.error('Identify from camera error:', error);
+      console.error('[AddScreen] Identify from camera error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
@@ -526,6 +517,7 @@ export default function AddItemScreen() {
 
     setLoading(true);
     try {
+      console.log('[AddScreen] Reading image as base64');
       // Read image as base64
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -534,80 +526,70 @@ export default function AddItemScreen() {
       const countryCode = userLocation?.countryCode || 'US';
       const currencyCode = userLocation?.currencyCode || 'USD';
 
-      console.log('[AddScreen] Calling identifyProductFromImage (PRIMARY)');
+      console.log('[AddScreen] Calling identifyProductFromImage (CANONICAL - OpenAI Lens + Store Search)');
       
-      // PRIMARY: Try identify-product-from-image (OpenAI Lens + Store Search)
-      const primaryResult = await identifyProductFromImage(base64, {
+      // CANONICAL: Use ONLY identify-product-from-image (OpenAI Lens + Store Search)
+      const result = await identifyProductFromImage(base64, {
         countryCode,
         currency: currencyCode,
       });
 
-      if (primaryResult.status === 'error' && primaryResult.code === 'AUTH_REQUIRED') {
+      console.log('[AddScreen] identifyProductFromImage result:', result.status);
+
+      if (result.status === 'error' && result.code === 'AUTH_REQUIRED') {
+        console.log('[AddScreen] AUTH_REQUIRED - showing auth modal');
         setShowAuthModal(true);
         return;
       }
 
-      if (primaryResult.status === 'ok' && primaryResult.offers && primaryResult.offers.length > 0) {
-        console.log('[AddScreen] Primary pipeline successful, navigating to import-preview');
+      if (result.status === 'ok' && result.offers && result.offers.length > 0) {
+        console.log('[AddScreen] Success - found', result.offers.length, 'offers');
         // Navigate to import preview with identified product and offers
         router.push({
           pathname: '/import-preview',
           params: {
-            identifiedProduct: JSON.stringify(primaryResult.identified),
-            offers: JSON.stringify(primaryResult.offers),
+            identifiedProduct: JSON.stringify(result.identified),
+            offers: JSON.stringify(result.offers),
             source: 'upload',
           },
         });
         return;
       }
 
-      console.log('[AddScreen] Primary pipeline failed or no offers, trying fallback');
-
-      // FALLBACK: Try identify-from-image (Google Lens / Bing Visual Search)
-      const fallbackResult = await identifyFromImage(base64, {
-        countryCode,
-        currencyCode,
-      });
-
-      if (fallbackResult.status === 'error' && fallbackResult.code === 'AUTH_REQUIRED') {
-        setShowAuthModal(true);
-        return;
-      }
-
-      if (fallbackResult.status === 'ok' && fallbackResult.items && fallbackResult.items.length > 0) {
-        console.log('[AddScreen] Fallback pipeline successful, navigating to import-preview');
-        // Normalize fallback results to the same structure
-        const normalizedItems = fallbackResult.items.map(item => ({
-          title: item.title,
-          imageUrl: item.imageUrl,
-          originalUrl: item.storeUrl || '',
-          store: item.storeName || '',
-          price: item.price || null,
-          currency: item.currency || currencyCode,
-          confidence: item.score || 0,
-        }));
-
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            identifiedItems: JSON.stringify(normalizedItems),
-            source: 'upload',
-          },
-        });
-        return;
-      }
-
-      // Both pipelines failed
+      // No results or error
+      console.log('[AddScreen] No results or error:', result.message);
       Alert.alert(
         'No Products Found',
-        'We couldn\'t identify any products in this image. Try a different image or add the item manually.',
+        result.message || 'We couldn\'t identify any products in this image. Try a different image or add the item manually.',
         [
           { text: 'Try Again', onPress: () => setImageUri(null) },
-          { text: 'Add Manually', onPress: () => router.push('/add-manual') },
+          { 
+            text: 'Add Manually', 
+            onPress: () => {
+              // Navigate to import preview with empty data for manual entry
+              router.push({
+                pathname: '/import-preview',
+                params: {
+                  data: JSON.stringify({
+                    itemName: '',
+                    imageUrl: imageUri,
+                    extractedImages: JSON.stringify([imageUri]),
+                    storeName: '',
+                    storeDomain: '',
+                    price: null,
+                    currency: currencyCode,
+                    countryAvailability: JSON.stringify([countryCode]),
+                    sourceUrl: '',
+                    inputType: 'manual',
+                  }),
+                },
+              });
+            }
+          },
         ]
       );
     } catch (error: any) {
-      console.error('Identify from upload error:', error);
+      console.error('[AddScreen] Identify from upload error:', error);
       if (error.message === 'AUTH_REQUIRED') {
         setShowAuthModal(true);
       } else {
