@@ -174,12 +174,16 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CANONICAL EDGE FUNCTION REGISTRY - SINGLE SOURCE OF TRUTH
 // ═══════════════════════════════════════════════════════════════════════════
+// These are the ONLY function names that should be used in the app.
+// This list matches the deployed functions on Supabase.
 export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
   'find-alternatives',
   'import-wishlist',
-  'identify-product-from-image',
+  'identify-product-from-image', // Canonical image identification (Google Cloud Vision)
+  'search-by-name',
   'alert-items-with-targets',
+  'health', // Health check function
 ] as const;
 
 // Type for valid function names
@@ -203,7 +207,7 @@ if (!isEnvironmentConfigured()) {
 }
 
 console.log('═══════════════════════════════════════════════════════════════');
-console.log('📋 REGISTERED EDGE FUNCTIONS:');
+console.log('📋 REGISTERED CANONICAL EDGE FUNCTIONS:');
 CANONICAL_EDGE_FUNCTIONS.forEach(fn => console.log(`   - ${fn}`));
 console.log('═══════════════════════════════════════════════════════════════');
 
@@ -225,6 +229,7 @@ export async function checkEdgeFunctionAvailability(
   try {
     console.log(`[checkEdgeFunctionAvailability] Checking ${functionName} at ${url}`);
     
+    // Use GET request with apikey header (no auth token for availability check)
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -247,6 +252,7 @@ export async function checkEdgeFunctionAvailability(
         message: 'Function requires authentication',
       };
     } else if (response.status === 400 || response.status === 405) {
+      // 400/405 means function exists but doesn't accept GET (which is fine)
       return {
         status: 'Working',
         statusCode: response.status,
@@ -282,19 +288,23 @@ export async function checkEdgeFunctionAvailability(
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * HARDENED EDGE FUNCTION CALLER - DEBUGGABLE + STABLE
+ * HARDENED EDGE FUNCTION CALLER - PERMANENT AUTH FIX
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL FIXES:
- * 1. Prints HTTP status + response JSON error body (redacting tokens)
- * 2. NEVER forces sign-out on 401
- * 3. Only redirects to login if session is truly missing AND refresh fails
- * 4. Handles consistent JSON responses from edge functions
+ * CRITICAL FIXES IMPLEMENTED:
+ * 1. ✅ Prints HTTP status + response JSON error body (redacting tokens)
+ * 2. ✅ NEVER forces sign-out on 401
+ * 3. ✅ Only redirects to login if session is truly missing AND refresh fails
+ * 4. ✅ Handles consistent JSON responses from edge functions
+ * 5. ✅ FIXED: Authorization header now uses access_token (NOT anon key)
+ * 6. ✅ FIXED: Retry logic on 401 with session refresh
  * 
  * AUTHENTICATION FLOW:
- * 1. getSession() and attach Authorization: Bearer <access_token> and apikey
+ * 1. getSession() and get access_token
  * 2. If no token: attempt refreshSession() once
- * 3. Call function
+ * 3. Call function with:
+ *    - apikey: SUPABASE_ANON_KEY (required for Supabase routing)
+ *    - Authorization: Bearer <access_token> (for JWT verification)
  * 4. If response is non-2xx:
  *    - Read response text/json
  *    - Log: functionName, status, requestId (if any), safe error message, first 500 chars of body
@@ -331,7 +341,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   }
 
   const makeRequest = async (): Promise<TResponse> => {
-    // STEP 1: Get session and attach Authorization Bearer token + apikey
+    // STEP 1: Get session and extract access_token
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] Fetching session for ${functionName}`);
     }
@@ -344,7 +354,9 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     }
 
     // STEP 2: If no token, attempt refreshSession() once
-    if (!sessionData.session || !sessionData.session.access_token) {
+    let accessToken = sessionData.session?.access_token;
+    
+    if (!accessToken) {
       console.warn(`[callEdgeFunctionSafely] No access_token for ${functionName} - attempting refresh`);
       
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
@@ -354,34 +366,36 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
         throw new Error('AUTH_REQUIRED');
       }
 
+      accessToken = refreshData.session.access_token;
+      
       if (isDev) {
         console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName}`);
       }
     }
 
-    // Get current session after potential refresh
-    const { data: currentSessionData } = await supabase.auth.getSession();
-    const currentAccessToken = currentSessionData.session?.access_token;
-
-    if (!currentAccessToken) {
-      console.error(`[callEdgeFunctionSafely] Still no access_token after refresh for ${functionName}`);
+    // CRITICAL: Verify we have a valid access_token (not anon key)
+    if (!accessToken || accessToken === SUPABASE_ANON_KEY) {
+      console.error(`[callEdgeFunctionSafely] Invalid access_token for ${functionName} - got anon key or undefined`);
       throw new Error('AUTH_REQUIRED');
     }
 
-    // STEP 3: Call function with correct headers
+    // STEP 3: Call function with CORRECT headers
     const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
     
     if (isDev) {
       console.log(`[callEdgeFunctionSafely] Calling ${functionName} at ${url}`);
-      console.log(`[callEdgeFunctionSafely] Headers: apikey=${SUPABASE_ANON_KEY.substring(0, 20)}..., Authorization=Bearer ${currentAccessToken.substring(0, 20)}...`);
+      console.log(`[callEdgeFunctionSafely] Headers:`);
+      console.log(`  - apikey: ${SUPABASE_ANON_KEY.substring(0, 20)}...`);
+      console.log(`  - Authorization: Bearer ${accessToken.substring(0, 20)}...`);
+      console.log(`[callEdgeFunctionSafely] ✅ CRITICAL: Using access_token (NOT anon key) for Authorization`);
     }
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY,
-        'Authorization': `Bearer ${currentAccessToken}`,
+        'apikey': SUPABASE_ANON_KEY, // ✅ CORRECT: apikey for Supabase routing
+        'Authorization': `Bearer ${accessToken}`, // ✅ CORRECT: access_token for JWT verification
       },
       body: JSON.stringify(payload),
     });
@@ -403,11 +417,12 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
 
       // Log: functionName, status, requestId, safe error message, first 500 chars of body
       console.error(`═══════════════════════════════════════════════════════════════`);
-      console.error(`Edge Function Error: ${functionName}`);
-      console.error(`Status: ${response.status}`);
-      console.error(`RequestId: ${requestId}`);
-      console.error(`Message: ${safeErrorMessage}`);
-      console.error(`Body (first 500 chars): ${logBody}`);
+      console.error(`❌ Edge Function Error: ${functionName}`);
+      console.error(`   Status: ${response.status}`);
+      console.error(`   RequestId: ${requestId}`);
+      console.error(`   Message: ${safeErrorMessage}`);
+      console.error(`   Retry: ${retryCount > 0 ? 'Yes' : 'No'}`);
+      console.error(`   Body (first 500 chars): ${logBody}`);
       console.error(`═══════════════════════════════════════════════════════════════`);
 
       // STEP 5: If status is 401, attempt refreshSession() once and retry once
@@ -456,7 +471,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     }
 
     if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - SUCCESS`);
+      console.log(`[callEdgeFunctionSafely] ✅ ${functionName} - SUCCESS`);
     }
 
     return jsonResponse as TResponse;
@@ -635,7 +650,7 @@ export async function identifyProductFromImage(
     // Normalize base64 input (strip data URI prefix if present)
     const normalizedBase64 = normalizeBase64(imageBase64);
 
-    console.log('[identifyProductFromImage] Calling Edge Function');
+    console.log('[identifyProductFromImage] Calling Edge Function identify-product-from-image');
     if (__DEV__) {
       console.log('[DEV] Calling identify-product-from-image with Google Cloud Vision');
     }
@@ -709,10 +724,35 @@ export async function searchByName(
     limit?: number;
   }
 ): Promise<SearchByNameResponse> {
-  console.warn('[searchByName] This function requires the search-by-name Edge Function to be deployed');
-  
-  return {
-    results: [],
-    error: 'search-by-name Edge Function is not deployed. Please deploy it to use this feature.',
-  };
+  try {
+    console.log('[searchByName] Calling search-by-name Edge Function');
+    
+    const response = await callEdgeFunctionSafely<SearchByNameRequest, SearchByNameResponse>(
+      'search-by-name',
+      {
+        query,
+        countryCode: options?.countryCode,
+        city: options?.city,
+        currency: options?.currency,
+        limit: options?.limit || 10,
+      }
+    );
+
+    console.log('[searchByName] Search complete:', response.results.length, 'results');
+    return response;
+  } catch (error: any) {
+    console.error('[searchByName] Failed:', error);
+    
+    if (error.message === 'AUTH_REQUIRED') {
+      return {
+        results: [],
+        error: 'AUTH_REQUIRED',
+      };
+    }
+    
+    return {
+      results: [],
+      error: error.message || 'Failed to search for products',
+    };
+  }
 }
