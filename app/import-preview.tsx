@@ -55,13 +55,15 @@ interface ProductData {
 // This interface ensures consistent UI rendering regardless of which pipeline was used
 interface IdentifiedItem {
   title: string;
-  imageUrl: string;
-  originalUrl: string; // product_url from offers
+  imageUrl: string | null;
+  originalUrl: string | null; // product_url from offers (storeUrl from edge function)
   store: string;
   price: number | null;
   currency: string;
   confidence?: number; // Optional confidence score (0-1)
   brand?: string; // Optional brand from identified product
+  score?: number; // Score from image tiling aggregation
+  reason?: string; // Reason from image tiling
 }
 
 interface Wishlist {

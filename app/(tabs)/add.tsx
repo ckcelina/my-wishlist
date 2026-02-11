@@ -416,136 +416,17 @@ export default function AddItemScreen() {
       
       console.log('[AddScreen] Photo captured successfully - size:', img.fileSizeBytes, 'bytes');
       
-      // Call identifyProductFromImage with the captured image
-      console.log('[AddScreen] Calling identifyProductFromImage');
-      const result = await identifyProductFromImage(img.imageBase64, {
-        mimeType: img.mimeType,
+      // Navigate to image preview screen for crop/partition options
+      router.push({
+        pathname: '/image-preview',
+        params: {
+          imageUri: `data:image/jpeg;base64,${img.imageBase64}`,
+          imageBase64: img.imageBase64,
+          mimeType: img.mimeType,
+          width: img.width.toString(),
+          height: img.height.toString(),
+        },
       });
-      
-      console.log('[AddScreen] identifyProductFromImage result:', result.status);
-      
-      // Handle AUTH_REQUIRED error
-      if (result.status === 'error' && result.error?.code === 'AUTH_REQUIRED') {
-        console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
-        Alert.alert('Session Expired', result.message || 'Please sign in again.', [
-          { text: 'OK', onPress: () => router.push('/auth') }
-        ]);
-        return;
-      }
-      
-      // Handle IMAGE_TOO_LARGE error
-      if (result.status === 'error' && result.error?.code === 'IMAGE_TOO_LARGE') {
-        console.log('[AddScreen] IMAGE_TOO_LARGE');
-        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
-        return;
-      }
-      
-      // Handle VISION_FAILED error
-      if (result.status === 'error' && result.error?.code === 'VISION_FAILED') {
-        console.log('[AddScreen] VISION_FAILED');
-        Alert.alert(
-          'Analysis Failed',
-          result.message || 'Could not analyze image right now.',
-          [
-            { text: 'Try Again' },
-            { 
-              text: 'Add Manually', 
-              onPress: () => {
-                const countryCode = userLocation?.countryCode || 'US';
-                const currencyCode = userLocation?.currencyCode || 'USD';
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify({
-                      itemName: '',
-                      imageUrl: '',
-                      extractedImages: JSON.stringify([]),
-                      storeName: '',
-                      storeDomain: '',
-                      price: null,
-                      currency: currencyCode,
-                      countryAvailability: JSON.stringify([countryCode]),
-                      sourceUrl: '',
-                      inputType: 'manual',
-                    }),
-                  },
-                });
-              }
-            },
-          ]
-        );
-        return;
-      }
-      
-      // Handle success
-      if (result.status === 'ok' && result.items && result.items.length > 0) {
-        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length);
-        
-        // Navigate to import preview with identified product
-        const countryCode = userLocation?.countryCode || 'US';
-        const currencyCode = userLocation?.currencyCode || 'USD';
-        
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            data: JSON.stringify({
-              itemName: result.query || result.items[0].title,
-              imageUrl: result.items[0].imageUrl || '',
-              extractedImages: JSON.stringify([result.items[0].imageUrl]),
-              storeName: '',
-              storeDomain: '',
-              price: null,
-              currency: currencyCode,
-              countryAvailability: JSON.stringify([countryCode]),
-              sourceUrl: result.items[0].storeUrl || '',
-              inputType: 'camera',
-              notes: result.items.map(item => item.title).join(', '),
-            }),
-          },
-        });
-        return;
-      }
-      
-      // Handle no results
-      if (result.status === 'no_results') {
-        console.log('[AddScreen] No results:', result.message);
-        Alert.alert(
-          'No Products Found',
-          result.message || 'No matches found. Try better lighting or add manually.',
-          [
-            { text: 'Try Again' },
-            { 
-              text: 'Add Manually', 
-              onPress: () => {
-                const countryCode = userLocation?.countryCode || 'US';
-                const currencyCode = userLocation?.currencyCode || 'USD';
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify({
-                      itemName: '',
-                      imageUrl: '',
-                      extractedImages: JSON.stringify([]),
-                      storeName: '',
-                      storeDomain: '',
-                      price: null,
-                      currency: currencyCode,
-                      countryAvailability: JSON.stringify([countryCode]),
-                      sourceUrl: '',
-                      inputType: 'manual',
-                    }),
-                  },
-                });
-              }
-            },
-          ]
-        );
-        return;
-      }
-      
-      // Fallback for unexpected response
-      console.warn('[AddScreen] Unexpected response:', result);
-      Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
       console.error('[AddScreen] Take photo error:', error);
       if (error.message === 'AUTH_REQUIRED') {
@@ -577,136 +458,17 @@ export default function AddItemScreen() {
       
       console.log('[AddScreen] Image selected successfully - size:', img.fileSizeBytes, 'bytes');
       
-      // Call identifyProductFromImage with the selected image
-      console.log('[AddScreen] Calling identifyProductFromImage');
-      const result = await identifyProductFromImage(img.imageBase64, {
-        mimeType: img.mimeType,
+      // Navigate to image preview screen for crop/partition options
+      router.push({
+        pathname: '/image-preview',
+        params: {
+          imageUri: `data:image/jpeg;base64,${img.imageBase64}`,
+          imageBase64: img.imageBase64,
+          mimeType: img.mimeType,
+          width: img.width.toString(),
+          height: img.height.toString(),
+        },
       });
-      
-      console.log('[AddScreen] identifyProductFromImage result:', result.status);
-      
-      // Handle AUTH_REQUIRED error
-      if (result.status === 'error' && result.error?.code === 'AUTH_REQUIRED') {
-        console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
-        Alert.alert('Session Expired', result.message || 'Please sign in again.', [
-          { text: 'OK', onPress: () => router.push('/auth') }
-        ]);
-        return;
-      }
-      
-      // Handle IMAGE_TOO_LARGE error
-      if (result.status === 'error' && result.error?.code === 'IMAGE_TOO_LARGE') {
-        console.log('[AddScreen] IMAGE_TOO_LARGE');
-        Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
-        return;
-      }
-      
-      // Handle VISION_FAILED error
-      if (result.status === 'error' && result.error?.code === 'VISION_FAILED') {
-        console.log('[AddScreen] VISION_FAILED');
-        Alert.alert(
-          'Analysis Failed',
-          result.message || 'Could not analyze image right now.',
-          [
-            { text: 'Try Again' },
-            { 
-              text: 'Add Manually', 
-              onPress: () => {
-                const countryCode = userLocation?.countryCode || 'US';
-                const currencyCode = userLocation?.currencyCode || 'USD';
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify({
-                      itemName: '',
-                      imageUrl: '',
-                      extractedImages: JSON.stringify([]),
-                      storeName: '',
-                      storeDomain: '',
-                      price: null,
-                      currency: currencyCode,
-                      countryAvailability: JSON.stringify([countryCode]),
-                      sourceUrl: '',
-                      inputType: 'manual',
-                    }),
-                  },
-                });
-              }
-            },
-          ]
-        );
-        return;
-      }
-      
-      // Handle success
-      if (result.status === 'ok' && result.items && result.items.length > 0) {
-        console.log('[AddScreen] Success - query:', result.query, 'items:', result.items.length);
-        
-        // Navigate to import preview with identified product
-        const countryCode = userLocation?.countryCode || 'US';
-        const currencyCode = userLocation?.currencyCode || 'USD';
-        
-        router.push({
-          pathname: '/import-preview',
-          params: {
-            data: JSON.stringify({
-              itemName: result.query || result.items[0].title,
-              imageUrl: result.items[0].imageUrl || '',
-              extractedImages: JSON.stringify([result.items[0].imageUrl]),
-              storeName: '',
-              storeDomain: '',
-              price: null,
-              currency: currencyCode,
-              countryAvailability: JSON.stringify([countryCode]),
-              sourceUrl: result.items[0].storeUrl || '',
-              inputType: 'upload',
-              notes: result.items.map(item => item.title).join(', '),
-            }),
-          },
-        });
-        return;
-      }
-      
-      // Handle no results
-      if (result.status === 'no_results') {
-        console.log('[AddScreen] No results:', result.message);
-        Alert.alert(
-          'No Products Found',
-          result.message || 'No matches found. Try a different image or add manually.',
-          [
-            { text: 'Try Again' },
-            { 
-              text: 'Add Manually', 
-              onPress: () => {
-                const countryCode = userLocation?.countryCode || 'US';
-                const currencyCode = userLocation?.currencyCode || 'USD';
-                router.push({
-                  pathname: '/import-preview',
-                  params: {
-                    data: JSON.stringify({
-                      itemName: '',
-                      imageUrl: '',
-                      extractedImages: JSON.stringify([]),
-                      storeName: '',
-                      storeDomain: '',
-                      price: null,
-                      currency: currencyCode,
-                      countryAvailability: JSON.stringify([countryCode]),
-                      sourceUrl: '',
-                      inputType: 'manual',
-                    }),
-                  },
-                });
-              }
-            },
-          ]
-        );
-        return;
-      }
-      
-      // Fallback for unexpected response
-      console.warn('[AddScreen] Unexpected response:', result);
-      Alert.alert('Error', 'Unexpected response from server. Please try again.');
     } catch (error: any) {
       console.error('[AddScreen] Upload image error:', error);
       if (error.message === 'AUTH_REQUIRED') {
