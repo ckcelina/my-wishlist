@@ -425,7 +425,7 @@ export default function AddItemScreen() {
       console.log('[AddScreen] identifyProductFromImage result:', result.status);
       
       // Handle AUTH_REQUIRED error
-      if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
+      if (result.status === 'error' && result.error?.code === 'AUTH_REQUIRED') {
         console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
         Alert.alert('Session Expired', result.message || 'Please sign in again.', [
           { text: 'OK', onPress: () => router.push('/auth') }
@@ -434,14 +434,14 @@ export default function AddItemScreen() {
       }
       
       // Handle IMAGE_TOO_LARGE error
-      if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
+      if (result.status === 'error' && result.error?.code === 'IMAGE_TOO_LARGE') {
         console.log('[AddScreen] IMAGE_TOO_LARGE');
         Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
         return;
       }
       
       // Handle VISION_FAILED error
-      if (result.status === 'error' && result.error === 'VISION_FAILED') {
+      if (result.status === 'error' && result.error?.code === 'VISION_FAILED') {
         console.log('[AddScreen] VISION_FAILED');
         Alert.alert(
           'Analysis Failed',
@@ -586,7 +586,7 @@ export default function AddItemScreen() {
       console.log('[AddScreen] identifyProductFromImage result:', result.status);
       
       // Handle AUTH_REQUIRED error
-      if (result.status === 'error' && result.error === 'AUTH_REQUIRED') {
+      if (result.status === 'error' && result.error?.code === 'AUTH_REQUIRED') {
         console.log('[AddScreen] AUTH_REQUIRED - redirecting to login');
         Alert.alert('Session Expired', result.message || 'Please sign in again.', [
           { text: 'OK', onPress: () => router.push('/auth') }
@@ -595,14 +595,14 @@ export default function AddItemScreen() {
       }
       
       // Handle IMAGE_TOO_LARGE error
-      if (result.status === 'error' && result.error === 'IMAGE_TOO_LARGE') {
+      if (result.status === 'error' && result.error?.code === 'IMAGE_TOO_LARGE') {
         console.log('[AddScreen] IMAGE_TOO_LARGE');
         Alert.alert('Image Too Large', result.message || 'Image too large. Max 6MB.');
         return;
       }
       
       // Handle VISION_FAILED error
-      if (result.status === 'error' && result.error === 'VISION_FAILED') {
+      if (result.status === 'error' && result.error?.code === 'VISION_FAILED') {
         console.log('[AddScreen] VISION_FAILED');
         Alert.alert(
           'Analysis Failed',

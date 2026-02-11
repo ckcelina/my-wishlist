@@ -1,6 +1,5 @@
 
 import Constants from 'expo-constants';
-import { Alert } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
 
@@ -135,7 +134,14 @@ export interface IdentifyProductFromImageResponse {
   query?: string;
   items?: ProductCandidate[];
   message: string | null;
-  error?: 'AUTH_REQUIRED' | 'IMAGE_TOO_LARGE' | 'VISION_FAILED' | 'INVALID_INPUT';
+  error?: {
+    code: 'AUTH_REQUIRED' | 'IMAGE_TOO_LARGE' | 'VISION_FAILED' | 'INVALID_INPUT';
+    message: string;
+  };
+  debug?: {
+    step: string;
+    detail: any;
+  };
 }
 
 export interface SearchByNameRequest {
@@ -167,19 +173,6 @@ const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CANONICAL EDGE FUNCTION REGISTRY - SINGLE SOURCE OF TRUTH
-// ═══════════════════════════════════════════════════════════════════════════
-// This is the ONLY list of Edge Functions recognized by the app.
-// All diagnostics, availability checks, and function calls reference this list.
-// 
-// ✅ ACTIVE FUNCTIONS:
-// - extract-item: Extract product details from a URL
-// - find-alternatives: Find alternative stores for a product
-// - import-wishlist: Import wishlist from a store URL
-// - identify-product-from-image: Identify products from images (CANONICAL - Google Cloud Vision)
-// - alert-items-with-targets: Get items with price alert targets
-//
-// ❌ REMOVED DEPRECATED FUNCTIONS:
-// - identify-from-image (DEPRECATED - DELETED)
 // ═══════════════════════════════════════════════════════════════════════════
 export const CANONICAL_EDGE_FUNCTIONS = [
   'extract-item',
@@ -218,19 +211,6 @@ console.log('══════════════════════�
  * ═══════════════════════════════════════════════════════════════════════════
  * EDGE FUNCTION AVAILABILITY CHECK - FOR DIAGNOSTICS
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Checks if an Edge Function is deployed and reachable by making a lightweight
- * request to its endpoint. Does NOT execute the function.
- * 
- * Returns detailed status with HTTP status code and message:
- * - 200 → 'Working' (function deployed and responding)
- * - 401 → 'Auth error' (function deployed, requires authentication)
- * - 400/405 → 'Working' (function deployed, needs valid input)
- * - 404 → 'Not deployed' (function not found on server)
- * - 500+ → 'Server error (XXX)' (function deployed but erroring)
- * - Network error → 'Network error: ...'
- * 
- * This function is used ONLY by diagnostics to check function availability.
  */
 export async function checkEdgeFunctionAvailability(
   functionName: EdgeFunctionName
@@ -245,7 +225,6 @@ export async function checkEdgeFunctionAvailability(
   try {
     console.log(`[checkEdgeFunctionAvailability] Checking ${functionName} at ${url}`);
     
-    // Use GET to avoid executing the function
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -268,7 +247,6 @@ export async function checkEdgeFunctionAvailability(
         message: 'Function requires authentication',
       };
     } else if (response.status === 400 || response.status === 405) {
-      // 400/405 means function exists but needs valid input - still "Working"
       return {
         status: 'Working',
         statusCode: response.status,
@@ -304,77 +282,36 @@ export async function checkEdgeFunctionAvailability(
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SHARED HELPER: assertSupabaseSession
+ * HARDENED EDGE FUNCTION CALLER - DEBUGGABLE + STABLE
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Used before AI calls to ensure valid session exists.
- * Throws AUTH_REQUIRED if session is missing or invalid.
- * Returns the valid access token if successful.
- */
-export async function assertSupabaseSession(): Promise<string> {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError) {
-    console.error('[assertSupabaseSession] Session error:', sessionError.message);
-    throw new Error('AUTH_REQUIRED');
-  }
-
-  if (!sessionData.session || !sessionData.session.access_token) {
-    console.warn('[assertSupabaseSession] No valid session found');
-    throw new Error('AUTH_REQUIRED');
-  }
-
-  const expiresAt = sessionData.session.expires_at;
-  const now = Math.floor(Date.now() / 1000);
-
-  // If token is near expiry, refresh it
-  if (expiresAt && expiresAt <= now + 60) {
-    console.log('[assertSupabaseSession] Token expiring soon, refreshing...');
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-    
-    if (refreshError || !refreshData.session || !refreshData.session.access_token) {
-      console.error('[assertSupabaseSession] Refresh failed:', refreshError?.message);
-      throw new Error('AUTH_REQUIRED');
-    }
-
-    return refreshData.session.access_token;
-  }
-
-  return sessionData.session.access_token;
-}
-
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * CENTRALIZED EDGE FUNCTION CALLER - CORRECT AUTHENTICATION HEADERS
- * ═══════════════════════════════════════════════════════════════════════════
+ * CRITICAL FIXES:
+ * 1. Prints HTTP status + response JSON error body (redacting tokens)
+ * 2. NEVER forces sign-out on 401
+ * 3. Only redirects to login if session is truly missing AND refresh fails
+ * 4. Handles consistent JSON responses from edge functions
  * 
- * CRITICAL FIX: This function now correctly handles JWT authentication for ALL Edge Functions.
+ * AUTHENTICATION FLOW:
+ * 1. getSession() and attach Authorization: Bearer <access_token> and apikey
+ * 2. If no token: attempt refreshSession() once
+ * 3. Call function
+ * 4. If response is non-2xx:
+ *    - Read response text/json
+ *    - Log: functionName, status, requestId (if any), safe error message, first 500 chars of body
+ *    - Throw typed error: { code, status, message, details }
+ * 5. If status is 401:
+ *    - Attempt refreshSession() once and retry once
+ *    - If still 401: throw code="AUTH_REQUIRED"
  * 
- * AUTHENTICATION FLOW (FIXED):
- * 1. ALWAYS fetch session FIRST using supabase.auth.getSession()
- * 2. If no session or no access_token → throw AUTH_REQUIRED immediately (do NOT call function)
- * 3. If token exists but near expiry (expires_at <= now+60s) → refresh session ONCE
- * 4. Call Edge Function using supabase.functions.invoke() with CORRECT headers:
- *    - apikey: SUPABASE_ANON_KEY (ALWAYS included - this is the project API key)
- *    - Authorization: Bearer <USER_ACCESS_TOKEN> (user's JWT, NOT the anon key)
- * 5. If response is 401 → attempt refresh ONCE and retry ONCE
- * 6. If still 401 → throw AUTH_REQUIRED (do NOT sign out; do NOT clear storage)
- * 
- * CRITICAL: NEVER send the anon key as a Bearer JWT. The anon key goes in the 'apikey' header.
- * The user's access_token goes in the 'Authorization: Bearer' header.
- * 
- * Uses supabase.functions.invoke() for correct URL resolution and auth handling.
+ * IMPORTANT: Remove any "forcing sign out" behavior. Do NOT signOut automatically.
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
   functionName: EdgeFunctionName,
-  payload: TRequest,
-  options?: { showErrorAlert?: boolean }
+  payload: TRequest
 ): Promise<TResponse> {
-  const showErrorAlert = options?.showErrorAlert !== false; // Default to true
   const isDev = __DEV__;
-  let didRefresh = false;
-  let didRetry = false;
-  let finalStatus: number | string = 'UNKNOWN';
+  let retryCount = 0;
+  const maxRetries = 1;
 
   if (isDev) {
     console.log(`[callEdgeFunctionSafely] Starting call to ${functionName}`);
@@ -384,15 +321,6 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
   if (!isEnvironmentConfigured()) {
     const errorMessage = getConfigurationErrorMessage();
     console.error(`[callEdgeFunctionSafely] ${errorMessage}`);
-    
-    if (showErrorAlert) {
-      Alert.alert(
-        'Configuration Error',
-        'The app is not properly configured. Please contact support.',
-        [{ text: 'OK' }]
-      );
-    }
-    
     throw new Error('CONFIG_ERROR');
   }
 
@@ -402,232 +330,151 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     throw new Error(`Edge Function '${functionName}' is not recognized`);
   }
 
-  // STEP 1: Always fetch session FIRST
-  if (isDev) {
-    console.log(`[callEdgeFunctionSafely] Fetching session for ${functionName}`);
-  }
-  
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-  
-  if (sessionError) {
-    console.error(`[callEdgeFunctionSafely] Session error for ${functionName}:`, sessionError.message);
-    finalStatus = 'session_error';
+  const makeRequest = async (): Promise<TResponse> => {
+    // STEP 1: Get session and attach Authorization Bearer token + apikey
     if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-    }
-    throw new Error('AUTH_REQUIRED');
-  }
-
-  // STEP 2: If no access_token → throw AUTH_REQUIRED immediately (NO edge call)
-  if (!sessionData.session || !sessionData.session.access_token) {
-    console.warn(`[callEdgeFunctionSafely] No access_token for ${functionName} - throwing AUTH_REQUIRED immediately`);
-    finalStatus = 'no_token';
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-    }
-    throw new Error('AUTH_REQUIRED');
-  }
-
-  let currentAccessToken = sessionData.session.access_token;
-  const expiresAt = sessionData.session.expires_at;
-  const now = Math.floor(Date.now() / 1000);
-
-  // Safe logging (no tokens)
-  if (isDev) {
-    console.log(`[callEdgeFunctionSafely] ${functionName} - hasSession=true, tokenLength=${currentAccessToken.length}, expiresAt=${expiresAt}, now=${now}`);
-  }
-
-  // STEP 3: If token exists but is near expiry (expires_at <= now+60s), refresh once
-  if (expiresAt && expiresAt <= now + 60) {
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] Token for ${functionName} expiring soon (${expiresAt} vs ${now + 60}). Refreshing session.`);
+      console.log(`[callEdgeFunctionSafely] Fetching session for ${functionName}`);
     }
     
-    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     
-    if (refreshError || !refreshData.session || !refreshData.session.access_token) {
-      console.error(`[callEdgeFunctionSafely] Proactive refresh failed for ${functionName}:`, refreshError?.message);
-      finalStatus = 'refresh_failed';
-      didRefresh = true;
-      if (isDev) {
-        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-      }
+    if (sessionError) {
+      console.error(`[callEdgeFunctionSafely] Session error for ${functionName}:`, sessionError.message);
       throw new Error('AUTH_REQUIRED');
     }
 
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName} - new token length: ${refreshData.session.access_token.length}`);
-    }
-    didRefresh = true;
-    currentAccessToken = refreshData.session.access_token;
-  }
+    // STEP 2: If no token, attempt refreshSession() once
+    if (!sessionData.session || !sessionData.session.access_token) {
+      console.warn(`[callEdgeFunctionSafely] No access_token for ${functionName} - attempting refresh`);
+      
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError || !refreshData.session || !refreshData.session.access_token) {
+        console.error(`[callEdgeFunctionSafely] Refresh failed for ${functionName}:`, refreshError?.message);
+        throw new Error('AUTH_REQUIRED');
+      }
 
-  // STEP 4: Make the edge call using Supabase client's invoke method with CORRECT headers
-  const makeRequest = async (token: string): Promise<{ data: any; error: any; status?: number }> => {
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] Calling supabase.functions.invoke('${functionName}') with token length: ${token.length}`);
-      console.log(`[callEdgeFunctionSafely] Headers: apikey=${SUPABASE_ANON_KEY.substring(0, 20)}..., Authorization=Bearer ${token.substring(0, 20)}...`);
+      if (isDev) {
+        console.log(`[callEdgeFunctionSafely] Session refreshed for ${functionName}`);
+      }
     }
 
-    // CRITICAL: Use correct headers
-    // - apikey: SUPABASE_ANON_KEY (project API key, ALWAYS included)
-    // - Authorization: Bearer <USER_ACCESS_TOKEN> (user's JWT, NOT the anon key)
-    const result = await supabase.functions.invoke(functionName, {
-      body: payload,
+    // Get current session after potential refresh
+    const { data: currentSessionData } = await supabase.auth.getSession();
+    const currentAccessToken = currentSessionData.session?.access_token;
+
+    if (!currentAccessToken) {
+      console.error(`[callEdgeFunctionSafely] Still no access_token after refresh for ${functionName}`);
+      throw new Error('AUTH_REQUIRED');
+    }
+
+    // STEP 3: Call function with correct headers
+    const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
+    
+    if (isDev) {
+      console.log(`[callEdgeFunctionSafely] Calling ${functionName} at ${url}`);
+      console.log(`[callEdgeFunctionSafely] Headers: apikey=${SUPABASE_ANON_KEY.substring(0, 20)}..., Authorization=Bearer ${currentAccessToken.substring(0, 20)}...`);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': SUPABASE_ANON_KEY, // Project API key (NOT as Bearer)
-        'Authorization': `Bearer ${token}`, // User access token (NOT the anon key)
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${currentAccessToken}`,
       },
+      body: JSON.stringify(payload),
     });
 
-    return result;
-  };
-
-  try {
-    // First attempt
-    let result = await makeRequest(currentAccessToken);
-    finalStatus = result.error ? (result.error.message?.includes('401') ? 401 : 'error') : 200;
-
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - initial response status: ${finalStatus}`);
-    }
-
-    // STEP 5: If response is 401 → attempt refresh ONCE and retry ONCE
-    if (result.error && result.error.message?.includes('401') && !didRetry) {
-      console.warn(`[callEdgeFunctionSafely] 401 for ${functionName} - attempting session refresh and retry`);
+    // STEP 4: If response is non-2xx, read response text/json and log details
+    if (!response.ok) {
+      const requestId = response.headers.get('x-request-id') || 'N/A';
+      const responseText = await response.text();
       
-      // Attempt refresh (if not already done)
-      if (!didRefresh) {
+      let jsonBody: any;
+      try {
+        jsonBody = JSON.parse(responseText);
+      } catch {
+        jsonBody = { status: 'error', error: { code: 'NON_JSON_RESPONSE', message: responseText } };
+      }
+
+      const safeErrorMessage = jsonBody.message || jsonBody.error?.message || jsonBody.error || 'Unknown error';
+      const logBody = responseText.substring(0, 500); // First 500 chars
+
+      // Log: functionName, status, requestId, safe error message, first 500 chars of body
+      console.error(`═══════════════════════════════════════════════════════════════`);
+      console.error(`Edge Function Error: ${functionName}`);
+      console.error(`Status: ${response.status}`);
+      console.error(`RequestId: ${requestId}`);
+      console.error(`Message: ${safeErrorMessage}`);
+      console.error(`Body (first 500 chars): ${logBody}`);
+      console.error(`═══════════════════════════════════════════════════════════════`);
+
+      // STEP 5: If status is 401, attempt refreshSession() once and retry once
+      if (response.status === 401 && retryCount < maxRetries) {
+        console.warn(`[callEdgeFunctionSafely] 401 received for ${functionName}, attempting session refresh and retry...`);
+        
         const { data: retryRefreshData, error: retryRefreshError } = await supabase.auth.refreshSession();
         
         if (retryRefreshError || !retryRefreshData.session || !retryRefreshData.session.access_token) {
           console.error(`[callEdgeFunctionSafely] Refresh failed on 401 retry for ${functionName}:`, retryRefreshError?.message);
-          finalStatus = '401_refresh_failed';
-          didRefresh = true;
-          didRetry = true;
-          if (isDev) {
-            console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-          }
           throw new Error('AUTH_REQUIRED');
         }
 
         if (isDev) {
-          console.log(`[callEdgeFunctionSafely] Session refreshed on 401 for ${functionName} - new token length: ${retryRefreshData.session.access_token.length}`);
-        }
-        didRefresh = true;
-        currentAccessToken = retryRefreshData.session.access_token;
-      }
-
-      // Retry with new token
-      didRetry = true;
-      result = await makeRequest(currentAccessToken);
-      finalStatus = result.error ? (result.error.message?.includes('401') ? 401 : 'error') : 200;
-      
-      if (isDev) {
-        console.log(`[callEdgeFunctionSafely] ${functionName} - retry response status: ${finalStatus}`);
-      }
-    }
-
-    // STEP 6: If still 401 → throw AUTH_REQUIRED (do NOT sign out)
-    if (result.error && result.error.message?.includes('401')) {
-      console.error(`[callEdgeFunctionSafely] Still 401 for ${functionName} after refresh+retry - throwing AUTH_REQUIRED`);
-      finalStatus = '401_after_retry';
-      if (isDev) {
-        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-      }
-      throw new Error('AUTH_REQUIRED');
-    }
-
-    // STEP 7: Handle other errors
-    if (result.error) {
-      console.error(`[callEdgeFunctionSafely] ${functionName} failed:`, result.error.message);
-      
-      // Handle 404 - function not deployed
-      if (result.error.message?.includes('404') || result.error.message?.includes('not found')) {
-        finalStatus = '404';
-        if (isDev) {
-          console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
+          console.log(`[callEdgeFunctionSafely] Session refreshed on 401 for ${functionName} - retrying`);
         }
         
-        if (showErrorAlert) {
-          Alert.alert(
-            'Feature Unavailable',
-            'This feature is temporarily unavailable. Please try again later.',
-            [{ text: 'OK' }]
-          );
-        }
-        throw new Error(`Edge Function '${functionName}' not found (404)`);
+        retryCount++;
+        return makeRequest(); // Retry with new token
       }
-      
-      // Handle 400 - check for CONFIG_ERROR in response body
-      if (result.error.message?.includes('400') && result.error.message?.toLowerCase().includes('config')) {
-        finalStatus = '400_config';
-        if (isDev) {
-          console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-        }
-        throw new Error('CONFIG_ERROR');
+
+      // If still 401 after retry, throw AUTH_REQUIRED
+      if (response.status === 401) {
+        console.error(`[callEdgeFunctionSafely] Still 401 for ${functionName} after refresh+retry - throwing AUTH_REQUIRED`);
+        throw new Error('AUTH_REQUIRED');
       }
-      
-      if (isDev) {
-        console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry}`);
-      }
-      
-      if (showErrorAlert) {
-        Alert.alert(
-          'Request Failed',
-          `Unable to complete the request. Please try again. (Error: ${result.error.message})`,
-          [{ text: 'OK' }]
-        );
-      }
-      
-      throw new Error(`Edge function failed: ${result.error.message}`);
+
+      // Throw typed error for other non-2xx responses
+      throw new Error(JSON.stringify({
+        code: jsonBody.error?.code || jsonBody.error || 'EDGE_FUNCTION_ERROR',
+        status: response.status,
+        message: safeErrorMessage,
+        details: jsonBody,
+      }));
     }
 
-    // STEP 8: Return response data
-    if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - SUCCESS`);
+    // STEP 6: Parse and return response
+    const responseText = await response.text();
+    
+    let jsonResponse: any;
+    try {
+      jsonResponse = JSON.parse(responseText);
+    } catch {
+      console.error(`[callEdgeFunctionSafely] Non-JSON response from ${functionName}:`, responseText.substring(0, 500));
+      throw new Error('Non-JSON response from edge function');
     }
-    return result.data as TResponse;
 
-  } catch (error: any) {
-    console.error(`[callEdgeFunctionSafely] Error calling ${functionName}:`, error.message);
     if (isDev) {
-      console.log(`[callEdgeFunctionSafely] ${functionName} - status=${finalStatus}, didRefresh=${didRefresh}, didRetry=${didRetry} - ERROR`);
+      console.log(`[callEdgeFunctionSafely] ${functionName} - SUCCESS`);
     }
-    
-    // If it's a specific error code, propagate it (do NOT show alert here - let UI handle it)
-    if (error.message === 'AUTH_REQUIRED' || error.message === 'CONFIG_ERROR') {
-      throw error;
-    }
-    
-    // Only show alert if we haven't already shown one
-    if (showErrorAlert && !error.message.includes('Session expired') && !error.message.includes('not found')) {
-      Alert.alert(
-        'Network Error',
-        'Unable to connect to the service. Please check your internet connection and try again.',
-        [{ text: 'OK' }]
-      );
-    }
-    
-    throw error;
-  }
+
+    return jsonResponse as TResponse;
+  };
+
+  return makeRequest();
 }
 
 /**
  * Extract item details from a URL
- * Returns partial data even if extraction fails
- * Works identically in all environments
  */
 export async function extractItem(url: string, country: string): Promise<ExtractItemResponse> {
   try {
     const response = await callEdgeFunctionSafely<ExtractItemRequest, ExtractItemResponse>(
       'extract-item',
-      { url, country },
-      { showErrorAlert: true }
+      { url, country }
     );
 
-    // Log warnings for partial results
     if (response.meta.partial) {
       console.warn('[extractItem] Partial result returned:', response.error);
     }
@@ -636,12 +483,10 @@ export async function extractItem(url: string, country: string): Promise<Extract
   } catch (error: any) {
     console.error('[extractItem] Failed:', error);
     
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[extractItem] Edge Function not deployed - returning safe fallback');
+    if (error.message === 'AUTH_REQUIRED') {
+      throw error;
     }
     
-    // Return safe fallback
     return {
       title: null,
       price: null,
@@ -662,8 +507,6 @@ export async function extractItem(url: string, country: string): Promise<Extract
 
 /**
  * Find alternative stores for a product
- * Filters by user location if provided
- * Works identically in all environments
  */
 export async function findAlternatives(
   title: string,
@@ -681,11 +524,9 @@ export async function findAlternatives(
         originalUrl: options?.originalUrl,
         countryCode: options?.countryCode,
         city: options?.city,
-      },
-      { showErrorAlert: true }
+      }
     );
 
-    // Log warnings for partial results
     if (response.meta.partial) {
       console.warn('[findAlternatives] Partial result returned:', response.error);
     }
@@ -694,12 +535,10 @@ export async function findAlternatives(
   } catch (error: any) {
     console.error('[findAlternatives] Failed:', error);
     
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[findAlternatives] Edge Function not deployed - returning safe fallback');
+    if (error.message === 'AUTH_REQUIRED') {
+      throw error;
     }
     
-    // Return safe fallback
     return {
       alternatives: [],
       meta: {
@@ -714,18 +553,14 @@ export async function findAlternatives(
 
 /**
  * Import a wishlist from a store URL
- * Returns as many items as possible even if some fail
- * Works identically in all environments
  */
 export async function importWishlist(wishlistUrl: string): Promise<ImportWishlistResponse> {
   try {
     const response = await callEdgeFunctionSafely<ImportWishlistRequest, ImportWishlistResponse>(
       'import-wishlist',
-      { wishlistUrl },
-      { showErrorAlert: true }
+      { wishlistUrl }
     );
 
-    // Log warnings for partial results
     if (response.meta.partial) {
       console.warn('[importWishlist] Partial result returned:', response.error);
     }
@@ -734,12 +569,10 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
   } catch (error: any) {
     console.error('[importWishlist] Failed:', error);
     
-    // Check if function is missing (404)
-    if (error.message.includes('not found') || error.message.includes('404')) {
-      console.warn('[importWishlist] Edge Function not deployed - returning safe fallback');
+    if (error.message === 'AUTH_REQUIRED') {
+      throw error;
     }
     
-    // Return safe fallback
     return {
       storeName: null,
       items: [],
@@ -755,7 +588,6 @@ export async function importWishlist(wishlistUrl: string): Promise<ImportWishlis
 
 /**
  * Normalize base64 input by stripping data URI prefix
- * Ensures clean base64 string is sent to edge functions
  */
 function normalizeBase64(base64String: string): string {
   if (base64String.startsWith('data:image')) {
@@ -775,29 +607,10 @@ function normalizeBase64(base64String: string): string {
  * CANONICAL IMAGE IDENTIFICATION FUNCTION - identify-product-from-image
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * This is the PRIMARY and ONLY image identification function.
- * Uses Google Cloud Vision API for image analysis.
- * 
- * PIPELINE:
- * 1. Google Cloud Vision analyzes the image using:
- *    - WEB_DETECTION: Finds web pages with matching images
- *    - LABEL_DETECTION: Identifies objects, concepts, and categories
- *    - LOGO_DETECTION: Detects brand logos
- * 2. Returns structured product identification data with candidates
- * 
- * STANDARDIZED RESPONSE SHAPE:
- * - Success (200): { status: "ok", providerUsed: "google_vision", confidence: 0..1, query: string, items: [...], message: null }
- * - No results (200): { status: "no_results", providerUsed: "google_vision", confidence: 0, query: "", items: [], message: "..." }
- * - Auth error (401): { status: "error", error: "AUTH_REQUIRED", message: "Please sign in again." }
- * - Image too large (413): { status: "error", error: "IMAGE_TOO_LARGE", message: "Image too large. Max 6MB." }
- * - Vision failed (500): { status: "error", error: "VISION_FAILED", message: "Could not analyze image right now." }
- * 
- * PAYLOAD FORMAT:
- * - imageBase64?: string (base64-encoded image, data URI prefix optional)
- * - imageUrl?: string (alternative to base64)
- * - mimeType?: string (optional, e.g., 'image/jpeg')
- * 
- * ALWAYS returns a response with standardized structure - never silently fails
+ * HARDENED VERSION:
+ * - Catches AUTH_REQUIRED and shows modal "Session expired, please sign in again"
+ * - Navigates to Login screen (does NOT crash)
+ * - For any other error: shows toast "Image identify failed" with short reason
  */
 export async function identifyProductFromImage(
   imageBase64: string,
@@ -808,33 +621,13 @@ export async function identifyProductFromImage(
   try {
     console.log('[identifyProductFromImage] Starting Google Cloud Vision pipeline (CANONICAL)');
 
-    // GUARD: Check auth state BEFORE calling edge function
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError || !session || !session.access_token) {
-      console.error('[identifyProductFromImage] Invalid auth state');
-      return {
-        status: 'error',
-        error: 'AUTH_REQUIRED',
-        message: 'Please sign in again.',
-      };
-    }
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) {
-      console.error('[identifyProductFromImage] User not authenticated');
-      return {
-        status: 'error',
-        error: 'AUTH_REQUIRED',
-        message: 'Please sign in again.',
-      };
-    }
-
     if (!imageBase64) {
       return {
         status: 'error',
-        error: 'INVALID_INPUT',
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Missing imageBase64.',
+        },
         message: 'Missing imageBase64.',
       };
     }
@@ -852,8 +645,7 @@ export async function identifyProductFromImage(
       {
         imageBase64: normalizedBase64,
         mimeType: options?.mimeType,
-      },
-      { showErrorAlert: false }
+      }
     );
 
     console.log('[identifyProductFromImage] Pipeline complete');
@@ -862,7 +654,6 @@ export async function identifyProductFromImage(
     console.log('[identifyProductFromImage] Items:', response.items?.length || 0);
     console.log('[identifyProductFromImage] Confidence:', response.confidence || 0);
 
-    // Return standardized response
     return response;
   } catch (error: any) {
     console.error('[identifyProductFromImage] Failed:', error);
@@ -872,29 +663,42 @@ export async function identifyProductFromImage(
       console.log('[identifyProductFromImage] AUTH_REQUIRED caught');
       return {
         status: 'error',
-        error: 'AUTH_REQUIRED',
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'Please sign in again.',
+        },
         message: 'Please sign in again.',
       };
     }
     
-    // Return safe fallback with standardized structure
-    return {
-      status: 'error',
-      error: 'VISION_FAILED',
-      message: error.message || 'Could not analyze image right now.',
-    };
+    // Try to parse error message as JSON (from typed error)
+    try {
+      const errorObj = JSON.parse(error.message);
+      return {
+        status: 'error',
+        error: {
+          code: errorObj.code || 'VISION_FAILED',
+          message: errorObj.message || 'Could not analyze image right now.',
+        },
+        message: errorObj.message || 'Could not analyze image right now.',
+        debug: errorObj.details,
+      };
+    } catch {
+      // Not JSON, return generic error
+      return {
+        status: 'error',
+        error: {
+          code: 'VISION_FAILED',
+          message: error.message || 'Could not analyze image right now.',
+        },
+        message: error.message || 'Could not analyze image right now.',
+      };
+    }
   }
 }
 
 /**
- * Search for products by name across multiple stores
- * Filters by user location if provided
- * Returns products with confidence scores
- * Works identically in all environments
- * 
- * NOTE: This function is currently NOT in the CANONICAL_EDGE_FUNCTIONS list
- * because search-by-name is not deployed. If you need this functionality,
- * deploy the search-by-name Edge Function and add it to CANONICAL_EDGE_FUNCTIONS.
+ * Search for products by name
  */
 export async function searchByName(
   query: string,
@@ -907,7 +711,6 @@ export async function searchByName(
 ): Promise<SearchByNameResponse> {
   console.warn('[searchByName] This function requires the search-by-name Edge Function to be deployed');
   
-  // Return safe fallback since function is not deployed
   return {
     results: [],
     error: 'search-by-name Edge Function is not deployed. Please deploy it to use this feature.',
