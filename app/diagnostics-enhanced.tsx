@@ -19,7 +19,8 @@ import { colors, typography, spacing } from '@/styles/designSystem';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
-import { CANONICAL_EDGE_FUNCTIONS, checkEdgeFunctionAvailability } from '@/utils/supabase-edge-functions';
+import { checkEdgeFunctionAvailability } from '@/utils/supabase-edge-functions';
+import { ALL_EDGE_FUNCTIONS, EDGE_FUNCTION_DESCRIPTIONS } from '@/src/constants/edgeFunctions';
 
 interface DiagnosticResult {
   name: string;
@@ -82,7 +83,7 @@ export default function DiagnosticsEnhancedScreen() {
     setResults([]);
     setProgress(0);
 
-    const totalTests = 15; // Updated count
+    const totalTests = 8 + ALL_EDGE_FUNCTIONS.length; // Base tests + edge functions
     let currentTest = 0;
 
     const incrementProgress = () => {
@@ -261,64 +262,68 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 5-9: Edge Functions (using CANONICAL_EDGE_FUNCTIONS and checkEdgeFunctionAvailability)
+    // Test 5-N: Edge Functions (using ALL_EDGE_FUNCTIONS and checkEdgeFunctionAvailability)
     console.log('[Diagnostics] Testing Edge Functions from canonical registry');
+    console.log('[Diagnostics] Functions to test:', ALL_EDGE_FUNCTIONS);
     
-    for (const functionName of CANONICAL_EDGE_FUNCTIONS) {
+    for (const functionName of ALL_EDGE_FUNCTIONS) {
       try {
+        const description = EDGE_FUNCTION_DESCRIPTIONS[functionName] || 'No description';
+        
         updateResult({ 
-          name: `Edge Function: ${functionName}`, 
+          name: `Edge: ${functionName}`, 
           status: 'pending', 
-          message: 'Checking availability...' 
+          message: 'Checking availability...',
+          details: description,
         });
         
-        // Use the new checkEdgeFunctionAvailability function
+        // Use the checkEdgeFunctionAvailability function
         const availabilityResult = await checkEdgeFunctionAvailability(functionName);
         
         console.log(`[Diagnostics] ${functionName} availability:`, availabilityResult.status, availabilityResult.statusCode);
         
         // Map availability status to diagnostic status with detailed messages
-        if (availabilityResult.status === 'Working') {
+        if (availabilityResult.status === 'Available') {
           updateResult({
-            name: `Edge Function: ${functionName}`,
+            name: `Edge: ${functionName}`,
             status: 'pass',
-            message: `Working (${availabilityResult.statusCode || 200})`,
-            details: availabilityResult.message,
+            message: availabilityResult.message,
+            details: description,
           });
-        } else if (availabilityResult.status === 'Auth error') {
+        } else if (availabilityResult.status === 'Auth Required') {
           updateResult({
-            name: `Edge Function: ${functionName}`,
+            name: `Edge: ${functionName}`,
             status: 'warning',
-            message: `Auth error (${availabilityResult.statusCode || 401})`,
-            details: availabilityResult.message,
+            message: availabilityResult.message,
+            details: description,
           });
-        } else if (availabilityResult.status === 'Not deployed') {
+        } else if (availabilityResult.status === 'Not Deployed') {
           updateResult({
-            name: `Edge Function: ${functionName}`,
+            name: `Edge: ${functionName}`,
             status: 'fail',
-            message: `Not deployed (${availabilityResult.statusCode || 404})`,
-            details: availabilityResult.message,
+            message: availabilityResult.message,
+            details: `${description} - Deploy with: supabase functions deploy ${functionName}`,
           });
-        } else if (availabilityResult.status === 'Server error') {
+        } else if (availabilityResult.status === 'Server Error') {
           updateResult({
-            name: `Edge Function: ${functionName}`,
+            name: `Edge: ${functionName}`,
             status: 'fail',
-            message: `Server error (${availabilityResult.statusCode || 500})`,
-            details: availabilityResult.message,
+            message: availabilityResult.message,
+            details: description,
           });
         } else {
-          // Network error
+          // Network error or other error
           updateResult({
-            name: `Edge Function: ${functionName}`,
+            name: `Edge: ${functionName}`,
             status: 'fail',
-            message: 'Network error',
-            details: availabilityResult.message,
+            message: availabilityResult.message,
+            details: description,
           });
         }
       } catch (error: any) {
         console.error(`[Diagnostics] Error checking ${functionName}:`, error);
         updateResult({
-          name: `Edge Function: ${functionName}`,
+          name: `Edge: ${functionName}`,
           status: 'fail',
           message: 'Check failed',
           details: error.message || 'Unknown error',
@@ -327,7 +332,7 @@ export default function DiagnosticsEnhancedScreen() {
       incrementProgress();
     }
 
-    // Test 10: Notifications Permission
+    // Test N+1: Notifications Permission
     try {
       updateResult({ name: 'Notifications', status: 'pending', message: 'Checking...' });
       
@@ -358,7 +363,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 11: Image Picker Permission
+    // Test N+2: Image Picker Permission
     try {
       updateResult({ name: 'Image Picker', status: 'pending', message: 'Checking...' });
       
@@ -389,7 +394,7 @@ export default function DiagnosticsEnhancedScreen() {
     }
     incrementProgress();
 
-    // Test 12: Storage (Supabase Storage)
+    // Test N+3: Storage (Supabase Storage)
     try {
       updateResult({ name: 'Storage', status: 'pending', message: 'Testing...' });
       
@@ -416,129 +421,6 @@ export default function DiagnosticsEnhancedScreen() {
         status: 'fail',
         message: 'Storage error',
         details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 13: Environment Variables
-    try {
-      updateResult({ name: 'Environment', status: 'pending', message: 'Checking...' });
-      
-      const requiredVars = [
-        'supabaseUrl',
-        'supabaseAnonKey',
-      ];
-      
-      const missing = requiredVars.filter(
-        varName => !Constants.expoConfig?.extra?.[varName]
-      );
-      
-      if (missing.length === 0) {
-        updateResult({
-          name: 'Environment',
-          status: 'pass',
-          message: 'All variables configured',
-          details: `Checked ${requiredVars.length} variables`,
-        });
-      } else {
-        updateResult({
-          name: 'Environment',
-          status: 'fail',
-          message: 'Missing variables',
-          details: missing.join(', '),
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Environment',
-        status: 'fail',
-        message: 'Environment check failed',
-        details: error instanceof Error ? error.message : String(error),
-      });
-    }
-    incrementProgress();
-
-    // Test 14: Network Connectivity
-    try {
-      updateResult({ name: 'Network', status: 'pending', message: 'Testing...' });
-      
-      const response = await fetch('https://www.google.com', {
-        method: 'HEAD',
-        cache: 'no-cache',
-      });
-      
-      if (response.ok) {
-        updateResult({
-          name: 'Network',
-          status: 'pass',
-          message: 'Internet connected',
-          details: 'Network is reachable',
-        });
-      } else {
-        updateResult({
-          name: 'Network',
-          status: 'warning',
-          message: 'Network issues',
-          details: `Status: ${response.status}`,
-        });
-      }
-    } catch (error) {
-      updateResult({
-        name: 'Network',
-        status: 'fail',
-        message: 'No internet connection',
-        details: 'Check your network',
-      });
-    }
-    incrementProgress();
-
-    // Test 15: User Settings
-    if (user) {
-      try {
-        updateResult({ name: 'User Settings', status: 'pending', message: 'Checking...' });
-        
-        const { data, error } = await supabase
-          .from('user_settings')
-          .select('*')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        if (error) {
-          updateResult({
-            name: 'User Settings',
-            status: 'fail',
-            message: 'Settings check failed',
-            details: error.message,
-          });
-        } else if (data) {
-          updateResult({
-            name: 'User Settings',
-            status: 'pass',
-            message: 'Settings exist',
-            details: `Currency: ${renderSafeValue(data.default_currency)}`,
-          });
-        } else {
-          updateResult({
-            name: 'User Settings',
-            status: 'warning',
-            message: 'No settings found',
-            details: 'Will be created on first use',
-          });
-        }
-      } catch (error) {
-        updateResult({
-          name: 'User Settings',
-          status: 'fail',
-          message: 'Settings error',
-          details: error instanceof Error ? error.message : String(error),
-        });
-      }
-    } else {
-      updateResult({
-        name: 'User Settings',
-        status: 'warning',
-        message: 'Skipped',
-        details: 'Sign in to test',
       });
     }
     incrementProgress();

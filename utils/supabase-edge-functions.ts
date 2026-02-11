@@ -2,6 +2,7 @@
 import Constants from 'expo-constants';
 import { supabase } from '@/lib/supabase';
 import { appConfig, isEnvironmentConfigured, getConfigurationErrorMessage } from './environmentConfig';
+import { EDGE_FUNCTION_NAMES, type EdgeFunction } from '@/src/constants/edgeFunctions';
 
 // Types for Edge Function requests and responses
 export interface SearchItemRequest {
@@ -172,24 +173,6 @@ const SUPABASE_URL = appConfig.supabaseUrl || '';
 const SUPABASE_ANON_KEY = appConfig.supabaseAnonKey || '';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 🔧 CANONICAL EDGE FUNCTION REGISTRY - SINGLE SOURCE OF TRUTH
-// ═══════════════════════════════════════════════════════════════════════════
-// These are the ONLY function names that should be used in the app.
-// This list matches the deployed functions on Supabase.
-export const CANONICAL_EDGE_FUNCTIONS = [
-  'extract-item',
-  'find-alternatives',
-  'import-wishlist',
-  'identify-product-from-image', // Canonical image identification (Google Cloud Vision)
-  'search-by-name',
-  'alert-items-with-targets',
-  'health', // Health check function
-] as const;
-
-// Type for valid function names
-export type EdgeFunctionName = typeof CANONICAL_EDGE_FUNCTIONS[number];
-
-// ═══════════════════════════════════════════════════════════════════════════
 // 🔧 CONFIGURATION VERIFICATION - Log configuration status on module load
 // ═══════════════════════════════════════════════════════════════════════════
 console.log('═══════════════════════════════════════════════════════════════');
@@ -207,8 +190,8 @@ if (!isEnvironmentConfigured()) {
 }
 
 console.log('═══════════════════════════════════════════════════════════════');
-console.log('📋 REGISTERED CANONICAL EDGE FUNCTIONS:');
-CANONICAL_EDGE_FUNCTIONS.forEach(fn => console.log(`   - ${fn}`));
+console.log('📋 REGISTERED EDGE FUNCTIONS:');
+Object.values(EDGE_FUNCTION_NAMES).forEach(fn => console.log(`   - ${fn}`));
 console.log('═══════════════════════════════════════════════════════════════');
 
 /**
@@ -217,9 +200,9 @@ console.log('══════════════════════�
  * ═══════════════════════════════════════════════════════════════════════════
  */
 export async function checkEdgeFunctionAvailability(
-  functionName: EdgeFunctionName
+  functionName: EdgeFunction
 ): Promise<{
-  status: 'Working' | 'Auth error' | 'Not deployed' | 'Server error' | 'Network error';
+  status: 'Available' | 'Not Deployed' | 'Auth Required' | 'Server Error' | 'Network Error' | 'Error';
   statusCode?: number;
   message: string;
 }> {
@@ -229,58 +212,90 @@ export async function checkEdgeFunctionAvailability(
   try {
     console.log(`[checkEdgeFunctionAvailability] Checking ${functionName} at ${url}`);
     
-    // Use GET request with apikey header (no auth token for availability check)
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'apikey': SUPABASE_ANON_KEY,
-      },
+    // Special handling for health function - use GET
+    if (functionName === EDGE_FUNCTION_NAMES.HEALTH) {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+        },
+      });
+
+      console.log(`[checkEdgeFunctionAvailability] ${functionName} responded with status: ${response.status}`);
+
+      if (response.status === 200) {
+        try {
+          const data = await response.json();
+          if (data.status === 'ok') {
+            return {
+              status: 'Available',
+              statusCode: 200,
+              message: `OK (v${data.version})`,
+            };
+          }
+        } catch (e) {
+          // JSON parse failed, but 200 is still good
+        }
+        return {
+          status: 'Available',
+          statusCode: 200,
+          message: 'OK',
+        };
+      }
+    }
+
+    // For other functions, use supabase.functions.invoke to check availability
+    const { data, error } = await supabase.functions.invoke(functionName, {
+      body: {},
     });
 
-    console.log(`[checkEdgeFunctionAvailability] ${functionName} responded with status: ${response.status}`);
-
-    if (response.status === 200) {
+    // Check the response
+    if (!error) {
       return {
-        status: 'Working',
+        status: 'Available',
         statusCode: 200,
-        message: 'Function endpoint reachable and responding',
+        message: 'OK',
       };
-    } else if (response.status === 401) {
+    }
+
+    // Parse error to determine status
+    const errorMessage = error.message || '';
+    
+    if (errorMessage.includes('404') || errorMessage.includes('not found')) {
       return {
-        status: 'Auth error',
+        status: 'Not Deployed',
+        statusCode: 404,
+        message: 'Function not found - not deployed',
+      };
+    } else if (errorMessage.includes('401') || errorMessage.includes('unauthorized')) {
+      return {
+        status: 'Auth Required',
         statusCode: 401,
         message: 'Function requires authentication',
       };
-    } else if (response.status === 400 || response.status === 405) {
-      // 400/405 means function exists but doesn't accept GET (which is fine)
+    } else if (errorMessage.includes('500') || errorMessage.includes('internal')) {
       return {
-        status: 'Working',
-        statusCode: response.status,
-        message: `Function deployed (status ${response.status})`,
+        status: 'Server Error',
+        statusCode: 500,
+        message: 'Server error',
       };
-    } else if (response.status === 404) {
+    } else if (errorMessage.includes('400') || errorMessage.includes('405')) {
+      // 400/405 means function exists but doesn't accept empty body (which is fine)
       return {
-        status: 'Not deployed',
-        statusCode: 404,
-        message: 'Function not found - not deployed on server',
-      };
-    } else if (response.status >= 500) {
-      return {
-        status: 'Server error',
-        statusCode: response.status,
-        message: `Server error (${response.status})`,
+        status: 'Available',
+        statusCode: 400,
+        message: 'Function deployed',
       };
     } else {
       return {
-        status: 'Working',
-        statusCode: response.status,
-        message: `Unexpected status (${response.status})`,
+        status: 'Error',
+        message: errorMessage || 'Unknown error',
       };
     }
   } catch (error: any) {
     console.error(`[checkEdgeFunctionAvailability] Network error checking ${functionName}:`, error);
     return {
-      status: 'Network error',
+      status: 'Network Error',
       message: `Network error: ${error.message || 'Unknown error'}`,
     };
   }
@@ -316,7 +331,7 @@ export async function checkEdgeFunctionAvailability(
  * IMPORTANT: Remove any "forcing sign out" behavior. Do NOT signOut automatically.
  */
 export async function callEdgeFunctionSafely<TRequest, TResponse>(
-  functionName: EdgeFunctionName,
+  functionName: EdgeFunction,
   payload: TRequest
 ): Promise<TResponse> {
   const isDev = __DEV__;
@@ -332,12 +347,6 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
     const errorMessage = getConfigurationErrorMessage();
     console.error(`[callEdgeFunctionSafely] ${errorMessage}`);
     throw new Error('CONFIG_ERROR');
-  }
-
-  // Verify function name is in canonical list
-  if (!CANONICAL_EDGE_FUNCTIONS.includes(functionName)) {
-    console.warn(`[callEdgeFunctionSafely] Unknown function '${functionName}' - not in canonical list`);
-    throw new Error(`Edge Function '${functionName}' is not recognized`);
   }
 
   const makeRequest = async (): Promise<TResponse> => {
@@ -486,7 +495,7 @@ export async function callEdgeFunctionSafely<TRequest, TResponse>(
 export async function extractItem(url: string, country: string): Promise<ExtractItemResponse> {
   try {
     const response = await callEdgeFunctionSafely<ExtractItemRequest, ExtractItemResponse>(
-      'extract-item',
+      EDGE_FUNCTION_NAMES.EXTRACT_ITEM,
       { url, country }
     );
 
@@ -533,7 +542,7 @@ export async function findAlternatives(
 ): Promise<FindAlternativesResponse> {
   try {
     const response = await callEdgeFunctionSafely<FindAlternativesRequest, FindAlternativesResponse>(
-      'find-alternatives',
+      EDGE_FUNCTION_NAMES.FIND_ALTERNATIVES,
       {
         title,
         originalUrl: options?.originalUrl,
@@ -572,7 +581,7 @@ export async function findAlternatives(
 export async function importWishlist(wishlistUrl: string): Promise<ImportWishlistResponse> {
   try {
     const response = await callEdgeFunctionSafely<ImportWishlistRequest, ImportWishlistResponse>(
-      'import-wishlist',
+      EDGE_FUNCTION_NAMES.IMPORT_WISHLIST,
       { wishlistUrl }
     );
 
@@ -656,7 +665,7 @@ export async function identifyProductFromImage(
     }
 
     const response = await callEdgeFunctionSafely<IdentifyProductFromImageRequest, IdentifyProductFromImageResponse>(
-      'identify-product-from-image',
+      EDGE_FUNCTION_NAMES.IDENTIFY_PRODUCT_FROM_IMAGE,
       {
         imageBase64: normalizedBase64,
         mimeType: options?.mimeType,
@@ -728,7 +737,7 @@ export async function searchByName(
     console.log('[searchByName] Calling search-by-name Edge Function');
     
     const response = await callEdgeFunctionSafely<SearchByNameRequest, SearchByNameResponse>(
-      'search-by-name',
+      EDGE_FUNCTION_NAMES.SEARCH_BY_NAME,
       {
         query,
         countryCode: options?.countryCode,
